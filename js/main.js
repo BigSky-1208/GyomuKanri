@@ -1,23 +1,21 @@
 // js/main.js - アプリケーションのエントリーポイント兼全体管理
 
 // --- Firebaseと認証関連のインポート ---
-// db, authインスタンス、設定検証関数をfirebase.jsからインポート
-import { db, auth, isFirebaseConfigValid } from './firebase.js';
-// signInAnonymouslyは初期ロード時に使用、onAuthStateChangedはFirebase Authの状態監視（Okta/Auth0利用時は役割が変わる可能性あり）
-import { signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-// ログアウト処理と管理者認証処理をauth.jsからインポート (Okta利用時はokta.jsからインポートするように変更)
-import { handleLogout, handleAdminLogin, checkAdminPassword, authLevel as currentAuthLevel } from './auth.js'; // authLevelもインポート
+// dbインスタンス、設定検証関数をfirebase.jsからインポート
+import { db, isFirebaseConfigValid } from './firebase.js';
+// Okta認証関連の関数をokta.jsからインポート
+import { checkOktaAuthentication, handleOktaLogout } from './okta.js';
 
 // --- Firestore関連のインポート ---
 import { doc, onSnapshot, getDoc, collection, getDocs, query, where, Timestamp, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // --- 各ビューモジュールのインポート ---
 // 各ビューの初期化関数とイベントリスナー設定関数をインポート
-import { initializeProfileSetupView, setupProfileSetupEventListeners } from './views/profileSetup.js';
+import { initializeProfileSetupView, setupProfileSetupEventListeners } from './views/profileSetup.js'; // ProfileSetupはOkta Widget表示用なので中身はほぼ不要になるかも
 import { initializeModeSelectionView, setupModeSelectionEventListeners } from './views/modeSelection.js';
 import { initializeTaskSettingsView, setupTaskSettingsEventListeners } from './views/taskSettings.js';
-import { initializeHostView, cleanupHostView, setupHostEventListeners } from './views/host.js';
-import { initializeClientView, setupClientEventListeners, resetClientStateUI, checkIfWarningIsNeeded } from './views/client.js'; // resetClientStateUI もインポート
+import { initializeHostView, cleanupHostView, setupHostEventListeners } from './views/host/host.js'; // Hostディレクトリ内のhost.jsをインポート
+import { initializeClientView, setupClientEventListeners, resetClientStateUI } from './views/client/client.js'; // Clientディレクトリ内のclient.jsをインポート
 import { initializePersonalDetailView, cleanupPersonalDetailView, setupPersonalDetailEventListeners } from './views/personalDetail.js';
 import { initializeReportView, cleanupReportView, setupReportEventListeners } from './views/report.js';
 import { initializeProgressView, setupProgressEventListeners } from './views/progress.js';
@@ -25,25 +23,28 @@ import { initializeArchiveView, setupArchiveEventListeners } from './views/archi
 import { updateStatusesCache } from './views/host/userManagement.js'; // host.jsがstatusをuserManagementに渡すためインポート
 
 // --- コンポーネント/ユーティリティモジュールのインポート ---
-import { setupModalEventListeners, adminPasswordView, confirmationModal, closeModal } from './components/modal.js';
+import { setupModalEventListeners, adminPasswordView, confirmationModal, closeModal, showHelpModal } from './components/modal.js';
 import { setupExcelExportEventListeners } from './excelExport.js';
-import { checkForCheckoutCorrection } from './utils.js'; // 退勤忘れチェック関数
+import { checkForCheckoutCorrection, getJSTDateString, escapeHtml } from './utils.js'; // 退勤忘れチェック関数など
 
 // --- グローバル状態変数 ---
-export let userId = null; // 現在のユーザーID (Firebase Auth UID または profile ID)
+export let userId = null; // 現在のユーザーの Firestore Profile ID
 export let userName = null; // 現在のユーザー名
-export let authLevel = 'none'; // 認証レベル ('none', 'task_editor', 'admin') - auth.jsから初期値を取得
+export let authLevel = 'none'; // 認証レベル ('none', 'task_editor', 'admin')
 export let allTaskObjects = []; // 全タスクとその目標（Firestoreから取得）
 export let allUserLogs = []; // 全ユーザーのログ（Firestoreから取得、必要に応じて更新）
 export let userDisplayPreferences = { hiddenTasks: [] }; // ユーザーの表示設定
 export let viewHistory = []; // 表示したビューの履歴（戻る機能用）
-export let adminLoginDestination = null; // 管理者ログイン後に遷移するビュー
+export let adminLoginDestination = null; // 管理者ログイン後に遷移するビュー (Okta移行により不要になる可能性)
 export let preferencesUnsubscribe = null; // 表示設定リスナーの解除関数
+// TODO: isProgressViewReadOnly の管理方法を改善する (例: showViewのdataで渡す)
+export let isProgressViewReadOnly = false; // Progress Viewが読み取り専用かどうかのフラグ
 
 // --- 定数 ---
 // ビューIDと対応する初期化/クリーンアップ関数をマッピング
 export const VIEWS = {
-    PROFILE_SETUP: "profile-setup-view",
+    // PROFILE_SETUP はOkta Widgetコンテナに置き換わる想定
+    OKTA_WIDGET: "okta-signin-widget-container", // Okta Widget用コンテナID
     MODE_SELECTION: "mode-selection-view",
     TASK_SETTINGS: "task-settings-view",
     HOST: "host-view",
@@ -56,7 +57,7 @@ export const VIEWS = {
 
 // ビュー名と初期化/クリーンアップ関数のマップ
 const viewLifecycle = {
-    [VIEWS.PROFILE_SETUP]: { init: initializeProfileSetupView },
+    // [VIEWS.PROFILE_SETUP]: { init: initializeProfileSetupView }, // Okta Widgetが表示されるので不要
     [VIEWS.MODE_SELECTION]: { init: initializeModeSelectionView },
     [VIEWS.TASK_SETTINGS]: { init: initializeTaskSettingsView },
     [VIEWS.HOST]: { init: initializeHostView, cleanup: cleanupHostView },
@@ -75,6 +76,7 @@ const viewLifecycle = {
  */
 async function initialize() {
     console.log("Initializing application...");
+    const appContainer = document.getElementById('app-container');
 
     // Firebase設定の有効性を確認
     if (!isFirebaseConfigValid()) {
@@ -82,74 +84,36 @@ async function initialize() {
         return;
     }
 
-    // Firebase Authの状態を監視（匿名ログイン用）
-    // Okta/Auth0導入時は、ここでのユーザー処理は変わる可能性が高い
-    onAuthStateChanged(auth, async (user) => {
-        if (user && !userId) { // 匿名ユーザーがサインインし、まだログインしていない場合
-            console.log("Firebase Anonymous User Signed In:", user.uid);
-            // ここでは userId を設定しない。profileSetup で名前を入力してログインした際に設定する。
-            enableLoginButton(); // ログインボタンを有効化
-        } else if (user && userId) {
-             // すでにログイン済み (localStorageから復元済み)
-             console.log("User already logged in:", userName, `(UID: ${userId})`);
-        } else if (!user && !userId) {
-             // 匿名サインインが必要
-             console.log("No user signed in. Attempting anonymous sign-in...");
-             try {
-                await signInAnonymously(auth);
-                console.log("Signed in anonymously.");
-                enableLoginButton(); // 匿名サインイン後にログインボタンを有効化
-             } catch (error) {
-                 console.error("Anonymous sign-in failed:", error);
-                 displayInitializationError("匿名認証に失敗しました。");
-             }
-        } else if (!user && userId) {
-             // ログアウトした場合など
-             console.log("Firebase user logged out, but local state might persist. Handling logout...");
-             // handleLogout(); // 必要なら強制ログアウト処理を呼ぶ
-        }
-    });
-
     // --- グローバルリスナーとイベントリスナーの設定 ---
-    setupGlobalEventListeners(); // 先にモーダルなどの共通リスナーを設定
-    await listenForTasks(); // タスク情報を最初に取得・監視開始
-    listenForDisplayPreferences(); // ユーザー設定を監視開始
-    await fetchAllUserLogs(); // 初回ログ取得
+    // 先にモーダルなどの共通リスナーを設定（DOM要素が存在するため）
+    setupGlobalEventListeners();
 
-    // --- ユーザー状態の復元と初期ビュー表示 ---
-    const savedUser = localStorage.getItem("workTrackerUser");
-    if (savedUser) {
-        try {
-            const { uid: savedUid, name } = JSON.parse(savedUser);
-            // 保存されたユーザー情報で状態を更新
-            setUserId(savedUid);
-            setUserName(name);
-            console.log("Restored user from localStorage:", userName, `(UID: ${userId})`);
-
-            // localStorageからの復元時にもFirestoreのステータスをオンラインにする
-            const statusRef = doc(db, "work_status", userId);
-            await setDoc(statusRef, { userName: name, onlineStatus: true, userId: userId }, { merge: true });
-
-            await checkForCheckoutCorrection(userId); // 退勤忘れチェック
-            listenForDisplayPreferences(); // ユーザー設定の監視を開始
-
-            showView(VIEWS.MODE_SELECTION); // モード選択画面を表示
-        } catch (error) {
-            console.error("Error parsing saved user data:", error);
-            localStorage.removeItem("workTrackerUser"); // 不正なデータは削除
-            showView(VIEWS.PROFILE_SETUP); // プロフィール設定画面を表示
-        }
-    } else {
-        // 保存されたユーザー情報がない場合
-        showView(VIEWS.PROFILE_SETUP); // プロフィール設定画面を表示
+    // --- Okta認証チェックを開始 ---
+    // これが認証状態を確認し、未認証ならWidget表示、認証済みならhandleOktaLoginSuccessを呼び出す
+    try {
+        await checkOktaAuthentication(); // okta.js の関数を呼び出し
+        // checkOktaAuthentication内で認証成功時にhandleOktaLoginSuccessが呼ばれ、
+        // そこでuserId, userName, authLevelが設定され、各種リスナーが開始され、
+        // 最終的にshowView(VIEWS.MODE_SELECTION)が呼ばれる想定
+    } catch(error) {
+        console.error("Okta Authentication Check Failed:", error);
+        displayInitializationError("認証処理中にエラーが発生しました。");
+        // 必要に応じてOkta Widgetを再表示する処理をここに追加
+        // renderSignInWidget(); // okta.jsからインポートする場合
     }
+
+    // --- グローバルデータリスナー開始 ---
+    // これらはOkta認証成功後 (userId設定後) に開始するのが望ましいが、
+    // 先に開始しても問題ない場合もある（権限チェックはFirestoreルールで行うため）
+    // 認証前にタスクが見えても問題なければここでOK
+    await listenForTasks(); // タスク情報を取得・監視開始
+    // listenForDisplayPreferences(); // これはuserId設定後にokta.jsから呼ぶ方が良い
+    await fetchAllUserLogs(); // 初回ログ取得
 
     // 定期的なログフェッチを設定 (例: 5分ごと)
     setInterval(fetchAllUserLogs, 5 * 60 * 1000);
 
-     // グローバルな状態更新を反映するためのUI更新 (例: タスクドロップダウン)
-     // これは各ビューの初期化や状態変更時に行う方が適切かもしれない
-     // updateAllTaskDropdowns(); // 仮の関数名
+    console.log("Initialization sequence potentially complete (waiting for Okta status).");
 }
 
 
@@ -159,24 +123,18 @@ async function initialize() {
  */
 function displayInitializationError(message) {
     const container = document.getElementById("app-container");
+    // Okta Widgetコンテナも非表示にする
+    const oktaContainer = document.getElementById("okta-signin-widget-container");
+    if(oktaContainer) oktaContainer.classList.add('hidden');
+
     if (container) {
+        container.classList.remove('hidden'); // エラー表示のために表示する
         container.innerHTML = `<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative max-w-lg mx-auto mt-10" role="alert">
             <strong class="font-bold">初期化エラー</strong>
-            <span class="block sm:inline">${message}</span>
+            <span class="block sm:inline">${escapeHtml(message)}</span>
         </div>`;
     }
     console.error("Initialization Error:", message);
-}
-
-/**
- * ログインボタンを有効化する
- */
-function enableLoginButton() {
-     const loginButton = document.getElementById('save-profile-btn');
-     if (loginButton) {
-         loginButton.disabled = false;
-         loginButton.textContent = 'ログイン'; // Ensure text is correct
-     }
 }
 
 
@@ -191,7 +149,7 @@ function setupGlobalEventListeners() {
 
     // --- 各ビュー固有リスナー ---
     // (各ビューモジュールからインポートして呼び出し)
-    setupProfileSetupEventListeners();
+    // setupProfileSetupEventListeners(); // Okta Widgetに置き換わるので不要
     setupModeSelectionEventListeners();
     setupTaskSettingsEventListeners();
     setupHostEventListeners();
@@ -204,19 +162,13 @@ function setupGlobalEventListeners() {
     // --- その他共通リスナー ---
     setupExcelExportEventListeners(); // excelExport.js内のリスナーを設定
 
-    // --- 管理者パスワードモーダル ---
-    const adminPasswordSubmitBtn = document.getElementById("admin-password-submit-btn");
-    const adminPasswordCancelBtn = document.getElementById("admin-password-cancel-btn");
-    const adminPasswordInput = document.getElementById("admin-password-input");
-
-    adminPasswordSubmitBtn?.addEventListener("click", handleAdminLogin); // auth.jsの関数を呼び出し
-    adminPasswordCancelBtn?.addEventListener("click", () => closeModal(adminPasswordView));
-    // Enterキーで送信
-    adminPasswordInput?.addEventListener('keypress', (event) => {
-        if (event.key === 'Enter') {
-            handleAdminLogin();
-        }
-    });
+    // --- 管理者パスワードモーダル関連は削除 ---
+    // const adminPasswordSubmitBtn = document.getElementById("admin-password-submit-btn");
+    // const adminPasswordCancelBtn = document.getElementById("admin-password-cancel-btn");
+    // const adminPasswordInput = document.getElementById("admin-password-input");
+    // adminPasswordSubmitBtn?.removeEventListener("click", handleAdminLogin); // リスナー解除
+    // adminPasswordCancelBtn?.removeEventListener("click", closeModal);
+    // adminPasswordInput?.removeEventListener('keypress', handleAdminPasswordEnter);
 
     console.log("Global event listeners set up complete.");
 }
@@ -227,35 +179,66 @@ function setupGlobalEventListeners() {
 /**
  * 指定されたビューを表示し、他のビューを非表示にする。
  * 必要に応じて初期化・クリーンアップ関数を呼び出す。
- * @param {string} viewName - 表示するビューのID (VIEWS定数を使用)
+ * @param {string} viewId - 表示するビューのID (VIEWS定数を使用)
  * @param {object} [data={}] - ビューの初期化時に渡すデータ (例: { userName: 'Taro' })
  */
-export function showView(viewName, data = {}) {
-    console.log(`Showing view: ${viewName}`, data);
-    const targetViewElement = document.getElementById(viewName);
+export function showView(viewId, data = {}) {
+    console.log(`Showing view: ${viewId}`, data);
+    const targetViewElement = document.getElementById(viewId);
+    const appContainer = document.getElementById('app-container');
 
     if (!targetViewElement) {
-        console.error(`View element not found: ${viewName}`);
-        return;
+        // Okta Widget コンテナを表示する場合
+        if (viewId === VIEWS.OKTA_WIDGET) {
+            const oktaContainer = document.getElementById(VIEWS.OKTA_WIDGET);
+            if(oktaContainer) {
+                appContainer?.classList.add('hidden'); // Hide main app content
+                // Hide all '.view' elements explicitly
+                document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
+                oktaContainer.classList.remove('hidden'); // Show Okta widget container
+                 console.log(`Showing Okta Widget container: ${viewId}`);
+                // Okta Widgetの描画は okta.js の renderSignInWidget で行う
+            } else {
+                 console.error(`Okta widget container element not found: ${viewId}`);
+            }
+            return;
+        } else {
+            console.error(`View element not found: ${viewId}`);
+            return; // 通常のビューが見つからない場合は終了
+        }
     }
+
+     // 通常のビューを表示する場合、Okta Widgetコンテナを隠し、Appコンテナを表示
+     const oktaContainer = document.getElementById(VIEWS.OKTA_WIDGET);
+     if(oktaContainer) oktaContainer.classList.add('hidden');
+     if(appContainer) appContainer.classList.remove('hidden');
 
     // --- クリーンアップ ---
     // 現在アクティブなビューを探し、クリーンアップ関数があれば実行
     const currentActiveViewElement = document.querySelector(".view.active-view");
-    if (currentActiveViewElement && currentActiveViewElement.id !== viewName) {
+    if (currentActiveViewElement && currentActiveViewElement.id !== viewId) {
         const currentViewId = currentActiveViewElement.id;
         const currentLifecycle = viewLifecycle[currentViewId];
         if (currentLifecycle?.cleanup) {
             console.log(`Cleaning up view: ${currentViewId}`);
-            currentLifecycle.cleanup();
+            try {
+                currentLifecycle.cleanup();
+            } catch (error) {
+                 console.error(`Error during cleanup of view ${currentViewId}:`, error);
+            }
         }
         currentActiveViewElement.classList.remove("active-view");
-    } else if (currentActiveViewElement && currentActiveViewElement.id === viewName) {
+    } else if (currentActiveViewElement && currentActiveViewElement.id === viewId) {
          // 同じビューを表示しようとした場合、初期化だけ実行する（リフレッシュ目的）
-         const currentLifecycle = viewLifecycle[viewName];
+         const currentLifecycle = viewLifecycle[viewId];
          if (currentLifecycle?.init) {
-            console.log(`Re-initializing view: ${viewName}`);
-            currentLifecycle.init(data); // データも渡す
+            console.log(`Re-initializing view: ${viewId}`);
+             try {
+                 // init 関数が Promise を返す可能性を考慮して await を使う
+                 await currentLifecycle.init(data); // データも渡す
+             } catch (error) {
+                  console.error(`Error during re-initialization of view ${viewId}:`, error);
+             }
          }
          return; // ビュー切り替えは不要
     }
@@ -263,19 +246,25 @@ export function showView(viewName, data = {}) {
 
     // --- ビューの表示と初期化 ---
     targetViewElement.classList.add("active-view");
-    const newLifecycle = viewLifecycle[viewName];
+    const newLifecycle = viewLifecycle[viewId];
     if (newLifecycle?.init) {
-        console.log(`Initializing view: ${viewName}`);
-        newLifecycle.init(data); // 初期化関数にデータを渡す
+        console.log(`Initializing view: ${viewId}`);
+         try {
+             // init 関数が Promise を返す可能性を考慮
+             await newLifecycle.init(data); // 初期化関数にデータを渡す
+         } catch (error) {
+              console.error(`Error during initialization of view ${viewId}:`, error);
+              // エラー発生時のフォールバック処理 (例: エラーメッセージ表示)
+              targetViewElement.innerHTML = `<p class="text-red-500 p-4">ビューの読み込み中にエラーが発生しました。</p>`;
+         }
     }
 
     // --- 履歴管理 ---
-    // 戻るボタンで戻らないビュー（ログイン画面など）は履歴に追加しない
-    const nonHistoryViews = [VIEWS.PROFILE_SETUP];
     const currentViewFromHistory = viewHistory[viewHistory.length - 1];
-    if (currentViewFromHistory !== viewName && !nonHistoryViews.includes(viewName)) {
-        viewHistory.push(viewName);
+    if (currentViewFromHistory !== viewId) { // 同じビューを連続で追加しない
+        viewHistory.push(viewId);
     }
+    // console.log("View History:", viewHistory); // デバッグ用
 
     window.scrollTo(0, 0); // 画面遷移時にトップにスクロール
 }
@@ -284,15 +273,20 @@ export function showView(viewName, data = {}) {
  * 一つ前のビューに戻る
  */
 export function handleGoBack() {
-    console.log("Handling Go Back. History:", viewHistory);
+    console.log("Handling Go Back. Current History:", viewHistory);
     viewHistory.pop(); // 現在のビューを履歴から削除
-    const previousViewName = viewHistory.pop(); // 一つ前のビュー名を取得
+    const previousViewName = viewHistory[viewHistory.length - 1]; // 履歴の最後（＝戻り先）を取得（popしない）
+
     if (previousViewName) {
+        console.log("Navigating back to:", previousViewName);
+        // showView内で再度履歴に追加されるので、ここではpopしない
         showView(previousViewName);
     } else {
         // 履歴がない場合はデフォルトのビュー（モード選択など）に戻る
+        console.warn("View history empty or invalid, navigating to default view (Mode Selection).");
         showView(VIEWS.MODE_SELECTION);
-        console.warn("View history empty, navigating to default view.");
+        // 履歴をクリアしておく
+        viewHistory = [VIEWS.MODE_SELECTION]; // モード選択を履歴の起点とする
     }
 }
 
@@ -305,63 +299,79 @@ export function handleGoBack() {
 async function listenForTasks() {
     console.log("Starting listener for tasks...");
     const tasksRef = doc(db, "settings", "tasks");
+    let isFirstLoad = true; // 初回ロードかどうかのフラグ
 
-    // 初回取得
-    try {
-        const docSnap = await getDoc(tasksRef);
+    const unsubscribe = onSnapshot(tasksRef, async (docSnap) => { // リスナー関数をasyncに
         if (docSnap.exists() && docSnap.data().list) {
-            updateGlobalTaskObjects(docSnap.data().list);
-        } else {
-            // ドキュメントが存在しない or listがない場合 (初回起動時など)
-            console.log("No tasks found in settings. Creating default tasks...");
-            const defaultTasks = [
-                { name: "資料作成", memo: "", goals: [] },
-                { name: "会議", memo: "", goals: [] },
-                { name: "メール対応", memo: "", goals: [] },
-                { name: "開発", memo: "", goals: [] },
-                { name: "休憩", memo: "", goals: [] }, // 休憩は必須
-            ];
-            await setDoc(tasksRef, { list: defaultTasks }); // デフォルトタスクを保存
-            updateGlobalTaskObjects(defaultTasks);
-        }
-    } catch (error) {
-         console.error("Error fetching initial tasks:", error);
-         // エラー時も空配列で初期化を試みる
-         updateGlobalTaskObjects([]);
-    }
+            console.log("Tasks updated from Firestore snapshot.");
+            const newTasks = docSnap.data().list;
+            updateGlobalTaskObjects(newTasks); // グローバル状態を更新
 
+            // 初回ロード時以外、または特定のビューが表示されている場合のみUI更新
+            if (!isFirstLoad) {
+                 await refreshUIBasedOnTaskUpdate();
+            }
 
-    // 変更監視
-    onSnapshot(tasksRef, (docSnap) => {
-        if (docSnap.exists() && docSnap.data().list) {
-            console.log("Tasks updated from Firestore.");
-            updateGlobalTaskObjects(docSnap.data().list);
-             // タスク更新時に、関連するUI（例：クライアントビューのドロップダウン）を更新
-             // checkIfWarningIsNeeded(); // 実行中のタスクと比較して警告を更新
-             if(document.getElementById(VIEWS.CLIENT)?.classList.contains('active-view')) {
-                 // クライアントビューが表示されている場合のみ更新
-                 // renderTaskOptions(); // clientUI.jsからインポートして使用
+        } else if (!docSnap.metadata.hasPendingWrites) { // 保留中の書き込みがない場合のみ処理
+             console.warn("Tasks document unexpectedly deleted or empty. Creating default tasks...");
+             // ドキュメントが存在しない or listがない場合 (初回起動時など)
+             const defaultTasks = [
+                 { name: "資料作成", memo: "", goals: [] },
+                 { name: "会議", memo: "", goals: [] },
+                 { name: "メール対応", memo: "", goals: [] },
+                 { name: "開発", memo: "", goals: [] },
+                 { name: "休憩", memo: "", goals: [] }, // 休憩は必須
+             ];
+             try {
+                 await setDoc(tasksRef, { list: defaultTasks }); // デフォルトタスクを保存
+                 updateGlobalTaskObjects(defaultTasks); // グローバル状態更新
+                 await refreshUIBasedOnTaskUpdate(); // UIも更新
+             } catch (error) {
+                 console.error("Error creating default tasks:", error);
+                 updateGlobalTaskObjects([]); // エラー時は空にする
              }
-             if(document.getElementById(VIEWS.TASK_SETTINGS)?.classList.contains('active-view')) {
-                  // renderTaskEditor(); // taskSettings.jsからインポートして使用
-             }
-              // 他のビュー（Progress, Archiveなど）も必要に応じて更新
-              if (document.getElementById(VIEWS.PROGRESS)?.classList.contains('active-view')) {
-                  // initializeProgressView(); // 再初期化してリストを更新
-              }
-              if (document.getElementById(VIEWS.ARCHIVE)?.classList.contains('active-view')) {
-                 // initializeArchiveView(); // 再初期化してリストを更新
-              }
 
-
-        } else {
-             console.warn("Tasks document unexpectedly deleted or empty.");
-             updateGlobalTaskObjects([]); // タスクが空になった場合
         }
+        isFirstLoad = false; // 初回ロードフラグを下ろす
     }, (error) => {
          console.error("Error listening for task updates:", error);
+         updateGlobalTaskObjects([]); // エラー時は空にする
+         isFirstLoad = false;
     });
+    // 必要に応じてリスナーを解除できるように関数を返すか、グローバル変数に保存
+    // return unsubscribe;
 }
+
+/**
+ * タスクデータ更新時に、現在表示中のビューに応じて関連UIをリフレッシュする
+ */
+async function refreshUIBasedOnTaskUpdate() {
+    console.log("Refreshing UI based on task update...");
+    // client.js の renderTaskOptions は clientUI.js に移動した想定
+    const { renderTaskOptions, checkIfWarningIsNeeded } = await import('./views/client/clientUI.js');
+    const { initializeProgressView } = await import('./views/progress.js');
+    const { initializeArchiveView } = await import('./views/archive.js');
+    const { renderTaskEditor } = await import('./views/taskSettings.js');
+
+    try {
+        if (document.getElementById(VIEWS.CLIENT)?.classList.contains('active-view')) {
+            renderTaskOptions(); // clientUI.jsから
+            checkIfWarningIsNeeded(); // clientUI.jsから
+        }
+        if (document.getElementById(VIEWS.TASK_SETTINGS)?.classList.contains('active-view')) {
+             renderTaskEditor(); // taskSettings.jsから
+        }
+        if (document.getElementById(VIEWS.PROGRESS)?.classList.contains('active-view')) {
+            await initializeProgressView(); // 再初期化
+        }
+        if (document.getElementById(VIEWS.ARCHIVE)?.classList.contains('active-view')) {
+            await initializeArchiveView(); // 再初期化
+        }
+    } catch(error) {
+         console.error("Error refreshing UI after task update:", error);
+    }
+}
+
 
 /**
  * Firestoreから全ユーザーのログを取得し、グローバル変数 `allUserLogs` を更新する。
@@ -371,18 +381,32 @@ export async function fetchAllUserLogs() {
     console.log("Fetching all user logs...");
     try {
         const logsSnapshot = await getDocs(collection(db, "work_logs"));
-        allUserLogs = logsSnapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        // Timestamp を Date に変換
+        allUserLogs = logsSnapshot.docs.map((d) => {
+             const data = d.data();
+             const log = { id: d.id, ...data };
+             if (log.startTime && log.startTime.toDate) log.startTime = log.startTime.toDate();
+             if (log.endTime && log.endTime.toDate) log.endTime = log.endTime.toDate();
+             // completedAt など他のTimestampフィールドも必要なら変換
+             return log;
+        });
         console.log(`Fetched ${allUserLogs.length} log entries.`);
-         // ログ取得後に、ログデータに依存するビュー（Report, Hostの担当者時間など）を更新する必要があるかもしれない
-         // 例: Hostビューが表示されていればステータスキャッシュを更新
-         if(document.getElementById(VIEWS.HOST)?.classList.contains('active-view')) {
-             // updateStatusesCache(currentAllStatuses); // ステータス自体は変わらないが、再描画トリガーとして使う？
-             // renderUserAccountList(); // userManagementのを呼び出す
-         }
-         // レポートビューが表示されていれば再描画
-          if(document.getElementById(VIEWS.REPORT)?.classList.contains('active-view')) {
-             // initializeReportView(); // 再初期化してチャートを更新
-          }
+
+        // ログ取得後に、ログデータに依存するビュー（Report, Progress, Archiveなど）を更新
+        if(document.getElementById(VIEWS.REPORT)?.classList.contains('active-view')) {
+             await initializeReportView(); // 再初期化してチャートを更新
+        }
+        if (document.getElementById(VIEWS.PROGRESS)?.classList.contains('active-view')) {
+             await initializeProgressView(); // 再初期化してデータ更新
+        }
+         if (document.getElementById(VIEWS.ARCHIVE)?.classList.contains('active-view')) {
+             await initializeArchiveView(); // 再初期化してデータ更新
+        }
+         // Hostビューの担当者別時間表示なども更新が必要な場合がある
+         // if(document.getElementById(VIEWS.HOST)?.classList.contains('active-view')) {
+         //    // host.js の renderUserAccountList をトリガーするなど
+         // }
+
 
     } catch (error) {
         console.error("Error fetching all user logs:", error);
@@ -394,15 +418,14 @@ export async function fetchAllUserLogs() {
 /**
  * Firestoreから現在のユーザーの表示設定を取得し、変更を監視する
  */
-function listenForDisplayPreferences() {
+export function listenForDisplayPreferences() {
     if (preferencesUnsubscribe) preferencesUnsubscribe(); // 既存のリスナーを解除
     if (!userId) {
-         // ユーザーIDがない場合（ログアウト後など）はデフォルト設定に戻す
          userDisplayPreferences = { hiddenTasks: [] };
          preferencesUnsubscribe = null;
-         console.log("User logged out, reset display preferences to default.");
-         // 必要なら関連UIを更新
-         // renderTaskOptions(); // 例：クライアントビューのタスクドロップダウン
+         console.log("User logged out or not set, reset display preferences to default.");
+         // 必要なら関連UIを更新 (例: クライアントビューのタスクドロップダウン)
+         refreshUIBasedOnPreferenceUpdate();
         return;
     }
 
@@ -410,100 +433,98 @@ function listenForDisplayPreferences() {
     const prefRef = doc(db, `user_profiles/${userId}/preferences/display`);
 
     preferencesUnsubscribe = onSnapshot(prefRef, (docSnap) => {
-        if (docSnap.exists() && docSnap.data().hiddenTasks) {
+        if (docSnap.exists() && docSnap.data().hiddenTasks && Array.isArray(docSnap.data().hiddenTasks)) {
             userDisplayPreferences = docSnap.data();
             console.log("Display preferences updated:", userDisplayPreferences);
         } else {
-            // ドキュメントがない場合はデフォルト設定を使用し、必要なら作成する
-            console.log("No display preferences found, using default.");
+            console.log("No display preferences found or invalid format, using default.");
             userDisplayPreferences = { hiddenTasks: [] };
-            // Optionally, create the document with default settings if it doesn't exist
-            // setDoc(prefRef, userDisplayPreferences, { merge: true }).catch(err => console.error("Error creating default preferences:", err));
+            // Optionally, create the document with default settings if it doesn't exist and no pending writes
+             if(!docSnap.exists() && !docSnap.metadata.hasPendingWrites) {
+                 setDoc(prefRef, userDisplayPreferences, { merge: true }).catch(err => console.error("Error creating default preferences:", err));
+             }
         }
-
-        // 設定が変更されたら、関連するUI（例：クライアントビューのタスクドロップダウン）を更新
-        if (document.getElementById(VIEWS.CLIENT)?.classList.contains('active-view')) {
-             // renderTaskOptions(); // clientUI.js からインポートして使用
-             // renderTaskDisplaySettings(); // clientUI.js からインポートして使用
-        }
-         // 他のビューも必要に応じて更新
+        // 設定が変更されたら、関連するUIを更新
+        refreshUIBasedOnPreferenceUpdate();
 
     }, (error) => {
          console.error(`Error listening for display preferences for user ${userId}:`, error);
          userDisplayPreferences = { hiddenTasks: [] }; // エラー時はデフォルトに戻す
-         // 必要なら関連UIを更新
-         if (document.getElementById(VIEWS.CLIENT)?.classList.contains('active-view')) {
-             // renderTaskOptions();
-             // renderTaskDisplaySettings();
-         }
-
+         refreshUIBasedOnPreferenceUpdate(); // UIもデフォルト状態に更新
     });
 }
 
+/**
+ * ユーザーの表示設定更新時に、関連するUIをリフレッシュする
+ */
+async function refreshUIBasedOnPreferenceUpdate() {
+    console.log("Refreshing UI based on preference update...");
+    // client.js の renderTaskOptions/renderTaskDisplaySettings は clientUI.js に移動した想定
+    const { renderTaskOptions, renderTaskDisplaySettings } = await import('./views/client/clientUI.js');
+    try {
+        if (document.getElementById(VIEWS.CLIENT)?.classList.contains('active-view')) {
+             renderTaskOptions(); // clientUI.js から
+             renderTaskDisplaySettings(); // clientUI.js から
+        }
+        // 他のビューも必要に応じて更新
+    } catch (error) {
+         console.error("Error refreshing UI after preference update:", error);
+    }
+}
 
 // --- グローバル状態更新関数 ---
 export function setUserId(newUserId) {
-    userId = newUserId;
-    listenForDisplayPreferences(); // ユーザーが変わったら設定リスナーも更新
+    if (userId !== newUserId) {
+        userId = newUserId;
+        console.log("Global userId set:", userId);
+        listenForDisplayPreferences(); // ユーザーが変わったら設定リスナーも更新/リセット
+    }
 }
 export function setUserName(newName) {
-    userName = newName;
+     if (userName !== newName) {
+        userName = newName;
+        console.log("Global userName set:", userName);
+     }
+}
+export function setAuthLevel(level) {
+    if (authLevel !== level) {
+        authLevel = level;
+        console.log("Global authLevel set:", authLevel);
+        // 権限レベル変更に応じてUI要素の表示/非表示を更新する必要があるかもしれない
+        // 例：管理者ボタンの表示制御など (これは各ビューの初期化時に行う方が良いかも)
+    }
 }
 export function updateGlobalTaskObjects(newTasks) {
-    // TimestampオブジェクトをDateオブジェクトに変換（必要な場合）
-    // Firestoreから直接取得したTimestampは、そのままでは比較やJSON化で問題が起きることがある
+    // TimestampオブジェクトをDateオブジェクトに変換（ログと同様に）
     const processedTasks = newTasks.map(task => ({
         ...task,
         goals: (task.goals || []).map(goal => {
             const processedGoal = {...goal};
-            // completedAtやdeadlineがTimestampオブジェクトならDateに変換
             if (goal.completedAt && goal.completedAt.toDate) {
                 processedGoal.completedAt = goal.completedAt.toDate();
             }
-             if (goal.deadline && typeof goal.deadline !== 'string') { // DeadlineがTimestampの場合の考慮（文字列として保存推奨）
-                 // console.warn("Goal deadline might be a Timestamp, expected string:", goal.deadline);
-                 // 暫定対応：文字列に変換しようとする (YYYY-MM-DD)
-                 if(goal.deadline.toDate){
-                     try {
-                         processedGoal.deadline = getJSTDateString(goal.deadline.toDate());
-                     } catch (e) { console.error("Error converting deadline timestamp:", e); }
-                 }
-             }
-              if (goal.effortDeadline && typeof goal.effortDeadline !== 'string') {
-                 if(goal.effortDeadline.toDate){
-                     try {
-                         processedGoal.effortDeadline = getJSTDateString(goal.effortDeadline.toDate());
-                     } catch (e) { console.error("Error converting effortDeadline timestamp:", e); }
-                 }
-             }
-
+             // Date strings (YYYY-MM-DD) are stored directly, no conversion needed usually
+            // if (goal.deadline && goal.deadline.toDate) { // Example if stored as Timestamp
+            //     processedGoal.deadline = getJSTDateString(goal.deadline.toDate());
+            // }
+            // if (goal.effortDeadline && goal.effortDeadline.toDate) { // Example if stored as Timestamp
+            //     processedGoal.effortDeadline = getJSTDateString(goal.effortDeadline.toDate());
+            // }
             return processedGoal;
         })
     }));
 
-    allTaskObjects = processedTasks;
-    console.log("Global task objects updated:", allTaskObjects.length, "tasks");
-
-    // タスク更新後、依存するUIを更新するトリガー（例）
-    if (document.getElementById(VIEWS.CLIENT)?.classList.contains('active-view')) {
-       // クライアントビューが表示中ならタスクドロップダウン等を更新
-       // renderTaskOptions(); // clientUI.jsから
-       // checkIfWarningIsNeeded(); // clientUI.jsから
+     // 変更があったかどうかの簡易チェック (JSON文字列表記での比較)
+     if (JSON.stringify(allTaskObjects) !== JSON.stringify(processedTasks)) {
+        allTaskObjects = processedTasks;
+        console.log("Global task objects updated:", allTaskObjects.length, "tasks");
+        // UI更新はリスナー内の refreshUIBasedOnTaskUpdate で行う
+    } else {
+        console.log("Global task objects received from Firestore, but no change detected.");
     }
-     if (document.getElementById(VIEWS.TASK_SETTINGS)?.classList.contains('active-view')) {
-       // 設定画面が表示中ならエディタを更新
-       // renderTaskEditor(); // taskSettings.jsから
-    }
-     // ProgressやArchiveビューも同様に更新トリガーをかける
-      if (document.getElementById(VIEWS.PROGRESS)?.classList.contains('active-view')) {
-         // initializeProgressView(); // 再初期化
-      }
-      if (document.getElementById(VIEWS.ARCHIVE)?.classList.contains('active-view')) {
-         // initializeArchiveView(); // 再初期化
-      }
 
 }
-
+// adminLoginDestinationの設定関数 (Okta移行により不要になる可能性が高いが残しておく)
 export function setAdminLoginDestination(viewId) {
     adminLoginDestination = viewId;
 }
@@ -511,3 +532,4 @@ export function setAdminLoginDestination(viewId) {
 // --- アプリケーション開始 ---
 // DOMが完全に読み込まれたら初期化処理を開始
 document.addEventListener("DOMContentLoaded", initialize);
+
