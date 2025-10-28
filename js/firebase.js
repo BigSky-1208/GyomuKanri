@@ -1,7 +1,8 @@
 // js/firebase.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; // Auth is still needed for anonymous sign-in initially
+// AuthはOkta移行後もFirestoreルール等で必要になる可能性があるので残す
+import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
 // --- Firebase Configuration ---
 // IMPORTANT: Replace with your actual Firebase configuration
@@ -20,25 +21,21 @@ const firebaseConfig = {
 let app;
 let db;
 let auth;
+let initializationError = null; // Store initialization error
 
 try {
     app = initializeApp(firebaseConfig);
     db = getFirestore(app);
-    auth = getAuth(app); // Initialize Auth, still needed for potential anonymous sign-in or other Firebase services
-    console.log("Firebase initialized successfully.");
+    auth = getAuth(app); // Initialize Auth
+    console.log("Firebase initialized successfully in firebase.js.");
 } catch (error) {
-    console.error("Firebase Initialization Error:", error);
-    // Handle initialization error (e.g., display message to user)
-    // You might want to stop the application or show an error state
-    alert("Firebaseの初期化に失敗しました。設定を確認してください。");
-    // Optionally throw the error again if you want calling modules to handle it
-    // throw error;
+    console.error("Firebase Initialization Error in firebase.js:", error);
+    initializationError = error; // Store the error
+    // Don't alert here, let main.js handle UI feedback if needed
 }
 
-// Export the initialized instances for use in other modules
-// Ensure instances are exported even if initialization failed,
-// but they might be undefined, so check in consuming modules.
-export { app, db, auth, firebaseConfig }; // Export config too if needed elsewhere
+// Export the initialized instances (even if null/undefined on error)
+export { app, db, auth, firebaseConfig, initializationError };
 
 /**
  * Checks if the Firebase configuration is valid (basic check).
@@ -47,7 +44,8 @@ export { app, db, auth, firebaseConfig }; // Export config too if needed elsewhe
 export function isFirebaseConfigValid() {
     return firebaseConfig &&
            firebaseConfig.apiKey &&
-           !firebaseConfig.apiKey.startsWith("YOUR_") && // Basic check if placeholders are replaced
+           !firebaseConfig.apiKey.startsWith("YOUR_") &&
            firebaseConfig.projectId &&
            !firebaseConfig.projectId.startsWith("YOUR_");
 }
+
