@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
   <head>
+    <!-- Part 1 of 4 -->
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>業務時間管理アプリ</title>
@@ -9,24 +10,38 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
+    <!-- Chart.js and Datalabels Plugin -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+    <!-- SheetJS (XLSX) -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <!-- Okta Sign-In Widget CSS and JS (Replace with your Okta domain) -->
+    <link href="https://global.oktacdn.com/okta-signin-widget/7.17.0/css/okta-sign-in.min.css" type="text/css" rel="stylesheet"/>
+    <script src="https://global.oktacdn.com/okta-signin-widget/7.17.0/js/okta-sign-in.min.js" type="text/javascript"></script>
+    <!-- Okta Auth JS SDK (Required by the widget) -->
+    <script src="https://global.oktacdn.com/okta-auth-js/7.5.2/okta-auth-js.min.js" type="text/javascript"></script>
 
-    <!-- Okta Sign-In Widget CDN -->
-    <script src="https://global.oktacdn.com/okta-signin-widget/7.14.0/js/okta-sign-in.min.js" type="text/javascript"></script>
-    <link href="https://global.oktacdn.com/okta-signin-widget/7.14.0/css/okta-sign-in.min.css" type="text/css" rel="stylesheet"/>
-
-    <!-- 外部CSSファイルの読み込み -->
+    <!-- Custom Stylesheet -->
     <link rel="stylesheet" href="css/style.css" />
-
+    <style>
+      body {
+         /* style.cssに移行したが、フォント指定は念のため残す */
+         font-family: 'Noto Sans JP', 'Inter', sans-serif;
+      }
+      /* Ensure hidden class works as expected */
+      .hidden {
+        display: none !important;
+      }
+    </style>
   </head>
   <body class="bg-gray-100 text-gray-800">
 
-    <!-- Okta Sign-In Widgetを表示するコンテナ -->
-    <div id="okta-signin-widget-container" class="container mx-auto p-4 md:p-8"></div>
+    <!-- Okta Sign-In Widget Container (Initially Visible) -->
+    <div id="okta-signin-widget-container" class="container mx-auto p-4 md:p-8">
+        <!-- Widget renders here -->
+    </div>
 
-    <!-- アプリケーション本体のコンテナ (最初は非表示) -->
+    <!-- Main Application Container (Initially Hidden) -->
     <div id="app-container" class="container mx-auto p-4 md:p-8 hidden">
 
       <!-- モード選択画面 -->
@@ -34,8 +49,12 @@
         <div class="bg-white p-8 rounded-xl shadow-lg">
           <div class="flex justify-between items-start mb-8">
             <div>
-              <h1 class="text-3xl font-bold mb-2 text-gray-700">ようこそ, <span id="user-name-display-main" class="text-indigo-600"></span> さん</h1>
-              <p class="text-gray-500">使用するモードを選択してください</p>
+              <h1 class="text-3xl font-bold mb-2 text-gray-700">ようこそ</h1>
+              <p class="text-gray-500">
+                ログインユーザー:
+                <span id="user-name-display" class="font-mono bg-gray-200 px-2 py-1 rounded">読み込み中...</span>
+              </p>
+               <p class="text-gray-500 mt-2">使用するモードを選択してください</p>
             </div>
             <button
               id="logout-btn-selection"
@@ -74,7 +93,7 @@
               <input
                 type="text"
                 id="word-of-the-day-input"
-                class="flex-grow p-2 border border-gray-300 rounded-lg"
+                class="flex-grow p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
                 placeholder="同じ作業に入っているみなさんに共有されます"
               />
               <button
@@ -85,15 +104,7 @@
               </button>
             </div>
           </div>
-          <div class="mt-8 text-sm text-gray-400 text-center">
-            <p>
-              ログイン中:
-              <span
-                id="user-name-display"
-                class="font-mono bg-gray-200 px-2 py-1 rounded"
-              ></span>
-            </p>
-          </div>
+          <!-- User ID display removed as it was Firebase Auth UID -->
         </div>
       </div>
 
@@ -104,20 +115,7 @@
             <h1 class="text-2xl font-bold text-gray-700">業務内容の設定</h1>
             <div class="flex items-center gap-4">
               <button class="help-btn" data-help-for="taskSettings">
-                <svg
-                  class="w-6 h-6 text-gray-400 hover:text-blue-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  ></path>
-                </svg>
+                <svg class="w-6 h-6 text-gray-400 hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
               </button>
               <button
                 id="view-progress-from-settings-btn"
@@ -139,7 +137,7 @@
                 type="text"
                 id="new-task-input"
                 placeholder="新しい業務名"
-                class="flex-grow p-2 border border-gray-300 rounded-lg"
+                class="flex-grow p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
               />
               <button
                 id="add-task-btn"
@@ -148,7 +146,10 @@
                 追加
               </button>
             </div>
-            <div id="task-list-editor" class="space-y-3"></div>
+            <div id="task-list-editor" class="space-y-3">
+                <!-- Task items render here -->
+                <p class="text-gray-500">業務リストを読み込み中...</p>
+            </div>
           </div>
         </div>
       </div>
@@ -161,20 +162,7 @@
           </h1>
           <div class="flex items-center gap-4">
             <button class="help-btn" data-help-for="host">
-              <svg
-                class="w-6 h-6 text-gray-400 hover:text-blue-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                ></path>
-              </svg>
+              <svg class="w-6 h-6 text-gray-400 hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             </button>
             <button
               id="back-to-selection-host"
@@ -186,94 +174,80 @@
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div class="bg-white p-6 rounded-xl shadow-lg">
-            <h2 class="text-xl font-bold mb-4 border-b pb-2">
+            <h2 class="text-xl font-bold mb-4 border-b pb-2 text-gray-700">
               リアルタイム稼働状況
             </h2>
             <div
               id="task-summary-list"
               class="space-y-2 mb-4 border-b pb-4"
-            ></div>
-            <div id="status-list" class="space-y-4"></div>
+            >
+                <p class="text-gray-500">読み込み中...</p>
+            </div>
+            <div id="status-list" class="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+                <p class="text-gray-500">読み込み中...</p>
+            </div>
           </div>
           <div class="bg-white p-6 rounded-xl shadow-lg">
             <div
               id="tomura-status-setter"
-              class="space-y-2 mb-4 p-4 bg-gray-50 rounded-lg"
+              class="space-y-2 mb-4 p-4 bg-gray-50 rounded-lg border"
             >
               <h4 class="font-medium text-gray-600">戸村さんステータス</h4>
               <div class="flex items-center gap-4 flex-wrap">
                 <label class="flex items-center"
-                  ><input
-                    type="radio"
-                    name="tomura-status"
-                    value="声掛けOK"
-                    class="mr-1"
-                  />声掛けOK</label
-                >
+                  ><input type="radio" name="tomura-status" value="声掛けOK" class="mr-1"/>声掛けOK</label>
                 <label class="flex items-center"
-                  ><input
-                    type="radio"
-                    name="tomura-status"
-                    value="急用ならOK"
-                    class="mr-1"
-                  />急用ならOK</label
-                >
+                  ><input type="radio" name="tomura-status" value="急用ならOK" class="mr-1"/>急用ならOK</label>
                 <label class="flex items-center"
-                  ><input
-                    type="radio"
-                    name="tomura-status"
-                    value="声掛けNG"
-                    class="mr-1"
-                  />声掛けNG</label
-                >
+                  ><input type="radio" name="tomura-status" value="声掛けNG" class="mr-1"/>声掛けNG</label>
               </div>
             </div>
             <div class="mb-6 border-t pt-6">
               <h3 class="text-lg font-semibold text-gray-700 mb-2">
                 管理者操作
               </h3>
-              <div class="space-y-2">
+              <div class="space-y-3">
                 <button
                   id="export-excel-btn"
-                  class="w-full bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 transition"
+                  class="w-full bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 transition shadow-sm"
                 >
                   稼働時間Excelを出力
                 </button>
                 <button
                   id="view-progress-btn"
-                  class="w-full bg-cyan-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-cyan-700 transition"
+                  class="w-full bg-cyan-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-cyan-700 transition shadow-sm"
                 >
                   業務進捗を確認
                 </button>
                 <button
                   id="view-report-btn"
-                  class="w-full bg-purple-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-purple-700 transition"
+                  class="w-full bg-purple-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-purple-700 transition shadow-sm"
                 >
                   業務レポートを表示
                 </button>
               </div>
             </div>
             <div class="flex flex-col items-center gap-2 mb-4 border-t pt-6">
-              <h2 class="text-xl font-bold">アカウントリスト</h2>
-              <button
-                id="open-add-user-modal-btn"
-                class="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition text-sm whitespace-nowrap"
-              >
-                ユーザーを追加 +
-              </button>
+                <h2 class="text-xl font-bold text-gray-700">アカウントリスト</h2>
+                <button
+                  id="open-add-user-modal-btn"
+                  class="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition text-sm whitespace-nowrap shadow-sm"
+                >
+                  ユーザーを追加 +
+                </button>
             </div>
-
-            <div id="summary-list" class="space-y-4"></div>
+            <div id="summary-list" class="space-y-3 max-h-[40vh] overflow-y-auto custom-scrollbar pr-2">
+                <p class="text-gray-500">読み込み中...</p>
+            </div>
             <div class="mt-6 border-t pt-6">
               <button
                 id="delete-all-logs-btn"
-                class="w-full bg-red-800 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-900 transition"
+                class="w-full bg-red-800 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-900 transition shadow-sm"
               >
                 全従業員の全業務記録を削除
               </button>
-              <p class="text-xs text-gray-500 mt-2">
-                注意:
-                削除操作は元に戻せません。ユーザープロフィールは削除されません。
+              <p class="text-xs text-red-700 mt-2">
+                注意: 削除操作は元に戻せません。ユーザープロフィールは削除されません。
               </p>
             </div>
           </div>
@@ -286,20 +260,7 @@
           <h1 class="text-3xl font-bold text-gray-700">業務進捗</h1>
           <div class="flex items-center gap-4">
             <button class="help-btn" data-help-for="progress">
-              <svg
-                class="w-6 h-6 text-gray-400 hover:text-blue-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                ></path>
-              </svg>
+              <svg class="w-6 h-6 text-gray-400 hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             </button>
             <button
               id="view-archive-btn"
@@ -320,22 +281,23 @@
           <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <!-- Task List -->
             <div class="md:col-span-1 bg-white p-4 rounded-xl shadow-lg">
-              <h3 class="font-bold text-lg mb-2">業務選択</h3>
+              <h3 class="font-bold text-lg mb-2 text-gray-700">業務選択</h3>
               <div
                 id="progress-task-list"
-                class="space-y-2 h-48 overflow-y-auto custom-scrollbar"
+                class="space-y-1 h-48 overflow-y-auto custom-scrollbar pr-2"
               >
                 <!-- Task items will be injected here -->
+                <p class="text-gray-500 p-2">読み込み中...</p>
               </div>
             </div>
             <!-- Goal List -->
             <div class="md:col-span-2 bg-white p-4 rounded-xl shadow-lg">
-              <h3 class="font-bold text-lg mb-2">工数選択</h3>
+              <h3 class="font-bold text-lg mb-2 text-gray-700">工数選択</h3>
               <div
                 id="progress-goal-list"
-                class="space-y-2 h-48 overflow-y-auto custom-scrollbar"
+                class="space-y-1 h-48 overflow-y-auto custom-scrollbar pr-2"
               >
-                <p class="text-gray-500">業務を選択してください</p>
+                <p class="text-gray-500 p-2">業務を選択してください</p>
               </div>
             </div>
           </div>
@@ -346,16 +308,19 @@
           >
             <!-- Goal details will be injected here -->
           </div>
+          <!-- Chart Container -->
           <div
             id="progress-chart-container"
             class="bg-white p-6 rounded-xl shadow-lg hidden"
-          ></div>
-          <!-- Weekly Summary -->
+          >
+              <!-- Chart will be injected here -->
+          </div>
+          <!-- Weekly Summary Table -->
           <div
             id="progress-weekly-summary-container"
             class="bg-white p-6 rounded-xl shadow-lg hidden"
           >
-            <!-- Weekly summary will be injected here -->
+            <!-- Weekly summary table will be injected here -->
           </div>
         </div>
       </div>
@@ -378,22 +343,23 @@
           <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <!-- Task List -->
             <div class="md:col-span-1 bg-white p-4 rounded-xl shadow-lg">
-              <h3 class="font-bold text-lg mb-2">業務選択</h3>
+              <h3 class="font-bold text-lg mb-2 text-gray-700">業務選択</h3>
               <div
                 id="archive-task-list"
-                class="space-y-2 h-48 overflow-y-auto custom-scrollbar"
+                class="space-y-1 h-48 overflow-y-auto custom-scrollbar pr-2"
               >
                 <!-- Task items will be injected here -->
+                 <p class="text-gray-500 p-2">読み込み中...</p>
               </div>
             </div>
             <!-- Goal List -->
             <div class="md:col-span-2 bg-white p-4 rounded-xl shadow-lg">
-              <h3 class="font-bold text-lg mb-2">完了済み工数選択</h3>
+              <h3 class="font-bold text-lg mb-2 text-gray-700">完了済み工数選択</h3>
               <div
                 id="archive-goal-list"
-                class="space-y-2 h-48 overflow-y-auto custom-scrollbar"
+                class="space-y-1 h-48 overflow-y-auto custom-scrollbar pr-2"
               >
-                <p class="text-gray-500">業務を選択してください</p>
+                <p class="text-gray-500 p-2">業務を選択してください</p>
               </div>
             </div>
           </div>
@@ -404,19 +370,19 @@
           >
             <!-- Goal details will be injected here -->
           </div>
+          <!-- Archive Chart Container -->
           <div
             id="archive-chart-container"
             class="bg-white p-6 rounded-xl shadow-lg hidden"
           >
             <!-- Chart for archive will be injected here -->
           </div>
-
-          <!-- Weekly Summary -->
+          <!-- Archive Weekly Summary Table -->
           <div
             id="archive-weekly-summary-container"
             class="bg-white p-6 rounded-xl shadow-lg hidden"
           >
-            <!-- Weekly summary will be injected here -->
+            <!-- Weekly summary table will be injected here -->
           </div>
         </div>
       </div>
@@ -440,33 +406,39 @@
             >
               <button
                 id="report-prev-month-btn"
-                class="p-2 rounded-full hover:bg-gray-200"
+                class="p-2 rounded-full hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300"
               >
                 &lt;
               </button>
               <h2
                 id="report-calendar-month-year"
                 class="text-xl font-bold cursor-pointer hover:text-blue-600"
+                title="クリックして月次集計を表示"
               ></h2>
               <button
                 id="report-next-month-btn"
-                class="p-2 rounded-full hover:bg-gray-200"
+                class="p-2 rounded-full hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300"
               >
                 &gt;
               </button>
             </div>
-            <table id="report-calendar" class="calendar"></table>
+            <div class="overflow-x-auto">
+              <table id="report-calendar" class="calendar min-w-full">
+                  <!-- Calendar renders here -->
+              </table>
+            </div>
           </div>
           <div class="bg-white p-6 rounded-xl shadow-lg">
             <h2
               id="report-title"
-              class="text-2xl font-bold mb-4 text-center"
+              class="text-2xl font-bold mb-4 text-center text-gray-700"
             ></h2>
             <div
               id="report-charts-container"
-              class="grid grid-cols-1 md:grid-cols-2 gap-8"
+              class="grid grid-cols-1 lg:grid-cols-2 gap-6"
             >
               <!-- Charts will be injected here -->
+              <p class="text-gray-500 lg:col-span-2 text-center">カレンダーで日付または月を選択してください。</p>
             </div>
           </div>
         </div>
@@ -494,42 +466,50 @@
             >
               <button
                 id="prev-month-btn"
-                class="p-2 rounded-full hover:bg-gray-200"
+                class="p-2 rounded-full hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300"
               >
                 &lt;
               </button>
               <h2
                 id="calendar-month-year"
                 class="text-xl font-bold cursor-pointer hover:text-blue-600"
+                title="クリックして月次集計を表示"
               ></h2>
               <button
                 id="next-month-btn"
-                class="p-2 rounded-full hover:bg-gray-200"
+                class="p-2 rounded-full hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300"
               >
                 &gt;
               </button>
             </div>
-            <table id="calendar" class="calendar"></table>
+             <div class="overflow-x-auto">
+                <table id="calendar" class="calendar min-w-full">
+                    <!-- Calendar renders here -->
+                </table>
+            </div>
           </div>
           <div
             id="log-details-container"
-            class="lg:col-span-2 bg-white p-6 rounded-xl shadow-lg"
+            class="lg:col-span-2 bg-white p-6 rounded-xl shadow-lg max-h-[80vh] overflow-y-auto custom-scrollbar"
           >
-            <h3 id="details-title" class="text-xl font-bold mb-4 border-b pb-2">
+            <h3 id="details-title" class="text-xl font-bold mb-4 border-b pb-2 text-gray-700 sticky top-0 bg-white">
               詳細
             </h3>
-            <div id="details-content" class="space-y-2">
+            <div id="details-content" class="space-y-4">
               <p class="text-gray-500">
                 カレンダーの日付または月をクリックして詳細を表示します。
               </p>
             </div>
-            <div id="delete-user-container" class="mt-6 border-t pt-6">
+            <div id="delete-user-container" class="mt-6 border-t pt-6 sticky bottom-0 bg-white">
               <button
                 id="delete-user-btn"
                 class="w-full bg-red-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-700 transition"
               >
                 このユーザーのプロフィールと全記録を削除
               </button>
+               <p class="text-xs text-red-700 mt-2">
+                注意: この操作は管理者のみ実行可能で、元に戻せません。
+              </p>
             </div>
           </div>
         </div>
@@ -537,27 +517,14 @@
 
       <!-- クライアントビュー -->
       <div id="client-view" class="view">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <!-- === 左カラム: メイン操作 === -->
-          <div class="bg-white p-8 rounded-xl shadow-lg flex flex-col">
+          <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg flex flex-col">
             <div class="flex justify-between items-center mb-6">
               <h1 class="text-2xl font-bold text-gray-700">従業員</h1>
               <div class="flex items-center gap-4">
                 <button class="help-btn" data-help-for="client">
-                  <svg
-                    class="w-6 h-6 text-gray-400 hover:text-blue-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    ></path>
-                  </svg>
+                  <svg class="w-6 h-6 text-gray-400 hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 </button>
                 <button
                   id="back-to-selection-client"
@@ -569,23 +536,19 @@
             </div>
             <div
               id="tomura-status-display"
-              class="p-3 rounded-lg mb-6 text-center"
+              class="p-3 rounded-lg mb-6 text-center text-sm"
             >
               <span class="font-semibold">戸村さんの状況: </span>
-              <span id="tomura-status-text" class="font-bold"></span>
+              <span id="tomura-status-text" class="font-bold">読み込み中...</span>
             </div>
-            <div class="mb-2">
-              <label
-                for="task-select"
-                class="block text-sm font-medium text-gray-700 mb-2"
-                >業務内容</label
-              >
-              <select
-                id="task-select"
-                class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-              ></select>
+            <div class="mb-4">
+              <label for="task-select" class="block text-sm font-medium text-gray-700 mb-1">業務内容</label>
+              <select id="task-select" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white">
+                  <option value="">業務を選択...</option>
+              </select>
             </div>
-            <div id="other-task-container" class="hidden mt-2">
+            <div id="other-task-container" class="hidden mb-4">
+               <label for="other-task-input" class="block text-sm font-medium text-gray-700 mb-1">具体的な業務内容</label>
               <input
                 type="text"
                 id="other-task-input"
@@ -594,146 +557,89 @@
               />
             </div>
             <div id="goal-select-container" class="mb-4 hidden">
-              <label
-                for="goal-select"
-                class="block text-sm font-medium text-gray-700 mb-2"
-                >工数</label
-              >
-              <select
-                id="goal-select"
-                class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-              ></select>
+              <label for="goal-select" class="block text-sm font-medium text-gray-700 mb-1">工数</label>
+              <select id="goal-select" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white">
+                  <option value="">工数を選択 (任意)</option>
+              </select>
             </div>
-            <div class="mb-6">
-              <label
-                for="task-memo-input"
-                class="block text-sm font-medium text-gray-700 mb-2"
-                >メモ</label
-              >
-              <textarea
-                id="task-memo-input"
-                rows="2"
-                class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                placeholder="業務に関するメモ（任意）"
-              ></textarea>
+            <div class="mb-4">
+              <label for="task-memo-input" class="block text-sm font-medium text-gray-700 mb-1">メモ (任意)</label>
+              <textarea id="task-memo-input" rows="2" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500" placeholder="業務に関するメモ"></textarea>
             </div>
-            <div id="task-description-display" class="hidden"></div>
+            <!-- Task description (memo from settings) display area -->
+            <div id="task-description-display" class="mb-4 hidden"></div>
+
             <div class="mb-6 text-center">
-              <div
-                class="text-5xl font-mono bg-gray-100 p-4 rounded-lg"
-                id="timer-display"
-              >
+              <div class="text-4xl md:text-5xl font-mono bg-gray-100 p-4 rounded-lgtabular-nums" id="timer-display">
                 00:00:00
               </div>
               <p class="text-sm text-gray-500 mt-2">
                 現在の業務:
-                <span id="current-task-display" class="font-semibold"
-                  >未開始</span
-                >
+                <span id="current-task-display" class="font-semibold">未開始</span>
               </p>
-              <p
-                id="change-warning-message"
-                class="text-orange-600 font-bold text-sm text-center hidden h-6 mt-2"
-              >
+              <p id="change-warning-message" class="text-orange-600 font-bold text-sm text-center hidden h-6 mt-2">
                 変更が確定されていません
               </p>
             </div>
+
             <div id="colleagues-on-task-container" class="mb-6 hidden">
-              <h3
-                class="text-lg font-semibold text-gray-700 mb-2 border-t pt-4"
-              >
+              <h3 class="text-base font-semibold text-gray-700 mb-2 border-t pt-4">
                 同じ業務中の従業員
               </h3>
-              <ul id="colleagues-list" class="space-y-2"></ul>
+              <ul id="colleagues-list" class="space-y-2 max-h-24 overflow-y-auto custom-scrollbar pr-2"></ul>
             </div>
-            <div class="grid grid-cols-2 gap-4">
-              <button
-                id="start-btn"
-                class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition"
-              >
-                業務変更
+
+            <!-- Action Buttons -->
+            <div class="grid grid-cols-2 gap-4 mt-auto pt-4 border-t">
+              <button id="start-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition shadow-sm disabled:opacity-50">
+                業務開始
               </button>
-              <button
-                id="stop-btn"
-                class="w-full bg-red-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-700 transition"
-              >
+              <button id="stop-btn" class="w-full bg-red-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-700 transition shadow-sm disabled:opacity-50">
                 帰宅
               </button>
             </div>
-            <div class="mt-4 space-y-3">
-              <button
-                id="break-btn"
-                class="w-full bg-yellow-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-yellow-600 transition"
-              >
+            <div class="mt-3">
+               <button id="break-btn" class="w-full bg-yellow-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-yellow-600 transition shadow-sm disabled:opacity-50" disabled>
                 休憩開始
               </button>
             </div>
           </div>
 
-          <!-- === 右カラム: 予約 & 目標進捗 === -->
-          <div class="bg-white p-8 rounded-xl shadow-lg flex flex-col gap-4">
+          <!-- === 右カラム: 予約 & 目標進捗 & その他 === -->
+          <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg flex flex-col gap-6">
+            <!-- Goal Progress (Dynamically shown) -->
             <div id="goal-progress-container" class="hidden"></div>
 
-            <details class="group">
-              <summary
-                class="flex justify-between items-center font-medium cursor-pointer list-none p-4 bg-gray-100 rounded-lg"
-              >
-                <span class="text-lg">予約設定</span>
+            <!-- Reservation Settings -->
+            <details class="group border rounded-lg overflow-hidden">
+              <summary class="flex justify-between items-center font-medium cursor-pointer list-none p-4 bg-gray-50 hover:bg-gray-100">
+                <span class="text-lg text-gray-700">予約設定</span>
                 <span class="transition group-open:rotate-180">
-                  <svg
-                    fill="none"
-                    height="24"
-                    shape-rendering="geometricPrecision"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.5"
-                    viewBox="0 0 24 24"
-                    width="24"
-                  >
-                    <path d="M6 9l6 6 6-6"></path>
-                  </svg>
+                  <svg fill="none" height="24" shape-rendering="geometricPrecision" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" viewBox="0 0 24 24" width="24"><path d="M6 9l6 6 6-6"></path></svg>
                 </span>
               </summary>
-              <div class="mt-4 space-y-4">
+              <div class="p-4 border-t space-y-4">
                 <div>
-                  <h3 class="text-lg font-semibold text-gray-700 text-center">
-                    休憩予約
-                  </h3>
-                  <div id="break-reservation-list" class="space-y-2 mt-2"></div>
-                  <button
-                    id="add-break-reservation-btn"
-                    class="w-full mt-2 bg-sky-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-sky-700 transition"
-                  >
+                  <h3 class="text-base font-semibold text-gray-700 text-center mb-2">休憩予約</h3>
+                  <div id="break-reservation-list" class="space-y-2">
+                      <p class="text-center text-sm text-gray-500">読み込み中...</p>
+                  </div>
+                  <button id="add-break-reservation-btn" class="w-full mt-3 bg-sky-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-sky-700 transition text-sm">
                     休憩予約を追加 +
                   </button>
                 </div>
                 <div class="border-t pt-4">
-                  <h3 class="text-lg font-semibold text-gray-700 text-center">
-                    帰宅予約
-                  </h3>
+                  <h3 class="text-base font-semibold text-gray-700 text-center mb-2">帰宅予約</h3>
                   <div id="stop-reservation-setter">
-                    <input
-                      type="time"
-                      id="stop-reservation-time-input"
-                      class="w-full p-2 border border-gray-300 rounded-lg"
-                    />
-                    <button
-                      id="set-stop-reservation-btn"
-                      class="w-full mt-2 bg-sky-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-sky-700 transition"
-                    >
+                    <label for="stop-reservation-time-input" class="sr-only">帰宅予約時刻</label>
+                    <input type="time" id="stop-reservation-time-input" class="w-full p-2 border border-gray-300 rounded-lg"/>
+                    <button id="set-stop-reservation-btn" class="w-full mt-2 bg-sky-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-sky-700 transition text-sm">
                       帰宅予約を設定
                     </button>
                   </div>
                   <div id="stop-reservation-status" class="hidden text-center">
-                    <p
-                      id="stop-reservation-status-text"
-                      class="p-3 bg-green-100 text-green-800 rounded-lg"
-                    ></p>
-                    <button
-                      id="cancel-stop-reservation-btn"
-                      class="w-full mt-2 bg-gray-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-600 transition"
-                    >
+                    <p id="stop-reservation-status-text" class="p-3 bg-green-100 text-green-800 rounded-lg text-sm"></p>
+                    <button id="cancel-stop-reservation-btn" class="w-full mt-2 bg-gray-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-600 transition text-sm">
                       予約取消
                     </button>
                   </div>
@@ -741,54 +647,29 @@
               </div>
             </details>
 
-            <details class="group">
-              <summary
-                class="flex justify-between items-center font-medium cursor-pointer list-none p-4 bg-gray-100 rounded-lg"
-              >
-                <span class="text-lg">表示設定</span>
+            <!-- Display Settings -->
+            <details class="group border rounded-lg overflow-hidden">
+              <summary class="flex justify-between items-center font-medium cursor-pointer list-none p-4 bg-gray-50 hover:bg-gray-100">
+                <span class="text-lg text-gray-700">表示設定</span>
+                 <span class="text-xs text-gray-500 mr-auto ml-2">(業務ドロップダウン)</span>
                 <span class="transition group-open:rotate-180">
-                  <svg
-                    fill="none"
-                    height="24"
-                    shape-rendering="geometricPrecision"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.5"
-                    viewBox="0 0 24 24"
-                    width="24"
-                  >
-                    <path d="M6 9l6 6 6-6"></path>
-                  </svg>
+                  <svg fill="none" height="24" shape-rendering="geometricPrecision" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" viewBox="0 0 24 24" width="24"><path d="M6 9l6 6 6-6"></path></svg>
                 </span>
               </summary>
-              <div
-                class="mt-4 space-y-2 max-h-48 overflow-y-auto custom-scrollbar"
-                id="task-display-settings-list"
-              >
-                <p class="text-sm text-gray-500">業務リストを読み込み中...</p>
+              <div id="task-display-settings-list" class="p-4 border-t space-y-1 max-h-48 overflow-y-auto custom-scrollbar pr-2">
+                <p class="text-sm text-gray-500">読み込み中...</p>
               </div>
             </details>
 
-            <div class="flex flex-col gap-3 pt-4 border-t"></div>
-
-            <div class="flex flex-col gap-3 pt-4 border-t">
-              <button
-                id="my-records-btn"
-                class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition"
-              >
+             <!-- Other Actions -->
+            <div class="flex flex-col gap-3 pt-6 border-t mt-auto">
+              <button id="my-records-btn" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition shadow-sm">
                 個人記録ページへ
               </button>
-              <button
-                id="view-my-progress-btn"
-                class="w-full bg-cyan-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-cyan-700 transition"
-              >
-                業務進捗を確認
+              <button id="view-my-progress-btn" class="w-full bg-cyan-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-cyan-700 transition shadow-sm">
+                業務進捗を確認 (読取専用)
               </button>
-              <button
-                id="fix-yesterday-checkout-btn"
-                class="w-full bg-orange-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-orange-600 transition"
-              >
+              <button id="fix-yesterday-checkout-btn" class="w-full bg-orange-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-orange-600 transition shadow-sm">
                 退勤忘れを修正
               </button>
             </div>
@@ -796,42 +677,239 @@
         </div>
       </div>
 
-       <!-- モーダル各種 (変更なし、内容は省略) -->
-      <div id="admin-password-view" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">...</div>
-      <div id="confirmation-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">...</div>
-      <div id="edit-log-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">...</div>
-      <div id="fix-checkout-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">...</div>
-      <div id="edit-memo-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">...</div>
-      <div id="goal-details-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">...</div>
-      <div id="goal-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">...</div>
-      <div id="export-excel-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">...</div>
-      <div id="help-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">...</div>
-      <div id="edit-contribution-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">...</div>
-      <div id="break-reservation-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">...</div>
-      <div id="add-user-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">...</div>
+      <!-- == Modals == -->
+      <!-- (Modal HTML structure remains the same) -->
 
-    </div><!-- End of #app-container -->
+      <!-- 確認モーダル -->
+       <div id="confirmation-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
+         <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg max-w-sm w-full text-center">
+           <h2 class="text-xl font-bold mb-4 text-gray-700">確認</h2>
+           <p id="modal-message" class="text-gray-600 mb-6 whitespace-pre-wrap"></p>
+           <div class="flex justify-center gap-4">
+             <button id="modal-cancel-btn" class="bg-gray-300 text-gray-800 font-bold py-2 px-6 rounded-lg hover:bg-gray-400 transition">キャンセル</button>
+             <button id="modal-confirm-btn" class="bg-red-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-red-700 transition">実行</button>
+           </div>
+         </div>
+       </div>
 
+      <!-- 勤務時間修正モーダル -->
+        <div id="edit-log-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
+          <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg max-w-sm w-full">
+            <h2 class="text-xl font-bold mb-4 text-center text-gray-700">勤務時間修正</h2>
+            <p id="edit-log-task-name" class="text-center text-gray-600 mb-4"></p>
+            <div class="flex items-center justify-center gap-2">
+              <input type="number" id="edit-hours-input" min="0" class="w-20 p-2 border border-gray-300 rounded-md text-center focus:ring-indigo-500 focus:border-indigo-500" placeholder="時間"/>
+              <span class="text-gray-700">時間</span>
+              <input type="number" id="edit-minutes-input" min="0" max="59" class="w-20 p-2 border border-gray-300 rounded-md text-center focus:ring-indigo-500 focus:border-indigo-500" placeholder="分"/>
+              <span class="text-gray-700">分</span>
+            </div>
+            <p id="edit-log-error" class="text-red-500 text-sm h-4 text-center mt-2"></p>
+            <div class="flex justify-end gap-4 mt-6">
+              <button id="edit-log-cancel-btn" class="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-400 transition">キャンセル</button>
+              <button id="edit-log-save-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition">保存</button>
+            </div>
+          </div>
+        </div>
+
+      <!-- 退勤忘れ修正モーダル -->
+       <div id="fix-checkout-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
+         <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg max-w-md w-full">
+           <h2 class="text-xl font-bold mb-4 text-center text-gray-700">退勤忘れ修正</h2>
+           <p class="text-sm text-gray-600 mb-4">修正したい日付と、その日の正しい退勤時刻を入力してください。入力した時刻でその日の最後の業務が終了され、それ以降の記録は削除されます。</p>
+           <div class="space-y-4">
+             <div>
+               <label for="fix-checkout-date-input" class="block text-sm font-medium text-gray-700">修正する日付</label>
+               <input type="date" id="fix-checkout-date-input" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
+             </div>
+             <div>
+               <label for="fix-checkout-time-input" class="block text-sm font-medium text-gray-700">退勤時刻</label>
+               <input type="time" id="fix-checkout-time-input" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"/>
+             </div>
+           </div>
+           <p id="fix-checkout-error" class="text-red-500 text-sm h-4 mt-2"></p>
+           <div class="flex justify-end gap-4 mt-6">
+             <button id="fix-checkout-cancel-btn" class="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-400 transition">キャンセル</button>
+             <button id="fix-checkout-save-btn" class="bg-orange-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-600 transition">修正</button>
+           </div>
+         </div>
+       </div>
+
+      <!-- メモ修正モーダル -->
+        <div id="edit-memo-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
+          <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg max-w-md w-full">
+            <h2 class="text-xl font-bold mb-4 text-center text-gray-700">メモの編集</h2>
+            <div>
+               <label for="edit-memo-textarea" class="sr-only">メモ内容</label>
+              <textarea id="edit-memo-textarea" rows="4" class="w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"></textarea>
+            </div>
+            <div class="flex justify-end gap-4 mt-4">
+              <button id="edit-memo-cancel-btn" class="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-400 transition">キャンセル</button>
+              <button id="edit-memo-save-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition">保存</button>
+            </div>
+          </div>
+        </div>
+
+      <!-- 目標詳細モーダル (Archive Viewで使用) -->
+       <div id="goal-details-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
+         <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg max-w-2xl w-full">
+           <div class="flex justify-between items-center mb-4">
+             <h2 id="goal-details-modal-title" class="text-2xl font-bold text-gray-700"></h2>
+             <button id="goal-details-modal-close-btn" class="text-gray-500 hover:text-gray-800 text-3xl font-bold leading-none">&times;</button>
+           </div>
+           <div id="goal-details-modal-content" class="text-gray-700 space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+               <!-- Content injected by JS -->
+           </div>
+         </div>
+       </div>
+
+      <!-- 目標追加・編集モーダル -->
+        <div id="goal-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
+          <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg max-w-md w-full">
+            <h2 id="goal-modal-title" class="text-xl font-bold mb-6 text-center text-gray-700">工数の追加・編集</h2>
+            <form id="goal-modal-form" class="space-y-4">
+              <input type="hidden" id="goal-modal-task-name"/>
+              <input type="hidden" id="goal-modal-goal-id"/>
+              <div>
+                <label for="goal-modal-title-input" class="block text-sm font-medium text-gray-700">工数タイトル <span class="text-red-500">*</span></label>
+                <input type="text" id="goal-modal-title-input" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+              </div>
+              <div>
+                <label for="goal-modal-target-input" class="block text-sm font-medium text-gray-700">目標値 (件数など) <span class="text-red-500">*</span></label>
+                <input type="number" id="goal-modal-target-input" min="0" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+              </div>
+              <div>
+                <label for="goal-modal-deadline-input" class="block text-sm font-medium text-gray-700">納期 (任意)</label>
+                <input type="date" id="goal-modal-deadline-input" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+              </div>
+              <div>
+                <label for="goal-modal-effort-deadline-input" class="block text-sm font-medium text-gray-700">工数納期 (任意)</label>
+                <input type="date" id="goal-modal-effort-deadline-input" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+              </div>
+              <div>
+                <label for="goal-modal-memo-input" class="block text-sm font-medium text-gray-700">メモ (任意)</label>
+                <textarea id="goal-modal-memo-input" rows="3" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"></textarea>
+              </div>
+            </form>
+            <div class="flex justify-end gap-4 mt-6">
+              <button id="goal-modal-cancel-btn" type="button" class="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-400 transition">キャンセル</button>
+              <button id="goal-modal-save-btn" type="button" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition">保存</button>
+            </div>
+          </div>
+        </div>
+
+      <!-- Excel出力モーダル -->
+        <div id="export-excel-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
+          <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg max-w-sm w-full">
+            <h2 class="text-xl font-bold mb-6 text-center text-gray-700">Excel出力</h2>
+            <div class="space-y-4">
+              <div>
+                <label for="export-year-select" class="block text-sm font-medium text-gray-700">年</label>
+                <select id="export-year-select" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"></select>
+              </div>
+              <div>
+                <label for="export-month-select" class="block text-sm font-medium text-gray-700">月</label>
+                <select id="export-month-select" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"></select>
+              </div>
+            </div>
+            <div class="flex justify-end gap-4 mt-6">
+              <button id="cancel-export-excel-btn" class="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-400 transition">キャンセル</button>
+              <button id="confirm-export-excel-btn" class="bg-teal-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-teal-700 transition">出力</button>
+            </div>
+          </div>
+        </div>
+
+      <!-- ヘルプモーダル -->
+       <div id="help-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
+         <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg max-w-2xl w-full">
+           <div class="flex justify-between items-center mb-4">
+             <h2 id="help-modal-title" class="text-2xl font-bold text-gray-700"></h2>
+             <button id="help-modal-close-btn" class="text-gray-500 hover:text-gray-800 text-3xl font-bold leading-none">&times;</button>
+           </div>
+           <div id="help-modal-content" class="text-gray-700 space-y-3 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2 text-sm leading-relaxed">
+               <!-- Content injected by JS -->
+           </div>
+         </div>
+       </div>
+
+      <!-- 目標貢献修正モーダル -->
+        <div id="edit-contribution-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
+          <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg max-w-sm w-full">
+            <h2 class="text-xl font-bold mb-4 text-center text-gray-700">貢献件数の修正</h2>
+            <p id="edit-contribution-title" class="text-center text-gray-600 mb-4 text-sm"></p>
+            <div>
+              <label for="edit-contribution-input" class="block text-sm font-medium text-gray-700">その日の新しい合計件数</label>
+              <input type="number" id="edit-contribution-input" min="0" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+            </div>
+            <p id="edit-contribution-error" class="text-red-500 text-sm h-4 mt-2"></p>
+            <div class="flex justify-end gap-4 mt-6">
+              <button id="edit-contribution-cancel-btn" class="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-400 transition">キャンセル</button>
+              <button id="edit-contribution-save-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition">保存</button>
+            </div>
+          </div>
+        </div>
+
+      <!-- 休憩予約モーダル -->
+        <div id="break-reservation-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
+          <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg max-w-sm w-full">
+            <h2 id="break-reservation-modal-title" class="text-xl font-bold mb-4 text-center text-gray-700">休憩予約</h2>
+            <input type="hidden" id="break-reservation-id"/>
+            <div>
+              <label for="break-reservation-time-input" class="block text-sm font-medium text-gray-700">休憩開始時刻</label>
+              <input type="time" id="break-reservation-time-input" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+            </div>
+            <div class="flex justify-end gap-4 mt-6">
+              <button id="break-reservation-cancel-btn" type="button" class="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-400 transition">キャンセル</button>
+              <button id="break-reservation-save-btn" type="button" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition">保存</button>
+            </div>
+          </div>
+        </div>
+
+      <!-- 新規ユーザー追加モーダル -->
+       <div id="add-user-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
+         <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg max-w-sm w-full">
+           <h2 class="text-xl font-bold mb-6 text-center text-gray-700">新規ユーザーの追加</h2>
+           <form id="add-user-modal-form" class="space-y-4">
+             <div>
+               <label for="add-user-modal-name-input" class="block text-sm font-medium text-gray-700">ユーザー名 <span class="text-red-500">*</span></label>
+               <input type="text" id="add-user-modal-name-input" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" placeholder="山田太郎 (空白不可)"/>
+             </div>
+             <p id="add-user-modal-error" class="text-red-500 text-sm h-4"></p>
+           </form>
+           <div class="flex justify-end gap-4 mt-6">
+             <button id="add-user-modal-cancel-btn" type="button" class="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-400 transition whitespace-nowrap">キャンセル</button>
+             <button id="add-user-modal-save-btn" type="button" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition whitespace-nowrap">保存</button>
+           </div>
+         </div>
+       </div>
+
+    </div> <!-- End #app-container -->
+
+    <!-- Main Application Script -->
     <script type="module" src="js/main.js"></script>
-    <!-- 認証関連のスクリプトを okta.js に変更 -->
-    <script type="module" src="js/okta.js"></script>
 
-    <!-- Firebase Firestore は引き続き使用 -->
+    <!--
+    削除: Firebase 初期化スクリプトブロック
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { firebaseConfig } from './js/firebase.js'; // 設定は別ファイルから読み込む想定
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+      // ... (Firestore, Authのimport) ...
 
-        try {
-            const app = initializeApp(firebaseConfig);
-            window.db = getFirestore(app); // グローバルスコープに Firestore インスタンスを公開 (他のモジュールからアクセスするため)
-            console.log("Firestore initialized successfully.");
-        } catch (error) {
-            console.error("Firebase Initialization Error:", error);
-            document.getElementById('app-container').innerHTML = `<div class="bg-white p-8 rounded-xl shadow-lg max-w-lg mx-auto mt-10"><h1 class="text-2xl font-bold text-red-600 mb-4">設定エラー</h1><p class="text-gray-700">Firebaseの設定が正しく読み込めませんでした。</p></div>`;
-            document.getElementById('okta-signin-widget-container').style.display = 'none'; // エラー時はOktaウィジェットも隠す
-        }
+      // const firebaseConfig = { ... }; // ここにあった設定はfirebase.jsへ移動
+
+      // let app, db, auth;
+      // try {
+      //   app = initializeApp(firebaseConfig);
+      //   db = getFirestore(app);
+      //   auth = getAuth(app);
+      //   window.db = db; // グローバル公開を削除
+      //   window.auth = auth; // グローバル公開を削除
+      //   console.log("Firebase initialized in index.html");
+      // } catch (error) {
+      //   console.error("Firebase Initialization Error in index.html:", error);
+      // }
+      // Chart.register(ChartDataLabels); // これはmain.jsまたはchart.jsで実行
     </script>
+    -->
 
   </body>
 </html>
+
