@@ -14,24 +14,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --- ここから下を削除またはコメントアウト ---
-      # - name: Use Node.js ${{ matrix.node-version }}
-      #   uses: actions/setup-node@v4
-      #   with:
-      #     node-version: ${{ matrix.node-version }}
+      # --- npm関連のステップは削除済み ---
 
-      # - name: Install dependencies
-      #   run: npm ci # ← これを削除
-
-      # - name: Build project # ← これも不要なら削除
-      #   run: npm run build --if-present
-
-      # - name: Run tests
-      #   run: npm test # ← これを削除
-      # --- ここまで削除 ---
-
-      # 例: もし将来的にHTML/CSS/JSの構文チェック(Lint)などを追加したい場合は、
-      # Node.jsセットアップと関連ツール(ESLintなど)のインストール・実行ステップをここに追加します。
+      # 例: 将来的にLintを追加する場合のプレースホルダー
       # - name: Setup Node.js for Linting
       #   uses: actions/setup-node@v4
       #   with:
