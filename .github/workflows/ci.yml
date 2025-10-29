@@ -1,5 +1,5 @@
 # ワークフローの名前
-name: CI Checks (Example: HTML/CSS/JS Linting) # 名前を実態に合わせて変更
+name: "CI Checks (Example: HTML/CSS/JS Linting)" # 名前を実態に合わせて変更
 
 on:
   push:
