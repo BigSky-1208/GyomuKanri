@@ -1,47 +1,42 @@
-# ワークフローの名前 (GitHubのActionsタブに表示されます)
-name: Node.js CI
+# ワークフローの名前
+name: CI Checks (Example: HTML/CSS/JS Linting) # 名前を実態に合わせて変更
 
-# ワークフローを実行する「きっかけ」（トリガー）
 on:
-  # mainブランチにプッシュされた時
   push:
     branches: [ main ]
-  # mainブランチに対してプルリクエストが作成された時
   pull_request:
     branches: [ main ]
 
-# 実行する「ジョブ」（作業内容）
 jobs:
-  # 'build' という名前のジョブ (名前は自由)
-  build:
-    # ジョブを実行する仮想環境 (Ubuntuの最新版)
+  lint: # ジョブ名を変更 (例: lint)
     runs-on: ubuntu-latest
-
-    # Node.jsのバージョンを指定 (プロジェクトに合わせて変更)
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x] # 2つのバージョンでテストする例
-
-    # ジョブの「ステップ」（具体的な手順）
     steps:
-      # 1. リポジトリのコードを仮想環境にコピーする (必須)
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. 指定したバージョンのNode.jsをセットアップする
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
+      # --- ここから下を削除またはコメントアウト ---
+      # - name: Use Node.js ${{ matrix.node-version }}
+      #   uses: actions/setup-node@v4
+      #   with:
+      #     node-version: ${{ matrix.node-version }}
 
-      # 3. 依存パッケージをインストールする (npm ci は npm install より高速で確実)
-      - name: Install dependencies
-        run: npm ci
+      # - name: Install dependencies
+      #   run: npm ci # ← これを削除
 
-      # 4. ビルドが必要な場合 (なければこのステップは削除)
-      # - name: Build project
+      # - name: Build project # ← これも不要なら削除
       #   run: npm run build --if-present
 
-      # 5. テストを実行する
-      - name: Run tests
-        run: npm test
+      # - name: Run tests
+      #   run: npm test # ← これを削除
+      # --- ここまで削除 ---
+
+      # 例: もし将来的にHTML/CSS/JSの構文チェック(Lint)などを追加したい場合は、
+      # Node.jsセットアップと関連ツール(ESLintなど)のインストール・実行ステップをここに追加します。
+      # - name: Setup Node.js for Linting
+      #   uses: actions/setup-node@v4
+      #   with:
+      #     node-version: '20.x'
+      # - name: Install ESLint (example)
+      #   run: npm install eslint
+      # - name: Run ESLint (example)
+      #   run: npx eslint js/**/*.js
