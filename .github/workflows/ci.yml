@@ -1,5 +1,5 @@
 # ワークフローの名前
-name: "CI Checks (Example: HTML/CSS/JS Linting)" # 名前を実態に合わせて変更
+name: CI Checks (JavaScript Linting) # 名前を実態に合わせて変更
 
 on:
   push:
@@ -11,17 +11,22 @@ jobs:
   lint: # ジョブ名を変更 (例: lint)
     runs-on: ubuntu-latest
     steps:
+      # 1. リポジトリのコードをチェックアウト
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --- npm関連のステップは削除済み ---
+      # 2. Node.js環境をセットアップ (ESLintの実行に必要)
+      - name: Setup Node.js for Linting
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x' # 使用するNode.jsのバージョンを指定
 
-      # 例: 将来的にLintを追加する場合のプレースホルダー
-      # - name: Setup Node.js for Linting
-      #   uses: actions/setup-node@v4
-      #   with:
-      #     node-version: '20.x'
-      # - name: Install ESLint (example)
-      #   run: npm install eslint
-      # - name: Run ESLint (example)
-      #   run: npx eslint js/**/*.js
+      # 3. ESLintをインストール
+      - name: Install ESLint
+        run: npm install eslint # ワークフロー内でESLintをインストール
+
+      # 4. ESLintを実行 (jsフォルダ以下の全.jsファイルを対象)
+      #    注意: リポジトリに .eslintrc.js 等の設定ファイルが必要です
+      - name: Run ESLint
+        run: npx eslint js/**/*.js # jsフォルダ配下のJavaScriptファイルをチェック
+
