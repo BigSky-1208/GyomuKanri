@@ -455,9 +455,6 @@ function renderArchiveTableNavigation(datesToShow, currentPage, totalPages) {
     archiveWeeklySummaryContainer.innerHTML = navHtml; // Overwrite container with navigation
 }
 
-
-// Import handleGoBack from main.js or define it locally if needed
-import { handleGoBack } from "../main.js";
 // Simple HTML escaping function already imported from utils.js
 // import { escapeHtml } from "../utils.js";
 
