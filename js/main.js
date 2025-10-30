@@ -15,15 +15,15 @@ import { initializeProfileSetupView, setupProfileSetupEventListeners } from './v
 import { initializeModeSelectionView, setupModeSelectionEventListeners } from './views/modeSelection.js';
 import { initializeTaskSettingsView, setupTaskSettingsEventListeners } from './views/taskSettings.js';
 import { initializeHostView, cleanupHostView, setupHostEventListeners } from './views/host/host.js'; // Hostディレクトリ内のhost.jsをインポート
-import { initializeClientView, setupClientEventListeners, resetClientStateUI } from './views/client/client.js'; // Clientディレクトリ内のclient.jsをインポート
-import { initializePersonalDetailView, cleanupPersonalDetailView, setupPersonalDetailEventListeners } from './views/personalDetail.js';
+import { initializeClientView, setupClientEventListeners } from './views/client/client.js'; // Clientディレクトリ内のclient.jsをインポート
+import { initializePersonalDetailView, cleanupPersonalDetailView, setupPersonalDetailEventListeners } from './views/personalDetail/personalDetail.js'; // personalDetail.js (司令塔) をインポート
 import { initializeReportView, cleanupReportView, setupReportEventListeners } from './views/report.js';
-import { initializeProgressView, setupProgressEventListeners } from './views/progress.js';
+import { initializeProgressView, setupProgressEventListeners } from './views/progress/progress.js'; // progress.js (司令塔) をインポート
 import { initializeArchiveView, setupArchiveEventListeners } from './views/archive.js';
-import { updateStatusesCache } from './views/host/userManagement.js'; // host.jsがstatusをuserManagementに渡すためインポート
+// import { updateStatusesCache } from './views/host/userManagement.js'; // host.jsがstatusをuserManagementに渡すためインポート (main.jsからは直接不要)
 
 // --- コンポーネント/ユーティリティモジュールのインポート ---
-import { setupModalEventListeners, adminPasswordView, confirmationModal, closeModal, showHelpModal } from './components/modal.js';
+import { setupModalEventListeners, adminPasswordView, closeModal } from './components/modal.js'; // adminPasswordView もインポート
 import { setupExcelExportEventListeners } from './excelExport.js';
 import { checkForCheckoutCorrection, getJSTDateString, escapeHtml } from './utils.js'; // 退勤忘れチェック関数など
 
@@ -35,15 +35,16 @@ export let allTaskObjects = []; // 全タスクとその目標（Firestoreから
 export let allUserLogs = []; // 全ユーザーのログ（Firestoreから取得、必要に応じて更新）
 export let userDisplayPreferences = { hiddenTasks: [] }; // ユーザーの表示設定
 export let viewHistory = []; // 表示したビューの履歴（戻る機能用）
-export let adminLoginDestination = null; // 管理者ログイン後に遷移するビュー (Okta移行により不要になる可能性)
+export let adminLoginDestination = null; // 管理者ログイン後に遷移するビュー (Okta移行後もフォールバックとして使用)
 export let preferencesUnsubscribe = null; // 表示設定リスナーの解除関数
 // TODO: isProgressViewReadOnly の管理方法を改善する (例: showViewのdataで渡す)
-export let isProgressViewReadOnly = false; // Progress Viewが読み取り専用かどうかのフラグ
+// (現状は window スコープで管理されているため、ここでは export しない)
+// export let isProgressViewReadOnly = false;
 
 // --- 定数 ---
 // ビューIDと対応する初期化/クリーンアップ関数をマッピング
 export const VIEWS = {
-    // PROFILE_SETUP はOkta Widgetコンテナに置き換わる想定
+    // PROFILE_SETUP はOkta Widget表示用なので中身はほぼ不要になるかも
     OKTA_WIDGET: "okta-signin-widget-container", // Okta Widget用コンテナID
     MODE_SELECTION: "mode-selection-view",
     TASK_SETTINGS: "task-settings-view",
@@ -53,6 +54,8 @@ export const VIEWS = {
     REPORT: "report-view",
     PROGRESS: "progress-view",
     ARCHIVE: "archive-view",
+    // ADMIN_PASSWORD ビューも管理対象に追加（showViewで直接表示できるように）
+    ADMIN_PASSWORD: "admin-password-view", 
 };
 
 // ビュー名と初期化/クリーンアップ関数のマップ
@@ -66,6 +69,8 @@ const viewLifecycle = {
     [VIEWS.REPORT]: { init: initializeReportView, cleanup: cleanupReportView },
     [VIEWS.PROGRESS]: { init: initializeProgressView },
     [VIEWS.ARCHIVE]: { init: initializeArchiveView },
+    // ADMIN_PASSWORD ビューは特別な初期化不要
+    // [VIEWS.ADMIN_PASSWORD]: { }, 
 };
 
 
@@ -164,13 +169,17 @@ function setupGlobalEventListeners() {
     // --- その他共通リスナー ---
     setupExcelExportEventListeners(); // excelExport.js内のリスナーを設定
 
-    // --- 管理者パスワードモーダル関連は削除 ---
-    // const adminPasswordSubmitBtn = document.getElementById("admin-password-submit-btn");
-    // const adminPasswordCancelBtn = document.getElementById("admin-password-cancel-btn");
-    // const adminPasswordInput = document.getElementById("admin-password-input");
-    // adminPasswordSubmitBtn?.removeEventListener("click", handleAdminLogin); // リスナー解除
-    // adminPasswordCancelBtn?.removeEventListener("click", closeModal);
-    // adminPasswordInput?.removeEventListener('keypress', handleAdminPasswordEnter);
+    // --- 管理者パスワードモーダル関連 (Okta移行後もフォールバックとして残す) ---
+    const adminPasswordSubmitBtn = document.getElementById("admin-password-submit-btn");
+    const adminPasswordInput = document.getElementById("admin-password-input");
+    
+    adminPasswordSubmitBtn?.addEventListener("click", handleAdminLogin);
+    adminPasswordInput?.addEventListener('keypress', (event) => {
+         if (event.key === 'Enter') {
+             handleAdminLogin();
+         }
+     });
+    // キャンセルボタンは modal.js の setupModalEventListeners で設定済み
 
     console.log("Global event listeners set up complete.");
 }
@@ -237,7 +246,7 @@ export function showView(viewId, data = {}) {
             console.log(`Re-initializing view: ${viewId}`);
              try {
                  // init 関数が Promise を返す可能性を考慮して await を使う
-                 await currentLifecycle.init(data); // データも渡す
+                 (async () => await currentLifecycle.init(data))(); // データも渡す
              } catch (error) {
                   console.error(`Error during re-initialization of view ${viewId}:`, error);
              }
@@ -253,7 +262,7 @@ export function showView(viewId, data = {}) {
         console.log(`Initializing view: ${viewId}`);
          try {
              // init 関数が Promise を返す可能性を考慮
-             await newLifecycle.init(data); // 初期化関数にデータを渡す
+             (async () => await newLifecycle.init(data))(); // 初期化関数にデータを渡す
          } catch (error) {
               console.error(`Error during initialization of view ${viewId}:`, error);
               // エラー発生時のフォールバック処理 (例: エラーメッセージ表示)
@@ -351,7 +360,7 @@ async function refreshUIBasedOnTaskUpdate() {
     console.log("Refreshing UI based on task update...");
     // client.js の renderTaskOptions は clientUI.js に移動した想定
     const { renderTaskOptions, checkIfWarningIsNeeded } = await import('./views/client/clientUI.js');
-    const { initializeProgressView } = await import('./views/progress.js');
+    const { initializeProgressView } = await import('./views/progress/progress.js');
     const { initializeArchiveView } = await import('./views/archive.js');
     const { renderTaskEditor } = await import('./views/taskSettings.js');
 
@@ -390,6 +399,7 @@ export async function fetchAllUserLogs() {
              if (log.startTime && log.startTime.toDate) log.startTime = log.startTime.toDate();
              if (log.endTime && log.endTime.toDate) log.endTime = log.endTime.toDate();
              // completedAt など他のTimestampフィールドも必要なら変換
+             if (log.completedAt && log.completedAt.toDate) log.completedAt = log.completedAt.toDate(); // 念のため
              return log;
         });
         console.log(`Fetched ${allUserLogs.length} log entries.`);
@@ -423,7 +433,7 @@ export async function fetchAllUserLogs() {
 export function listenForDisplayPreferences() {
     if (preferencesUnsubscribe) preferencesUnsubscribe(); // 既存のリスナーを解除
     if (!userId) {
-         userDisplayPreferences = { hiddenTasks: [] };
+         userDisplayPreferences = { hiddenTasks: [], notificationIntervalMinutes: 0 }; // デフォルト値に通知間隔も追加
          preferencesUnsubscribe = null;
          console.log("User logged out or not set, reset display preferences to default.");
          // 必要なら関連UIを更新 (例: クライアントビューのタスクドロップダウン)
@@ -435,12 +445,18 @@ export function listenForDisplayPreferences() {
     const prefRef = doc(db, `user_profiles/${userId}/preferences/display`);
 
     preferencesUnsubscribe = onSnapshot(prefRef, (docSnap) => {
-        if (docSnap.exists() && docSnap.data().hiddenTasks && Array.isArray(docSnap.data().hiddenTasks)) {
-            userDisplayPreferences = docSnap.data();
+        const defaults = { hiddenTasks: [], notificationIntervalMinutes: 0 };
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            // データが存在する場合、デフォルトとマージして、型が正しいことを確認
+            userDisplayPreferences = {
+                hiddenTasks: Array.isArray(data.hiddenTasks) ? data.hiddenTasks : defaults.hiddenTasks,
+                notificationIntervalMinutes: typeof data.notificationIntervalMinutes === 'number' ? data.notificationIntervalMinutes : defaults.notificationIntervalMinutes,
+            };
             console.log("Display preferences updated:", userDisplayPreferences);
         } else {
-            console.log("No display preferences found or invalid format, using default.");
-            userDisplayPreferences = { hiddenTasks: [] };
+            console.log("No display preferences found, using default.");
+            userDisplayPreferences = defaults;
             // Optionally, create the document with default settings if it doesn't exist and no pending writes
              if(!docSnap.exists() && !docSnap.metadata.hasPendingWrites) {
                  setDoc(prefRef, userDisplayPreferences, { merge: true }).catch(err => console.error("Error creating default preferences:", err));
@@ -451,7 +467,7 @@ export function listenForDisplayPreferences() {
 
     }, (error) => {
          console.error(`Error listening for display preferences for user ${userId}:`, error);
-         userDisplayPreferences = { hiddenTasks: [] }; // エラー時はデフォルトに戻す
+         userDisplayPreferences = { hiddenTasks: [], notificationIntervalMinutes: 0 }; // エラー時はデフォルトに戻す
          refreshUIBasedOnPreferenceUpdate(); // UIもデフォルト状態に更新
     });
 }
@@ -466,7 +482,7 @@ async function refreshUIBasedOnPreferenceUpdate() {
     try {
         if (document.getElementById(VIEWS.CLIENT)?.classList.contains('active-view')) {
              renderTaskOptions(); // clientUI.js から
-             renderTaskDisplaySettings(); // clientUI.js から
+             renderTaskDisplaySettings(); // clientUI.js から (通知設定入力欄も更新される)
         }
         // 他のビューも必要に応じて更新
     } catch (error) {
@@ -530,6 +546,54 @@ export function updateGlobalTaskObjects(newTasks) {
 export function setAdminLoginDestination(viewId) {
     adminLoginDestination = viewId;
 }
+
+// --- 管理者パスワード処理 (Oktaフォールバック用) ---
+/**
+ * ハンドル管理者ログイン試行
+ */
+async function handleAdminLogin() {
+    const input = document.getElementById("admin-password-input");
+    const errorEl = document.getElementById("admin-password-error");
+    if (!input || !errorEl) return;
+
+    const password = input.value;
+    errorEl.textContent = "";
+
+    if (!password) {
+        errorEl.textContent = "パスワードを入力してください。";
+        return;
+    }
+
+    try {
+        const passwordDoc = await getDoc(doc(db, "settings", "admin_password"));
+        if (passwordDoc.exists() && passwordDoc.data().password === password) {
+            console.log("Admin password correct.");
+            // 権限レベルを 'admin' に昇格（Oktaグループにない場合のフォールバック）
+            setAuthLevel('admin'); 
+            
+            input.value = ""; // パスワードをクリア
+            closeModal(adminPasswordView); // モーダルを閉じる
+
+            // 目的地が設定されていればそこへ遷移
+            if (adminLoginDestination) {
+                showView(adminLoginDestination);
+                adminLoginDestination = null; // 目的地をクリア
+            } else {
+                showView(VIEWS.HOST); // デフォルトの管理者ビューへ
+            }
+        } else {
+            console.warn("Admin password incorrect.");
+            errorEl.textContent = "パスワードが違います。";
+            input.select();
+        }
+    } catch (error) {
+        console.error("Error checking admin password:", error);
+        errorEl.textContent = "パスワードの確認中にエラーが発生しました。";
+    }
+}
+
+// --- ユーティリティの再エクスポート (他のモジュールが main.js からインポートできるように) ---
+export { db, escapeHtml, getJSTDateString };
 
 // --- アプリケーション開始 ---
 // DOMが完全に読み込まれたら初期化処理を開始
