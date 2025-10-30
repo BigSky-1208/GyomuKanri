@@ -1,9 +1,11 @@
 // js/views/progress.js
 import { db, allTaskObjects, allUserLogs, fetchAllUserLogs, updateGlobalTaskObjects, handleGoBack, showView, VIEWS } from "../../main.js"; // Import global state and functions
-import { collection, doc, getDocs, updateDoc, Timestamp, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // Import Firestore functions
-import { formatDuration, formatHoursMinutes, getJSTDateString } from "../utils.js"; // Import utility functions
-import { showConfirmationModal, hideConfirmationModal, openGoalModal } from "../components/modal.js"; // Import modal functions
-import { createLineChart } from "../components/chart.js"; // Import chart creation function
+// Import Timestamp for handleCompleteGoalClick
+import { doc, updateDoc, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // Import Firestore functions (removed unused collection, getDocs, setDoc)
+import { formatHoursMinutes, getJSTDateString, escapeHtml } from "../utils.js"; // Import utility functions (removed unused formatDuration)
+// Import showHelpModal
+import { showConfirmationModal, hideConfirmationModal, openGoalModal, showHelpModal } from "../components/modal.js"; // Import modal functions
+import { createLineChart, destroyCharts } from "../components/chart.js"; // Import chart creation/destruction functions
 
 // --- Module State ---
 let selectedProgressTaskName = null;
@@ -53,6 +55,8 @@ export async function initializeProgressView() {
              if(goalDetailsContainer) goalDetailsContainer.classList.add('hidden');
              if(chartContainer) chartContainer.classList.add('hidden');
              if(weeklySummaryContainer) weeklySummaryContainer.classList.add('hidden');
+             destroyCharts([progressLineChartInstance]); // Destroy chart
+             progressLineChartInstance = null;
         }
     } else {
         // If no task selected, ensure everything is cleared/hidden
@@ -60,6 +64,8 @@ export async function initializeProgressView() {
         if(goalDetailsContainer) goalDetailsContainer.classList.add('hidden');
         if(chartContainer) chartContainer.classList.add('hidden');
         if(weeklySummaryContainer) weeklySummaryContainer.classList.add('hidden');
+        destroyCharts([progressLineChartInstance]); // Destroy chart
+        progressLineChartInstance = null;
     }
 }
 
@@ -149,6 +155,8 @@ function renderProgressTaskList() {
         if(goalDetailsContainer) goalDetailsContainer.classList.add('hidden');
         if(chartContainer) chartContainer.classList.add('hidden');
         if(weeklySummaryContainer) weeklySummaryContainer.classList.add('hidden');
+        destroyCharts([progressLineChartInstance]);
+        progressLineChartInstance = null;
         return;
     }
 
@@ -172,6 +180,8 @@ function renderProgressTaskList() {
             if(goalDetailsContainer) goalDetailsContainer.classList.add("hidden");
             if(chartContainer) chartContainer.classList.add("hidden");
             if(weeklySummaryContainer) weeklySummaryContainer.classList.add("hidden");
+            destroyCharts([progressLineChartInstance]);
+            progressLineChartInstance = null;
 
             // Render the list of goals for the newly selected task
             renderProgressGoalList();
@@ -210,6 +220,8 @@ function renderProgressGoalList() {
         if(goalDetailsContainer) goalDetailsContainer.classList.add('hidden');
         if(chartContainer) chartContainer.classList.add('hidden');
         if(weeklySummaryContainer) weeklySummaryContainer.classList.add('hidden');
+        destroyCharts([progressLineChartInstance]);
+        progressLineChartInstance = null;
         return;
     }
 
@@ -309,6 +321,8 @@ function renderProgressWeeklySummary() {
     if (!chartContainer || !weeklySummaryContainer || !selectedProgressTaskName || !selectedProgressGoalId) {
         if(chartContainer) chartContainer.classList.add("hidden");
         if(weeklySummaryContainer) weeklySummaryContainer.classList.add("hidden");
+        destroyCharts([progressLineChartInstance]);
+        progressLineChartInstance = null;
         return;
     }
 
@@ -316,6 +330,8 @@ function renderProgressWeeklySummary() {
     if (!task || !task.goals) {
         chartContainer.classList.add("hidden");
         weeklySummaryContainer.classList.add("hidden");
+        destroyCharts([progressLineChartInstance]);
+        progressLineChartInstance = null;
         return;
     }
 
@@ -323,51 +339,58 @@ function renderProgressWeeklySummary() {
     if (!goal || goal.isComplete) { // Don't render summary for completed goals here
         chartContainer.classList.add("hidden");
         weeklySummaryContainer.classList.add("hidden");
+        destroyCharts([progressLineChartInstance]);
+        progressLineChartInstance = null;
         return;
     }
 
     // --- Calculate Date Range for the Week ---
-    // Start from today, apply month offset, then week offset
     const baseDate = new Date();
-    baseDate.setHours(0, 0, 0, 0); // Normalize to start of day
-    // Apply month offset first
+    baseDate.setHours(0, 0, 0, 0);
     if (progressMonthOffset !== 0) {
          baseDate.setMonth(baseDate.getMonth() + progressMonthOffset);
-         // Go to the 1st of that month to ensure week offset starts correctly relative to the month
          baseDate.setDate(1);
     }
-    // Apply week offset relative to the calculated month's start or today
     const referenceDate = new Date(baseDate);
-    referenceDate.setDate(referenceDate.getDate() + progressWeekOffset * 7);
+    // Adjust reference date based on month offset start day if needed
+    if (progressMonthOffset !== 0){
+        // If we are looking at a past/future month, calculate offset from the 1st
+        referenceDate.setDate(referenceDate.getDate() + progressWeekOffset * 7);
+    } else {
+        // If current month, calculate offset from today
+        const todayForRef = new Date();
+        todayForRef.setHours(0,0,0,0);
+        referenceDate.setTime(todayForRef.getTime()); // Reset to today before applying offset
+        referenceDate.setDate(referenceDate.getDate() + progressWeekOffset * 7);
+    }
 
-    const dayOfWeek = referenceDate.getDay(); // 0 (Sun) to 6 (Sat)
+
+    const dayOfWeek = referenceDate.getDay();
     const startOfWeek = new Date(referenceDate);
-    startOfWeek.setDate(referenceDate.getDate() - dayOfWeek); // Go back to Sunday
+    startOfWeek.setDate(referenceDate.getDate() - dayOfWeek);
 
-    const weekDates = []; // Array of "YYYY-MM-DD" strings for the week
+    const weekDates = [];
     for (let i = 0; i < 7; i++) {
         const date = new Date(startOfWeek);
         date.setDate(startOfWeek.getDate() + i);
-        weekDates.push(getJSTDateString(date)); // Use utility function
+        weekDates.push(getJSTDateString(date));
     }
     // --- End Date Range Calculation ---
 
 
     // --- Aggregate Data for the Week ---
-    // Find all users who have contributed or worked on this goal *at any time*
     const usersInvolved = [...new Set(
         allUserLogs
             .filter(log => log.goalId === goal.id)
             .map(log => log.userName)
-            .filter(name => name) // Filter out undefined/null names
+            .filter(name => name)
     )].sort((a,b)=>a.localeCompare(b,"ja"));
 
-    const chartAndTableData = []; // Array to hold { name: string, dailyData: [ { contribution, duration, efficiency } x 7 ] }
+    const chartAndTableData = [];
 
     usersInvolved.forEach((name) => {
         const userData = { name: name, dailyData: [] };
         weekDates.forEach((dateStr) => {
-            // Filter logs for this specific user, goal, and date
             const logsForDay = allUserLogs.filter(
                 (log) =>
                     log.userName === name &&
@@ -375,15 +398,13 @@ function renderProgressWeeklySummary() {
                     log.goalId === goal.id
             );
 
-            // Calculate total duration (from non-goal logs) and contribution (from goal logs)
             const totalDuration = logsForDay
-                .filter(l => l.type !== "goal") // Work/Break logs
+                .filter(l => l.type !== "goal")
                 .reduce((sum, log) => sum + (log.duration || 0), 0);
             const totalContribution = logsForDay
-                .filter(l => l.type === "goal") // Contribution logs
+                .filter(l => l.type === "goal")
                 .reduce((sum, log) => sum + (log.contribution || 0), 0);
 
-            // Calculate efficiency (contribution per hour)
             const hours = totalDuration / 3600;
             const efficiency = hours > 0 ? parseFloat((totalContribution / hours).toFixed(1)) : 0;
 
@@ -393,7 +414,6 @@ function renderProgressWeeklySummary() {
                 efficiency: efficiency,
             });
         });
-        // Only include users who had activity (duration or contribution) during this specific week
         if(userData.dailyData.some(d => d.contribution > 0 || d.duration > 0)){
             chartAndTableData.push(userData);
         }
@@ -403,19 +423,16 @@ function renderProgressWeeklySummary() {
 
     // --- Render Chart and Table ---
     if (chartAndTableData.length > 0) {
-        renderProgressLineChart(weekDates, chartAndTableData, goal); // Render the line chart
-        renderProgressTable(weekDates, chartAndTableData, goal);     // Render the data table
+        renderProgressLineChart(weekDates, chartAndTableData, goal);
+        renderProgressTable(weekDates, chartAndTableData, goal);
         chartContainer.classList.remove('hidden');
         weeklySummaryContainer.classList.remove('hidden');
     } else {
-        // If no data for this week, hide the sections
         chartContainer.innerHTML = '<p class="text-gray-500 text-center p-4">この期間のグラフデータはありません。</p>';
         weeklySummaryContainer.innerHTML = '<p class="text-gray-500 text-center p-4">この期間の集計データはありません。</p>';
-         // Still show navigation buttons within weeklySummaryContainer if needed
-         renderProgressTableNavigation(goal); // Render just the nav part
-        chartContainer.classList.remove('hidden'); // Show the containers with the message
+        renderProgressTableNavigation(goal); // Render just the nav part
+        chartContainer.classList.remove('hidden');
         weeklySummaryContainer.classList.remove('hidden');
-
     }
     // --- End Rendering ---
 }
@@ -425,7 +442,7 @@ function renderProgressWeeklySummary() {
  * Renders the line chart for weekly progress (contribution or efficiency).
  * @param {string[]} weekDates - Array of date strings ("YYYY-MM-DD") for the x-axis labels.
  * @param {Array} data - Aggregated data array [{ name, dailyData: [{ contribution, efficiency }] }].
- * @param {object} goal - The goal object (for context, not directly used in chart data).
+ * @param {object} goal - The goal object (for context).
  */
 function renderProgressLineChart(weekDates, data, goal) {
     if (!chartContainer) return;
@@ -433,7 +450,7 @@ function renderProgressLineChart(weekDates, data, goal) {
 
     // Add Toggle Buttons for Chart Type
     const buttonsDiv = document.createElement("div");
-    buttonsDiv.className = "flex justify-center md:justify-end gap-2 mb-2"; // Centered on mobile, right on desktop
+    buttonsDiv.className = "flex justify-center md:justify-end gap-2 mb-2";
     buttonsDiv.innerHTML = `
         <button id="chart-toggle-contribution" class="text-xs md:text-sm py-1 px-2 md:px-3 rounded-lg transition-colors ${
             progressChartType === "contribution" ? "bg-blue-600 text-white" : "bg-gray-200 hover:bg-gray-300"
@@ -445,55 +462,49 @@ function renderProgressLineChart(weekDates, data, goal) {
     chartContainer.appendChild(buttonsDiv);
 
     const canvas = document.createElement("canvas");
-    // Set a minimum height for the canvas container to prevent collapse
     canvas.style.minHeight = '250px';
     chartContainer.appendChild(canvas);
 
     // Destroy previous chart instance if it exists
-    if (progressLineChartInstance) {
-        progressLineChartInstance.destroy();
-        progressLineChartInstance = null;
-    }
+    destroyCharts([progressLineChartInstance]);
+    progressLineChartInstance = null;
 
     // Prepare datasets for Chart.js
     const datasets = data.map((userData, index) => {
-        const hue = (index * 137.508) % 360; // Golden angle for distinct colors
+        const hue = (index * 137.508) % 360;
         const color = `hsl(${hue}, 70%, 50%)`;
         return {
             label: userData.name,
-            // Select data based on the current chart type
             data: userData.dailyData.map((d) =>
                 progressChartType === "contribution" ? d.contribution : d.efficiency
             ),
             borderColor: color,
-            backgroundColor: color + '33', // Add some transparency for background/fill
-            fill: false, // Don't fill area under line by default
-            tension: 0.1, // Slight curve to lines
+            backgroundColor: color + '33',
+            fill: false,
+            tension: 0.1,
             borderWidth: 2,
             pointRadius: 3,
             pointHoverRadius: 5
         };
     });
 
-    // Prepare labels for the x-axis (Month/Day format)
     const labels = weekDates.map((dateStr) => {
         try {
-            const date = new Date(dateStr + 'T00:00:00'); // Ensure parsing as local date
+            const date = new Date(dateStr + 'T00:00:00');
             return `${date.getMonth() + 1}/${date.getDate()}`;
-        } catch (e) { return dateStr; } // Fallback to YYYY-MM-DD on error
+        } catch (/* e */) { return dateStr; } // Commented out unused variable 'e'
     });
 
-    // Determine Y-axis title based on chart type
     const yAxisTitle = progressChartType === "contribution" ? "合計件数" : "時間あたり件数 (件/h)";
+    const chartTitle = `${escapeHtml(goal.title)} - 週間進捗グラフ`; // Add goal title
 
-    // Create the new line chart
     const ctx = canvas.getContext("2d");
-    progressLineChartInstance = createLineChart( // Use imported function
+    progressLineChartInstance = createLineChart(
          ctx,
          labels,
          datasets,
-         "週間進捗グラフ", // Chart Title
-         yAxisTitle // Y-Axis Title
+         chartTitle,
+         yAxisTitle
     );
 }
 
@@ -501,47 +512,41 @@ function renderProgressLineChart(weekDates, data, goal) {
  * Renders the data table for the weekly summary.
  * @param {string[]} weekDates - Array of date strings ("YYYY-MM-DD") for table columns.
  * @param {Array} data - Aggregated data array [{ name, dailyData: [{ contribution, duration, efficiency }] }].
- * @param {object} goal - The goal object (used for context in title, not data).
+ * @param {object} goal - The goal object (used for context).
  */
 function renderProgressTable(weekDates, data, goal) {
     if (!weeklySummaryContainer) return;
     weeklySummaryContainer.innerHTML = ""; // Clear previous content
 
-    // --- Render Navigation ---
-    renderProgressTableNavigation(goal); // Separate function for navigation part
+    renderProgressTableNavigation(goal); // Render navigation first
 
-    // --- Render Table ---
+    if (data.length === 0) {
+        weeklySummaryContainer.innerHTML += '<p class="text-gray-500 text-center p-4 mt-4">この期間の集計データはありません。</p>';
+        return;
+    }
+
     let tableHtml = '<div class="overflow-x-auto mt-4"><table class="w-full text-sm text-left text-gray-500">';
-    // Table Header
-    tableHtml += '<thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr><th scope="col" class="px-3 py-3 sticky left-0 bg-gray-50 z-10">名前</th>'; // Sticky name column
+    tableHtml += '<thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr><th scope="col" class="px-3 py-3 sticky left-0 bg-gray-50 z-10">名前</th>';
     weekDates.forEach((dateStr) => {
-        const date = new Date(dateStr + 'T00:00:00'); // Ensure local date parsing
+        const date = new Date(dateStr + 'T00:00:00');
         tableHtml += `<th scope="col" class="px-3 py-3 text-center min-w-[100px]">${date.getMonth() + 1}/${date.getDate()}</th>`;
     });
     tableHtml += "</tr></thead><tbody>";
 
-    // Table Body
-    if (data.length === 0) {
-        tableHtml += `<tr><td colspan="${weekDates.length + 1}" class="text-center p-4 text-gray-500">この週の記録はありません。</td></tr>`;
-    } else {
-        data.forEach((userData) => {
-            tableHtml += `<tr class="bg-white border-b hover:bg-gray-50"><th scope="row" class="px-3 py-4 font-medium text-gray-900 whitespace-nowrap sticky left-0 bg-white z-10">${escapeHtml(userData.name)}</th>`; // Sticky name column
-            userData.dailyData.forEach((d) => {
-                // Apply highlight if there was contribution or duration
-                const cellClass = (d.contribution > 0 || d.duration > 0) ? "highlight-cell bg-yellow-50" : "";
-                tableHtml += `<td class="px-3 py-4 text-center ${cellClass}">
-                    <div title="件数 / 時間">${d.contribution}件 / ${formatHoursMinutes(d.duration)}</div>
-                    <div class="text-xs text-gray-400" title="時間あたり件数">${d.efficiency}件/h</div>
-                </td>`;
-            });
-            tableHtml += "</tr>";
+    data.forEach((userData) => {
+        tableHtml += `<tr class="bg-white border-b hover:bg-gray-50"><th scope="row" class="px-3 py-4 font-medium text-gray-900 whitespace-nowrap sticky left-0 bg-white z-10">${escapeHtml(userData.name)}</th>`;
+        userData.dailyData.forEach((d) => {
+            const cellClass = (d.contribution > 0 || d.duration > 0) ? "highlight-cell bg-yellow-50" : "";
+            tableHtml += `<td class="px-3 py-4 text-center ${cellClass}">
+                <div title="件数 / 時間">${d.contribution}件 / ${formatHoursMinutes(d.duration)}</div>
+                <div class="text-xs text-gray-400" title="時間あたり件数">${d.efficiency}件/h</div>
+            </td>`;
         });
-    }
+        tableHtml += "</tr>";
+    });
 
     tableHtml += "</tbody></table></div>";
-    // Append the table after the navigation which was added by renderProgressTableNavigation
     weeklySummaryContainer.innerHTML += tableHtml;
-    // weeklySummaryContainer.classList.remove("hidden"); // Ensure container is visible
 }
 
 /**
@@ -555,18 +560,22 @@ function renderProgressTable(weekDates, data, goal) {
      baseDateNav.setHours(0,0,0,0);
      if (progressMonthOffset !== 0) {
           baseDateNav.setMonth(baseDateNav.getMonth() + progressMonthOffset);
-          baseDateNav.setDate(1); // Use 1st of month for month label consistency
+          baseDateNav.setDate(1);
      }
      const year = baseDateNav.getFullYear();
      const month = baseDateNav.getMonth() + 1;
 
      // Determine the start date of the *currently displayed* week for the title
-     const referenceDateNav = new Date(baseDateNav); // Use the potentially month-offset date
-     if(progressMonthOffset === 0) { // If current month, offset from today
-          referenceDateNav.setDate(referenceDateNav.getDate() + progressWeekOffset * 7);
-     } else { // If different month, offset from the 1st of that month
-          referenceDateNav.setDate(referenceDateNav.getDate() + progressWeekOffset * 7);
+     const referenceDateNav = new Date(); // Start with today for week title reference
+     referenceDateNav.setHours(0,0,0,0);
+     if (progressMonthOffset !== 0) {
+         // If viewing a different month, calculate week relative to the 1st of that month
+         referenceDateNav.setFullYear(year);
+         referenceDateNav.setMonth(month - 1); // Month is 0-based for setMonth
+         referenceDateNav.setDate(1);
      }
+     // Apply week offset relative to the calculated start (today or 1st of month)
+     referenceDateNav.setDate(referenceDateNav.getDate() + progressWeekOffset * 7);
 
      const dayOfWeekNav = referenceDateNav.getDay();
      const startOfWeekNav = new Date(referenceDateNav);
@@ -604,7 +613,8 @@ function renderProgressTable(weekDates, data, goal) {
 async function handleCompleteGoalClick(taskName, goalId) {
     if (!taskName || !goalId) return;
 
-     const goal = allTaskObjects?.find(t => t.name === taskName)?.goals?.find(g => g.id === goalId);
+     const task = allTaskObjects?.find(t => t.name === taskName);
+     const goal = task?.goals?.find(g => g.id === goalId);
      if(!goal) return;
 
 
@@ -634,13 +644,16 @@ async function handleCompleteGoalClick(taskName, goalId) {
                 console.log(`Goal ${goalId} marked as complete.`);
 
                 // Update global state *after* successful Firestore update
-                updateGlobalTaskObjects(updatedTasks);
+                // The Firestore listener in main.js should handle this automatically.
+                // updateGlobalTaskObjects(updatedTasks);
 
                 // Update UI: Clear selection and re-render lists
                 selectedProgressGoalId = null;
                  if (goalDetailsContainer) goalDetailsContainer.classList.add("hidden");
                  if (chartContainer) chartContainer.classList.add("hidden");
                  if (weeklySummaryContainer) weeklySummaryContainer.classList.add("hidden");
+                 destroyCharts([progressLineChartInstance]);
+                 progressLineChartInstance = null;
                 renderProgressTaskList(); // Re-render task list (might remove task if it was the last active goal)
                 renderProgressGoalList(); // Re-render goal list (will remove the completed goal)
 
@@ -664,7 +677,8 @@ async function handleCompleteGoalClick(taskName, goalId) {
 async function handleDeleteGoal(taskName, goalId) {
     if (!taskName || !goalId) return;
 
-    const goal = allTaskObjects?.find(t => t.name === taskName)?.goals?.find(g => g.id === goalId);
+    const task = allTaskObjects?.find(t => t.name === taskName);
+    const goal = task?.goals?.find(g => g.id === goalId);
     if (!goal) return;
 
 
@@ -691,13 +705,16 @@ async function handleDeleteGoal(taskName, goalId) {
                 console.log(`Goal ${goalId} deleted from task ${taskName}.`);
 
                 // Update global state *after* successful Firestore update
-                updateGlobalTaskObjects(updatedTasks);
+                // The Firestore listener in main.js should handle this automatically.
+                // updateGlobalTaskObjects(updatedTasks);
 
                 // Update UI: Clear selection and re-render lists
                 selectedProgressGoalId = null;
                  if (goalDetailsContainer) goalDetailsContainer.classList.add("hidden");
                  if (chartContainer) chartContainer.classList.add("hidden");
                  if (weeklySummaryContainer) weeklySummaryContainer.classList.add("hidden");
+                 destroyCharts([progressLineChartInstance]);
+                 progressLineChartInstance = null;
                 renderProgressTaskList(); // Re-render task list
                 renderProgressGoalList(); // Re-render goal list
 
@@ -712,18 +729,3 @@ async function handleDeleteGoal(taskName, goalId) {
     );
 }
 
-
-/**
- * Simple HTML escaping function to prevent XSS.
- * @param {string | null | undefined} unsafe - The potentially unsafe string.
- * @returns {string} The escaped string.
- */
-function escapeHtml(unsafe) {
-    if (typeof unsafe !== 'string') return '';
-    return unsafe
-         .replace(/&/g, "&amp;")
-         .replace(/</g, "&lt;")
-         .replace(/>/g, "&gt;")
-         .replace(/"/g, "&quot;")
-         .replace(/'/g, "&#039;");
- }
