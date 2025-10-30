@@ -1,8 +1,10 @@
 // js/views/personalDetail.js
-import { db, userName as currentUserName, authLevel, viewHistory, showView, VIEWS } from "../../main.js"; // Import global state and functions
-import { collection, query, where, onSnapshot, doc, updateDoc, writeBatch, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // Import Firestore functions
+// Import missing functions/variables
+import { db, userName as currentUserName, authLevel, viewHistory, showView, VIEWS, allTaskObjects, updateGlobalTaskObjects, handleGoBack } from "../../main.js"; // Import allTaskObjects, updateGlobalTaskObjects, handleGoBack
+// Import Timestamp and getDoc, etc.
+import { collection, query, where, onSnapshot, doc, updateDoc, writeBatch, getDocs, deleteDoc, Timestamp, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // Import Timestamp, getDoc, etc.
 import { renderUnifiedCalendar } from "../components/calendar.js"; // Import calendar rendering function
-import { formatDuration, formatTime } from "../utils.js"; // Import utility functions
+import { formatDuration, formatTime, getJSTDateString, escapeHtml } from "../utils.js"; // Import utility functions, including escapeHtml
 import { showConfirmationModal, hideConfirmationModal, editLogModal, editMemoModal, editContributionModal } from "../components/modal.js"; // Import modal elements and functions
 
 // --- Module State ---
@@ -32,31 +34,39 @@ const editHoursInput = document.getElementById("edit-hours-input");
 const editMinutesInput = document.getElementById("edit-minutes-input");
 const editLogErrorEl = document.getElementById("edit-log-error");
 const editLogSaveBtn = document.getElementById("edit-log-save-btn");
-const editLogCancelBtn = document.getElementById("edit-log-cancel-btn");
+// const editLogCancelBtn = document.getElementById("edit-log-cancel-btn"); // Handled in modal.js
 
 // Memo Edit Modal Elements
 const editMemoTextarea = document.getElementById("edit-memo-textarea");
 const editMemoSaveBtn = document.getElementById("edit-memo-save-btn");
-const editMemoCancelBtn = document.getElementById("edit-memo-cancel-btn");
+// const editMemoCancelBtn = document.getElementById("edit-memo-cancel-btn"); // Handled in modal.js
 
 // Contribution Edit Modal Elements
 const editContributionTitleEl = document.getElementById("edit-contribution-title");
 const editContributionInput = document.getElementById("edit-contribution-input");
 const editContributionErrorEl = document.getElementById("edit-contribution-error");
 const editContributionSaveBtn = document.getElementById("edit-contribution-save-btn");
-const editContributionCancelBtn = document.getElementById("edit-contribution-cancel-btn");
+// const editContributionCancelBtn = document.getElementById("edit-contribution-cancel-btn"); // Handled in modal.js
 
 
 /**
  * Initializes the Personal Detail view.
  * Sets the title, determines if delete button should be shown, and starts the log listener.
- * @param {string} name - The username for which to display details.
+ * @param {{userName: string}} data - Data object containing the username.
  */
-export function initializePersonalDetailView(name) {
+export function initializePersonalDetailView(data) {
+    const name = data?.userName; // Extract name from data object
+    if (!name) {
+        console.error("Cannot initialize Personal Detail View: Username missing in data.");
+        // Optionally show an error message in the UI or navigate back
+        handleGoBack(); // Go back if no username provided
+        return;
+    }
+
     console.log(`Initializing Personal Detail View for: ${name}`);
     currentUserForDetailView = name; // Store the name of the user being viewed
 
-    if (detailTitle) detailTitle.textContent = `${name} の業務記録`;
+    if (detailTitle) detailTitle.textContent = `${escapeHtml(name)} の業務記録`;
 
     // Reset date and selection when view initializes for a user
     currentCalendarDate = new Date();
@@ -66,7 +76,6 @@ export function initializePersonalDetailView(name) {
     const previousView = viewHistory[viewHistory.length - 2]; // Get the view we came from
     if (deleteUserContainer) {
         // Show delete button if admin is viewing *another* user from the host view.
-        // Also allow deleting oneself if admin? (Decided against for safety)
         if (authLevel === 'admin' && previousView === VIEWS.HOST && currentUserForDetailView !== currentUserName) {
             deleteUserContainer.style.display = "block";
         } else {
@@ -102,24 +111,23 @@ export function setupPersonalDetailEventListeners() {
 
     // Log Edit Modal Listeners
     editLogSaveBtn?.addEventListener("click", handleSaveLogDuration);
-    editLogCancelBtn?.addEventListener("click", () => { if(editLogModal) editLogModal.classList.add("hidden"); });
+    // Cancel buttons are handled globally in modal.js
 
     // Memo Edit Modal Listeners
     editMemoSaveBtn?.addEventListener("click", handleSaveMemo);
-    editMemoCancelBtn?.addEventListener("click", () => { if(editMemoModal) editMemoModal.classList.add("hidden"); });
 
     // Contribution Edit Modal Listeners
     editContributionSaveBtn?.addEventListener("click", handleSaveContribution);
-    editContributionCancelBtn?.addEventListener("click", () => { if(editContributionModal) editContributionModal.classList.add("hidden"); });
 
-     // Event delegation for timeline buttons (edit time, edit memo)
+     // Event delegation for timeline buttons (edit time, edit memo, edit contribution)
      detailsContentEl?.addEventListener('click', (event) => {
-        if (event.target.classList.contains('edit-log-btn')) {
-            handleEditLogClick(event);
-        } else if (event.target.classList.contains('edit-memo-btn')) {
-            handleEditMemoClick(event);
-        } else if (event.target.classList.contains('edit-contribution-btn')) {
-             handleEditContributionClick(event);
+        const target = event.target; // Get the clicked element directly
+        if (target.classList.contains('edit-log-btn')) {
+            handleEditLogClick(target); // Pass the button element
+        } else if (target.classList.contains('edit-memo-btn')) {
+            handleEditMemoClick(target); // Pass the button element
+        } else if (target.classList.contains('edit-contribution-btn')) {
+             handleEditContributionClick(target); // Pass the button element
         }
      });
 
@@ -147,17 +155,28 @@ function startListeningForUserLogs(name) {
     );
 
     personalDetailUnsubscribe = onSnapshot(q, (snapshot) => {
-        selectedUserLogs = snapshot.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-        }));
+        selectedUserLogs = snapshot.docs.map((d) => {
+            const data = d.data();
+            // Convert Firestore Timestamps to JS Date objects
+            const log = { id: d.id, ...data };
+            if (log.startTime && log.startTime.toDate) log.startTime = log.startTime.toDate();
+            if (log.endTime && log.endTime.toDate) log.endTime = log.endTime.toDate();
+            return log;
+        });
         console.log(`Received ${selectedUserLogs.length} logs for ${name}.`);
         renderCalendar(); // Re-render calendar with updated log data
         // Re-render details if a date or month was previously selected
         if (selectedDateStr) {
-            showDailyLogs({ currentTarget: { dataset: { date: selectedDateStr } } }); // Simulate click event object
+             // Find the day element to simulate the click event object structure
+             const dayElement = calendarEl?.querySelector(`.calendar-day[data-date="${selectedDateStr}"]`);
+             if (dayElement) {
+                showDailyLogs({ currentTarget: dayElement }); // Simulate event with element
+             } else {
+                 console.warn("Previously selected day element not found after log update.");
+                 clearDetails(); // Clear details if element not found
+             }
         } else {
-             // If no specific date selected, check if month view was active (by checking title perhaps)
+             // If no specific date selected, check if month view was active
              if (detailsTitleEl?.textContent.includes('月 の業務集計')) {
                 showMonthlyLogs();
              } else {
@@ -236,17 +255,18 @@ function clearDetails() {
 
 /**
  * Displays the detailed logs and summary for a specific day clicked on the calendar.
- * @param {Event | object} event - The click event object or a simulated object with dataset.date.
+ * @param {Event | {currentTarget: HTMLElement}} event - The click event object or a simulated object containing the clicked element.
  */
 function showDailyLogs(event) {
-    const date = event.currentTarget?.dataset?.date;
-    if (!date || !detailsTitleEl || !detailsContentEl) return;
+    const dayElement = event.currentTarget;
+    const date = dayElement?.dataset?.date;
+    if (!date || !detailsTitleEl || !detailsContentEl || !dayElement) return;
 
     selectedDateStr = date; // Store selected date
 
     // Update calendar highlighting
     calendarEl?.querySelectorAll(".calendar-day.selected").forEach((el) => el.classList.remove("selected"));
-    event.currentTarget.classList?.add("selected"); // Add selected class to clicked day
+    dayElement.classList?.add("selected"); // Add selected class to clicked day
 
     // Filter logs for the selected day
     const logsForDay = selectedUserLogs.filter((log) => log.date === date);
@@ -258,33 +278,33 @@ function showDailyLogs(event) {
         let goalHtml = '';
 
         const dailyWorkSummary = {}; // Summarize work task durations
-        const goalContributions = {}; // Summarize goal contributions
+        const goalContributions = {}; // Summarize goal contributions { goalKey: { contribution, logs: [] } }
 
-        // Sort logs chronologically for timeline display
-        logsForDay.sort((a, b) => (a.startTime?.toMillis() || 0) - (b.startTime?.toMillis() || 0));
+        // Sort logs chronologically for timeline display (using Date objects)
+        logsForDay.sort((a, b) => (a.startTime?.getTime() || 0) - (b.startTime?.getTime() || 0));
 
         logsForDay.forEach((log) => {
             const startTimeStr = formatTime(log.startTime); // Format HH:MM
             const endTimeStr = formatTime(log.endTime);     // Format HH:MM
 
-            if (log.type === "goal") {
+            if (log.type === "goal" && log.goalTitle && log.task) { // Ensure required fields exist
                 // Aggregate goal contributions
                 const key = `[${log.task}] ${log.goalTitle}`;
                 if (!goalContributions[key]) {
                     goalContributions[key] = { contribution: 0, logs: [] };
                 }
-                goalContributions[key].contribution += log.contribution;
+                goalContributions[key].contribution += (log.contribution || 0);
                 goalContributions[key].logs.push(log); // Keep original log for potential editing context
 
-            } else if (log.task !== "休憩") { // Exclude breaks from work summary
+            } else if (log.task && log.task !== "休憩") { // Exclude breaks from work summary, ensure task exists
                 // Aggregate work task durations
                 const summaryKey = log.goalTitle ? `${log.task} (${log.goalTitle})` : log.task;
                 if (!dailyWorkSummary[summaryKey]) dailyWorkSummary[summaryKey] = 0;
-                dailyWorkSummary[summaryKey] += log.duration;
+                dailyWorkSummary[summaryKey] += (log.duration || 0);
 
-                // Build timeline item for work/break logs
+                // Build timeline item for work logs
                  const taskDisplay = log.goalTitle
-                     ? `${log.task} <span class="text-xs text-gray-500">(${escapeHtml(log.goalTitle)})</span>`
+                     ? `${escapeHtml(log.task)} <span class="text-xs text-gray-500">(${escapeHtml(log.goalTitle)})</span>`
                      : escapeHtml(log.task);
                  const memoHtml = log.memo ? `<p class="text-sm text-gray-600 mt-1 pl-2 border-l-2 border-gray-300 whitespace-pre-wrap">${escapeHtml(log.memo)}</p>` : "";
 
@@ -292,7 +312,7 @@ function showDailyLogs(event) {
                  const canEdit = authLevel === 'admin' || currentUserForDetailView === currentUserName;
                  const editButtons = canEdit ? `
                      <div class="flex gap-2 mt-1">
-                         <button class="edit-log-btn text-xs bg-blue-500 text-white font-bold py-1 px-2 rounded hover:bg-blue-600" data-log-id="${log.id}" data-duration="${log.duration}" data-task-name="${escapeHtml(log.task)}">時間修正</button>
+                         <button class="edit-log-btn text-xs bg-blue-500 text-white font-bold py-1 px-2 rounded hover:bg-blue-600" data-log-id="${log.id}" data-duration="${log.duration || 0}" data-task-name="${escapeHtml(log.task)}">時間修正</button>
                          <button class="edit-memo-btn text-xs bg-gray-500 text-white font-bold py-1 px-2 rounded hover:bg-gray-600" data-log-id="${log.id}" data-memo="${escapeHtml(log.memo || "")}">メモ修正</button>
                      </div>
                  ` : "";
@@ -304,18 +324,18 @@ function showDailyLogs(event) {
                      </div>
                      ${memoHtml}
                      <div class="flex justify-between items-center mt-1">
-                          <div class="text-gray-500 text-sm">合計: ${formatDuration(log.duration)}</div>
+                          <div class="text-gray-500 text-sm">合計: ${formatDuration(log.duration || 0)}</div>
                           ${editButtons}
                      </div>
                  </li>`;
 
-            } else { // Handle Breaks in timeline only
+            } else if (log.task === "休憩") { // Handle Breaks in timeline only
                  timelineHtml += `<li class="p-3 bg-yellow-50 rounded-lg">
                      <div class="flex justify-between items-center">
                          <span class="font-semibold text-yellow-800">${escapeHtml(log.task)}</span>
                          <span class="font-mono text-sm bg-gray-200 px-2 py-1 rounded">${startTimeStr} - ${endTimeStr}</span>
                      </div>
-                      <div class="text-gray-500 text-sm mt-1">合計: ${formatDuration(log.duration)}</div>
+                      <div class="text-gray-500 text-sm mt-1">合計: ${formatDuration(log.duration || 0)}</div>
                  </li>`;
             }
         });
@@ -345,6 +365,7 @@ function showDailyLogs(event) {
                  .sort((a, b) => a[0].localeCompare(b[0], "ja")) // Sort by goal key string
                  .forEach(([goalKey, goalData]) => {
                      const firstLog = goalData.logs[0]; // Get first log for metadata
+                     // Ensure firstLog exists before trying to access its properties
                      const editButtonHtml = canEdit && firstLog ? `
                          <button class="edit-contribution-btn text-xs bg-blue-500 text-white font-bold py-1 px-2 rounded hover:bg-blue-600"
                                  data-user-name="${escapeHtml(currentUserForDetailView)}"
@@ -383,8 +404,8 @@ function showMonthlyLogs() {
 
     if (!detailsTitleEl || !detailsContentEl || !monthYearEl) return;
 
-    const year = parseInt(monthYearEl.dataset.year);
-    const month = parseInt(monthYearEl.dataset.month); // 1-based month
+    const year = parseInt(monthYearEl.dataset.year || new Date().getFullYear().toString(), 10);
+    const month = parseInt(monthYearEl.dataset.month || (new Date().getMonth() + 1).toString(), 10); // 1-based month
     detailsTitleEl.textContent = `${year}年 ${month}月 の業務集計`;
 
     const monthStr = `${year}-${month.toString().padStart(2, "0")}`; // YYYY-MM format
@@ -397,14 +418,14 @@ function showMonthlyLogs() {
         const monthlyGoalContributions = {}; // Key: task/goal combo, Value: contribution count
 
         logsForMonth.forEach((log) => {
-            if (log.type === "goal") {
+            if (log.type === "goal" && log.goalTitle && log.task) {
                  const key = `[${log.task}] ${log.goalTitle}`;
                  if (!monthlyGoalContributions[key]) monthlyGoalContributions[key] = 0;
-                 monthlyGoalContributions[key] += log.contribution;
-            } else if (log.task !== "休憩") { // Exclude breaks from summary
+                 monthlyGoalContributions[key] += (log.contribution || 0);
+            } else if (log.task && log.task !== "休憩") { // Exclude breaks from summary
                 const summaryKey = log.goalTitle ? `${log.task} (${log.goalTitle})` : log.task;
                 if (!monthlySummary[summaryKey]) monthlySummary[summaryKey] = 0;
-                monthlySummary[summaryKey] += log.duration;
+                monthlySummary[summaryKey] += (log.duration || 0);
             }
         });
 
@@ -442,12 +463,11 @@ function showMonthlyLogs() {
 /**
  * Handles the click on the "時間修正" (Edit Time) button in the timeline.
  * Opens the edit log modal with the current duration.
- * @param {Event} event - The click event object.
+ * @param {HTMLElement} button - The button element that was clicked.
  */
-function handleEditLogClick(event) {
-    const button = event.currentTarget;
+function handleEditLogClick(button) {
     currentEditingLogId = button.dataset.logId;
-    const duration = parseInt(button.dataset.duration, 10);
+    const duration = parseInt(button.dataset.duration || "0", 10); // Default to 0 if missing
     const taskName = button.dataset.taskName;
 
     if (isNaN(duration) || !currentEditingLogId || !editLogModal || !editHoursInput || !editMinutesInput || !editLogTaskNameEl || !editLogErrorEl) {
@@ -459,7 +479,7 @@ function handleEditLogClick(event) {
     const hours = Math.floor(duration / 3600);
     const minutes = Math.floor((duration % 3600) / 60);
 
-    editLogTaskNameEl.textContent = `「${escapeHtml(taskName)}」の時間を修正`;
+    editLogTaskNameEl.textContent = `「${escapeHtml(taskName || '不明')}」の時間を修正`;
     editHoursInput.value = hours;
     editMinutesInput.value = minutes;
     editLogErrorEl.textContent = ""; // Clear previous errors
@@ -505,10 +525,9 @@ async function handleSaveLogDuration() {
 /**
  * Handles the click on the "メモ修正" (Edit Memo) button in the timeline.
  * Opens the edit memo modal with the current memo.
- * @param {Event} event - The click event object.
+ * @param {HTMLElement} button - The button element that was clicked.
  */
-function handleEditMemoClick(event) {
-    const button = event.currentTarget;
+function handleEditMemoClick(button) {
     currentEditingLogId = button.dataset.logId;
     const memo = button.dataset.memo || ""; // Get memo, default to empty string
 
@@ -550,10 +569,9 @@ async function handleSaveMemo() {
 /**
  * Handles the click on the "修正" (Edit) button for goal contributions.
  * Opens the contribution edit modal.
- * @param {Event} event - The click event object.
+ * @param {HTMLElement} btn - The button element that was clicked.
  */
-function handleEditContributionClick(event) {
-    const btn = event.currentTarget;
+function handleEditContributionClick(btn) {
     const { userName, goalId, taskName, goalTitle, date } = btn.dataset;
 
     if (!userName || !goalId || !taskName || !goalTitle || !date || !editContributionModal || !editContributionTitleEl || !editContributionInput || !editContributionErrorEl) {
@@ -620,6 +638,13 @@ async function handleSaveContribution() {
     const diff = newTotal - oldTotal; // Calculate the difference to adjust the overall goal progress
 
     // --- Update Overall Goal Progress in settings/tasks ---
+    // Ensure allTaskObjects is available
+    if (!allTaskObjects) {
+        console.error("allTaskObjects is not available for saving contribution.");
+        alert("タスクデータの読み込みエラーが発生しました。");
+        return;
+    }
+
     const taskIndex = allTaskObjects.findIndex((t) => t.name === taskName);
     if (taskIndex !== -1 && allTaskObjects[taskIndex].goals) {
         const goalIndex = allTaskObjects[taskIndex].goals.findIndex((g) => g.id === goalId);
@@ -635,7 +660,14 @@ async function handleSaveContribution() {
             try {
                 await updateDoc(tasksRef, { list: updatedTasks });
                 console.log(`Overall progress for goal ${goalId} updated by ${diff}.`);
-                 // updateGlobalTaskObjects(updatedTasks); // Update global state *after* successful save
+                 // Ensure updateGlobalTaskObjects is available and called
+                 if (typeof updateGlobalTaskObjects === 'function') {
+                    // Update global state *after* successful save
+                    // Note: Firestore listener in main.js should ideally handle this update.
+                    // updateGlobalTaskObjects(updatedTasks); // Avoid direct update if listener works reliably
+                 } else {
+                     console.error("updateGlobalTaskObjects function is not defined or imported.");
+                 }
             } catch (error) {
                  console.error("Error updating overall goal progress in settings/tasks:", error);
                  alert("工数全体の進捗更新中にエラーが発生しました。");
@@ -662,7 +694,6 @@ async function handleSaveContribution() {
     // Add a single new log entry representing the new total for the day, if total > 0
     if (newTotal > 0) {
         // We need the user's ID for the log entry. Find it based on the name.
-        // This assumes user names are unique identifiers for finding the ID here.
         let editedUserId = "unknown"; // Fallback ID
         const profileQuery = query(collection(db, "user_profiles"), where("name", "==", userName));
         try {
@@ -674,6 +705,13 @@ async function handleSaveContribution() {
             }
         } catch(error) {
              console.error(`Error fetching userId for ${userName}:`, error);
+        }
+
+        // Ensure Timestamp is available
+        if (typeof Timestamp === 'undefined') {
+             console.error("Firestore Timestamp is not defined. Ensure it's imported correctly.");
+             alert("タイムスタンプの作成中にエラーが発生しました。");
+             return;
         }
 
 
@@ -699,12 +737,13 @@ async function handleSaveContribution() {
         editContributionModal.classList.add("hidden"); // Hide modal on success
         currentEditingContribution = {}; // Clear editing state
 
-        // Fetch the successfully updated task list again to update global state reliably
-         const tasksRef = doc(db, "settings", "tasks");
-         const updatedTasksSnap = await getDoc(tasksRef);
-         if(updatedTasksSnap.exists()){
-             updateGlobalTaskObjects(updatedTasksSnap.data().list);
-         }
+        // Re-fetch the task list if updateGlobalTaskObjects wasn't called after settings update
+        // This ensures the goal progress reflects the change immediately.
+         // const tasksRef = doc(db, "settings", "tasks");
+         // const updatedTasksSnap = await getDoc(tasksRef);
+         // if(updatedTasksSnap.exists()){
+         //     updateGlobalTaskObjects(updatedTasksSnap.data().list);
+         // }
 
 
         // The onSnapshot listener for personalDetail logs will refresh the details pane.
@@ -790,28 +829,13 @@ function handleDeleteUserClick() {
     );
 }
 
-/**
- * Handles the "戻る" (Back) button click, navigating to the previous view.
- */
-function handleGoBack() {
-    // Basic implementation: Go back one step in history or default to HOST view
-    viewHistory.pop(); // Remove current view
-    const previousView = viewHistory.pop() || VIEWS.HOST; // Get previous or default
-    showView(previousView);
-}
+// Global handleGoBack is imported from main.js, no need to redefine here
+// /**
+//  * Handles the "戻る" (Back) button click, navigating to the previous view.
+//  */
+// function handleGoBack() {
+//     viewHistory.pop(); // Remove current view
+//     const previousView = viewHistory.pop() || VIEWS.HOST; // Get previous or default
+//     showView(previousView);
+// }
 
-
-/**
- * Simple HTML escaping function to prevent XSS.
- * @param {string | null | undefined} unsafe - The potentially unsafe string.
- * @returns {string} The escaped string.
- */
-function escapeHtml(unsafe) {
-    if (typeof unsafe !== 'string') return '';
-    return unsafe
-         .replace(/&/g, "&amp;")
-         .replace(/</g, "&lt;")
-         .replace(/>/g, "&gt;")
-         .replace(/"/g, "&quot;")
-         .replace(/'/g, "&#039;");
- }
