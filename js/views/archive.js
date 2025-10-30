@@ -1,16 +1,13 @@
 // js/views/archive.js
-import { allTaskObjects, allUserLogs } from "../main.js"; // Removed unused showView, VIEWS
-import { formatHoursMinutes } from "../utils.js"; // Removed unused getJSTDateString
+import { allTaskObjects, allUserLogs, handleGoBack } from "../main.js"; // Import handleGoBack, removed unused showView, VIEWS
+import { formatHoursMinutes, escapeHtml } from "../utils.js"; // Removed unused getJSTDateString, added escapeHtml
 // handleGoalDetailClick was likely meant for progress view, removing import
 // import { handleGoalDetailClick } from "./progress.js";
-import {
-  openGoalDetailsModal // Importing function to open modal
-} from "../components/modal.js";
-// handleRestoreGoalClick and handleDeleteGoal are now handled directly via onclick assignment below
+// openGoalDetailsModal is not used currently, removing import
 // import {
-//   handleRestoreGoalClick,
-//   handleDeleteGoal,
+//   openGoalDetailsModal // Importing function to open modal
 // } from "../components/modal.js";
+// handleRestoreGoalClick and handleDeleteGoal are now handled directly via event delegation below
 import { renderArchiveChart, renderArchiveTable, destroyCharts } from "../components/chart.js"; // Assume chart functions exist
 
 // State specific to the archive view
@@ -60,9 +57,12 @@ export function setupArchiveEventListeners() {
                 renderArchiveWeeklySummary();
             }
         } else if (event.target.id === 'archive-next-page-btn') {
-            // Check against total pages might be needed here if totalPages is calculated and stored
-            archiveDatePageIndex++;
-            renderArchiveWeeklySummary();
+            // Need totalPages to prevent going too far
+            const totalPages = calculateTotalPages(); // Helper function needed
+            if (archiveDatePageIndex < totalPages - 1) {
+                archiveDatePageIndex++;
+                renderArchiveWeeklySummary();
+            }
         }
     });
 
@@ -76,6 +76,8 @@ export function setupArchiveEventListeners() {
 
         if (target.classList.contains('restore-goal-btn')) {
             // Dynamically import modal functions when needed
+            // NOTE: Dynamic import might have issues in older environments or bundlers
+            // Consider static import in modal.js if problems arise.
             const { handleRestoreGoalClick } = await import('../components/modal.js');
             handleRestoreGoalClick(taskName, goalId);
         } else if (target.classList.contains('delete-goal-btn')) {
@@ -85,8 +87,7 @@ export function setupArchiveEventListeners() {
         }
      });
 
-    // Handle clicks on goal list items (for opening details modal, if applicable)
-    // Example: Clicking a goal button might open a details modal
+    // Handle clicks on goal list items
     archiveGoalListContainer?.addEventListener('click', (event) => {
         const button = event.target.closest('.list-item');
         if (button && button.dataset.goalId) {
@@ -99,11 +100,10 @@ export function setupArchiveEventListeners() {
 
             renderArchiveGoalDetails();
             renderArchiveWeeklySummary();
-            // Example: Open details modal instead of rendering inline
-            // openArchiveGoalDetailsModal(selectedArchiveTaskName, selectedArchiveGoalId);
         }
     });
 
+    // Handle clicks on task list items
     archiveTaskListContainer?.addEventListener('click', (event) => {
         const button = event.target.closest('.list-item');
          if (button && button.dataset.taskName) {
@@ -121,7 +121,6 @@ export function setupArchiveEventListeners() {
              if(archiveWeeklySummaryContainer) archiveWeeklySummaryContainer.classList.add("hidden");
              destroyCharts([archiveChartInstance]);
              archiveChartInstance = null;
-
 
             renderArchiveGoalList(); // Render goals for the selected task
          }
@@ -159,7 +158,7 @@ function renderArchiveTaskList() {
     button.className = `w-full text-left p-2 rounded-lg list-item hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-300 ${
       selectedArchiveTaskName === task.name ? "selected bg-indigo-100" : "" // Apply selected class
     }`;
-    button.textContent = task.name;
+    button.textContent = escapeHtml(task.name); // Escape name
     button.dataset.taskName = task.name;
     archiveTaskListContainer.appendChild(button);
   });
@@ -273,7 +272,7 @@ function renderArchiveGoalDetails() {
 
   // Buttons for restoring or permanently deleting the goal
   // Access global state - consider passing if refactoring
-  const readOnlyMode = window.isProgressViewReadOnly === true;
+  const readOnlyMode = window.isProgressViewReadOnly === true; // Assuming this global flag exists
   const buttonsHtml = readOnlyMode ? "" : `
     <div class="flex-shrink-0 ml-4 space-x-2">
         <button class="restore-goal-btn bg-yellow-500 text-white font-bold py-1 px-3 rounded hover:bg-yellow-600 text-sm" data-task-name="${escapeHtml(task.name)}" data-goal-id="${goal.id}">進行中に戻す</button>
@@ -345,7 +344,7 @@ function renderArchiveWeeklySummary() {
 
   // Paginate the dates (7 dates per page)
   const datesPerPage = 7;
-  const totalPages = Math.ceil(allActiveDates.length / datesPerPage);
+  const totalPages = calculateTotalPages(); // Use helper
 
   // Ensure page index is within valid bounds
   if (archiveDatePageIndex < 0) archiveDatePageIndex = 0;
@@ -353,12 +352,11 @@ function renderArchiveWeeklySummary() {
   else if (totalPages === 0) archiveDatePageIndex = 0; // Handle no dates case
 
   const startIndex = archiveDatePageIndex * datesPerPage;
-  const datesToShow = allActiveDates.slice(startIndex, startIndex + datesPerPage);
+  let datesToShow = allActiveDates.slice(startIndex, startIndex + datesPerPage);
 
-  if (datesToShow.length === 0 && allActiveDates.length > 0) {
-     // This case should ideally not happen with the corrected bounds check above
-     // but as a fallback, go to last page if possible
-     archiveDatePageIndex = Math.max(0, totalPages - 1);
+  // If slicing resulted in empty array but should have data (e.g., index was out of bounds)
+  if (datesToShow.length === 0 && allActiveDates.length > 0 && startIndex >= allActiveDates.length) {
+     archiveDatePageIndex = Math.max(0, totalPages - 1); // Go to last page
      const lastPageStartIndex = archiveDatePageIndex * datesPerPage;
      datesToShow = allActiveDates.slice(lastPageStartIndex, lastPageStartIndex + datesPerPage);
   }
@@ -425,6 +423,19 @@ function renderArchiveWeeklySummary() {
 
 }
 
+/** Helper function to calculate total pages needed for pagination */
+function calculateTotalPages() {
+    const task = allTaskObjects.find((t) => t.name === selectedArchiveTaskName);
+    const goal = task?.goals.find((g) => g.id === selectedArchiveGoalId);
+    if (!goal) return 0;
+
+    const relevantLogs = allUserLogs.filter((log) => log.goalId === goal.id);
+    const allActiveDates = [...new Set(relevantLogs.map((log) => log.date).filter(Boolean))];
+    const datesPerPage = 7;
+    return Math.ceil(allActiveDates.length / datesPerPage);
+}
+
+
 /** Renders the navigation buttons for the archive table */
 function renderArchiveTableNavigation(datesToShow, currentPage, totalPages) {
     if (!archiveWeeklySummaryContainer) return;
@@ -437,7 +448,7 @@ function renderArchiveTableNavigation(datesToShow, currentPage, totalPages) {
          <h4 class="text-lg font-bold text-center sm:text-left">貢献記録 (期間別)</h4>
          <div class="flex items-center justify-center gap-1 flex-wrap">
              <button id="archive-prev-page-btn" class="p-1 md:p-2 rounded-lg hover:bg-gray-200 text-xs md:text-sm ${currentPage <= 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${currentPage <= 1 ? 'disabled' : ''} title="前の期間へ">&lt; 前へ</button>
-             <span class="text-sm md:text-base font-semibold text-gray-700 whitespace-nowrap">${startStr} - ${endStr} (${currentPage}/${totalPages})</span>
+             <span class="text-sm md:text-base font-semibold text-gray-700 whitespace-nowrap">${escapeHtml(startStr)} - ${escapeHtml(endStr)} (${currentPage}/${totalPages})</span>
              <button id="archive-next-page-btn" class="p-1 md:p-2 rounded-lg hover:bg-gray-200 text-xs md:text-sm ${currentPage >= totalPages ? 'opacity-50 cursor-not-allowed' : ''}" ${currentPage >= totalPages ? 'disabled' : ''} title="次の期間へ">次へ &gt;</button>
          </div>
      </div>`;
@@ -447,6 +458,6 @@ function renderArchiveTableNavigation(datesToShow, currentPage, totalPages) {
 
 // Import handleGoBack from main.js or define it locally if needed
 import { handleGoBack } from "../main.js";
-// Simple HTML escaping function
-import { escapeHtml } from "../utils.js";
+// Simple HTML escaping function already imported from utils.js
+// import { escapeHtml } from "../utils.js";
 
