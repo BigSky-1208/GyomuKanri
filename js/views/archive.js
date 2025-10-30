@@ -165,14 +165,14 @@ function renderArchiveTaskList() {
 
   // If a task was previously selected, re-render its goal list
   if (selectedArchiveTaskName) {
-      const taskExists = tasksWithCompletedGoals.some(t => t.name === selectedArchiveTaskName);
-      if(taskExists){
-          renderArchiveGoalList();
-      } else {
-         // If selected task no longer has completed goals, clear selection
-         selectedArchiveTaskName = null;
-         if (archiveGoalListContainer) archiveGoalListContainer.innerHTML = '<p class="text-gray-500">業務を選択してください</p>';
-      }
+     const taskExists = tasksWithCompletedGoals.some(t => t.name === selectedArchiveTaskName);
+     if(taskExists){
+         renderArchiveGoalList();
+     } else {
+       // If selected task no longer has completed goals, clear selection
+       selectedArchiveTaskName = null;
+       if (archiveGoalListContainer) archiveGoalListContainer.innerHTML = '<p class="text-gray-500">業務を選択してください</p>';
+     }
   } else {
     // If no task is selected (initial load or after clearing), show placeholder
     if (archiveGoalListContainer) archiveGoalListContainer.innerHTML = '<p class="text-gray-500">業務を選択してください</p>';
@@ -304,9 +304,9 @@ function renderArchiveWeeklySummary() {
 
   if (!archiveWeeklySummaryContainer || !archiveChartContainer) return;
 
-  archiveWeeklySummaryContainer.innerHTML = ""; // Clear previous content
-  archiveChartContainer.innerHTML = "";   // Clear previous content
-  destroyCharts([archiveChartInstance]); // Destroy previous chart
+  archiveWeeklySummaryContainer.innerHTML = ""; // クリア
+  archiveChartContainer.innerHTML = "";     // クリア
+  destroyCharts([archiveChartInstance]); // 前のチャートを破棄
   archiveChartInstance = null;
 
   const task = allTaskObjects.find((t) => t.name === selectedArchiveTaskName);
@@ -322,17 +322,17 @@ function renderArchiveWeeklySummary() {
     return;
   }
 
-  // Filter logs relevant to this specific goal
+  // このゴールに関連するログを抽出
   const relevantLogs = allUserLogs.filter((log) => log.goalId === goal.id);
 
-  // Get unique user names who contributed to this goal
+  // 貢献があったユーザー名（重複除去）
   const usersWithContributions = [
-    ...new Set(relevantLogs.map((log) => log.userName).filter(Boolean)), // Filter out undefined/null names
+    ...new Set(relevantLogs.map((log) => log.userName).filter(Boolean)), // undefined/null を除外
   ].sort((a,b) => a.localeCompare(b, "ja"));
 
-  // Get all unique dates where work or contribution happened for this goal, sorted chronologically
+  // 稼働があった日付を一意に取得し、昇順でソート
   const allActiveDates = [
-    ...new Set(relevantLogs.map((log) => log.date).filter(Boolean)), // Filter out undefined/null dates
+    ...new Set(relevantLogs.map((log) => log.date).filter(Boolean)), // undefined/null を除外
   ].sort();
 
   if (allActiveDates.length === 0) {
@@ -341,4 +341,116 @@ function renderArchiveWeeklySummary() {
     archiveChartContainer.classList.add("hidden");
     return;
   }
+
+  // 日付をページング（1ページあたり7日）
+  const datesPerPage = 7;
+  const totalPages = calculateTotalPages(); // Use helper
+
+  // Ensure page index is within valid bounds
+  if (archiveDatePageIndex < 0) archiveDatePageIndex = 0;
+  if (archiveDatePageIndex >= totalPages && totalPages > 0) archiveDatePageIndex = totalPages - 1;
+  else if (totalPages === 0) archiveDatePageIndex = 0; // Handle no dates case
+
+  const startIndex = archiveDatePageIndex * datesPerPage;
+  let datesToShow = allActiveDates.slice(startIndex, startIndex + datesPerPage);
+
+  // If slicing resulted in empty array but should have data (e.g., index was out of bounds)
+  if (datesToShow.length === 0 && allActiveDates.length > 0 && startIndex >= allActiveDates.length) {
+     archiveDatePageIndex = Math.max(0, totalPages - 1); // Go to last page
+     const lastPageStartIndex = archiveDatePageIndex * datesPerPage;
+     datesToShow = allActiveDates.slice(lastPageStartIndex, lastPageStartIndex + datesPerPage);
+  }
+
+  // Prepare data structure for chart and table
+  const weeklyData = usersWithContributions.map((userName) => {
+    const userData = { name: userName, dailyData: [] };
+    datesToShow.forEach((dateStr) => {
+      const logsForDay = relevantLogs.filter(
+        (log) => log.userName === userName && log.date === dateStr
+      );
+      // Sum duration (excluding goal contribution logs)
+      const totalDuration = logsForDay
+        .filter((l) => l.type !== "goal")
+        .reduce((sum, log) => sum + (log.duration || 0), 0);
+      // Sum contribution (only goal contribution logs)
+      const totalContribution = logsForDay
+        .filter((l) => l.type === "goal")
+        .reduce((sum, log) => sum + (log.contribution || 0), 0);
+      // Calculate efficiency (contribution per hour)
+      const hours = totalDuration / 3600;
+      const efficiency =
+        hours > 0
+          ? parseFloat((totalContribution / hours).toFixed(1)) // Keep one decimal place
+          : 0;
+
+      userData.dailyData.push({
+        contribution: totalContribution,
+        duration: totalDuration,
+        efficiency: efficiency,
+      });
+    });
+    // Only include users who had activity on the *displayed dates*
+    if(userData.dailyData.some(d => d.contribution > 0 || d.duration > 0)){
+        return userData;
+    }
+    return null; // Return null if no activity in this period
+  }).filter(Boolean); // Filter out the null entries
+
+
+  // Render the line chart and the summary table if there's data for the period
+  if(weeklyData.length > 0 || datesToShow.length > 0) { // Show nav even if no user data for the week
+       // Render Navigation first
+       renderArchiveTableNavigation(datesToShow, archiveDatePageIndex + 1, totalPages);
+
+       if (weeklyData.length > 0) {
+           // Render chart and table only if there is user data
+           archiveChartInstance = renderArchiveChart(archiveChartContainer, datesToShow, weeklyData); // Store instance
+           renderArchiveTable(archiveWeeklySummaryContainer, datesToShow, weeklyData); // Appends table to existing nav
+           archiveChartContainer.classList.remove("hidden");
+       } else {
+           // If no user data for this specific week, show message in table area
+           archiveWeeklySummaryContainer.innerHTML += '<p class="text-gray-500 p-4 text-center">選択された期間に貢献記録はありません。</p>';
+           archiveChartContainer.innerHTML = '<p class="text-gray-500 p-4 text-center">選択された期間に貢献記録はありません。</p>'; // Also show message in chart area
+           archiveChartContainer.classList.remove("hidden");
+       }
+       archiveWeeklySummaryContainer.classList.remove("hidden"); // Show container (nav + table/message)
+  } else {
+       // Should be covered by the allActiveDates.length === 0 check earlier
+       archiveWeeklySummaryContainer.innerHTML = '<p class="text-gray-500 p-4 text-center">この工数に関する稼働記録はありません。</p>';
+       archiveWeeklySummaryContainer.classList.remove("hidden");
+       archiveChartContainer.classList.add("hidden");
+  }
+
+}
+
+/** Helper function to calculate total pages needed for pagination */
+function calculateTotalPages() {
+    const task = allTaskObjects.find((t) => t.name === selectedArchiveTaskName);
+    const goal = task?.goals.find((g) => g.id === selectedArchiveGoalId);
+    if (!goal) return 0;
+
+    const relevantLogs = allUserLogs.filter((log) => log.goalId === goal.id);
+    const allActiveDates = [...new Set(relevantLogs.map((log) => log.date).filter(Boolean))];
+    const datesPerPage = 7;
+    return Math.ceil(allActiveDates.length / datesPerPage);
+}
+
+
+/** Renders the navigation buttons for the archive table */
+function renderArchiveTableNavigation(datesToShow, currentPage, totalPages) {
+    if (!archiveWeeklySummaryContainer) return;
+
+    const startStr = datesToShow[0] || "?";
+    const endStr = datesToShow[datesToShow.length - 1] || "?";
+
+    let navHtml = `
+     <div class="flex flex-col sm:flex-row justify-between items-center mb-2 gap-2">
+         <h4 class="text-lg font-bold text-center sm:text-left">貢献記録 (期間別)</h4>
+         <div class="flex items-center justify-center gap-1 flex-wrap">
+             <button id="archive-prev-page-btn" class="p-1 md:p-2 rounded-lg hover:bg-gray-200 text-xs md:text-sm ${currentPage <= 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${currentPage <= 1 ? 'disabled' : ''} title="前の期間へ">&lt; 前へ</button>
+             <span class="text-sm md:text-base font-semibold text-gray-700 whitespace-nowrap">${escapeHtml(startStr)} - ${escapeHtml(endStr)} (${currentPage}/${totalPages})</span>
+             <button id="archive-next-page-btn" class="p-1 md:p-2 rounded-lg hover:bg-gray-200 text-xs md:text-sm ${currentPage >= totalPages ? 'opacity-50 cursor-not-allowed' : ''}" ${currentPage >= totalPages ? 'disabled' : ''} title="次の期間へ">次へ &gt;</button>
+         </div>
+     </div>`;
+    archiveWeeklySummaryContainer.innerHTML = navHtml; // Overwrite container with navigation
 }
