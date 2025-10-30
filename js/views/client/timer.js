@@ -1,13 +1,14 @@
 // js/views/client/timer.js
-import { db, userId, userName } from "../../main.js"; // Import global state
+import { db, userId, userName, userDisplayPreferences } from "../../main.js"; // Import global state, including userDisplayPreferences
 import { addDoc, collection, doc, getDoc, setDoc, Timestamp, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // Import Firestore functions
 import { formatDuration, getJSTDateString } from "../../utils.js"; // Import utility functions
 import { showConfirmationModal, hideConfirmationModal } from "../../components/modal.js"; // Import modal functions
 // Import functions from other client modules
 import { processReservations, cancelAllReservations } from "./reservations.js";
-// ★ ↓ 呼び出す関数名が変わるため、import も修正
 import { fetchColleaguesOnTaskStart, stopColleaguesListener } from "./colleagues.js";
 import { updateTaskDisplaysForSelection, checkIfWarningIsNeeded, resetClientStateUI, updateBreakButton } from "./clientUI.js";
+// ▼▼▼ 通知用関数をインポート (ステップ3で作成するファイル) ▼▼▼
+import { triggerEncouragementNotification } from "../../components/notification.js";
 
 // --- State variables managed by this module ---
 // Exporting them allows other client modules to read, but modification should ideally happen via functions in this module.
@@ -123,14 +124,36 @@ export async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTim
         if (timerInterval) clearInterval(timerInterval);
         timerInterval = setInterval(() => {
             if (startTime && timerDisplay) { // Ensure startTime and element exist
-                const elapsed = Math.floor((new Date() - startTime) / 1000);
+                const elapsed = Math.floor((new Date() - startTime) / 1000); // 経過秒数
                 timerDisplay.textContent = formatDuration(elapsed);
+
+                // --- ▼▼▼ お褒め通知ロジックを追加 ▼▼▼ ---
+                try {
+                    // 1. 設定値を取得 (userDisplayPreferences は main.js からインポート)
+                    const intervalMinutes = userDisplayPreferences?.notificationIntervalMinutes || 0;
+                    
+                    if (intervalMinutes > 0 && currentTask !== "休憩") { // 休憩中は通知しない
+                        const intervalSeconds = intervalMinutes * 60;
+                        
+                        // 2. 経過秒数が設定間隔の倍数になった瞬間を捉える
+                        if (elapsed > 0 && elapsed % intervalSeconds === 0) {
+                            
+                            // 3. 通知処理を呼び出す (notification.js からインポート)
+                            console.log(`Triggering notification for ${elapsed} seconds.`);
+                            triggerEncouragementNotification(elapsed);
+                        }
+                    }
+                } catch (error) {
+                    console.error("Error during notification check in timer interval:", error);
+                }
+                // --- ▲▲▲ お褒め通知ロジックここまで ▲▲▲ ---
+
             } else if (!startTime && timerInterval){ // Clean up interval if startTime becomes null somehow
                  clearInterval(timerInterval);
                  timerInterval = null;
                  if(timerDisplay) timerDisplay.textContent = "00:00:00";
             }
-        }, 1000);
+        }, 1000); // 1秒ごとに実行
          // Update the timer immediately
          if (startTime && timerDisplay) {
              const elapsed = Math.floor((new Date() - startTime) / 1000);
@@ -177,11 +200,8 @@ export async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTim
         // Consider how to handle this error - maybe revert state?
     }
 
-    // --- ▼▼▼ ここを修正 ▼▼▼ ---
     // Start listening for colleagues on the new task
-    // listenForColleagues(taskNameToLog); // ★古い呼び出しを削除
-    fetchColleaguesOnTaskStart(taskNameToLog); // ★新しい関数名 (getDocs) で呼び出し
-    // --- ▲▲▲ ここまで修正 ▲▲▲ ---
+    fetchColleaguesOnTaskStart(taskNameToLog);
     
     // Re-evaluate reservations based on the new state (might cancel/set timers)
     processReservations();
@@ -359,7 +379,9 @@ export async function handleStopClick(isAuto = false) {
         console.log("Stop clicked, but no task is running.");
          // Ensure UI/State is reset if somehow out of sync
         resetClientStateUI();
-        await updateDoc(doc(db, `work_status`, userId), { isWorking: false, currentTask: null, startTime: null, preBreakTask: null, currentGoalId: null, currentGoalTitle: null });
+        if (userId) { // ユーザーIDがある場合のみFirestore更新
+            await updateDoc(doc(db, `work_status`, userId), { isWorking: false, currentTask: null, startTime: null, preBreakTask: null, currentGoalId: null, currentGoalTitle: null });
+        }
         return;
     }
     // Stop the current task, marking it as the final stop for the session
