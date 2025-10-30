@@ -3,9 +3,10 @@ import { db, userId, userName } from "../../main.js"; // Import global state
 import { addDoc, collection, doc, getDoc, setDoc, Timestamp, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // Import Firestore functions
 import { formatDuration, getJSTDateString } from "../../utils.js"; // Import utility functions
 import { showConfirmationModal, hideConfirmationModal } from "../../components/modal.js"; // Import modal functions
-// Import functions from other client modules (will be created later)
+// Import functions from other client modules
 import { processReservations, cancelAllReservations } from "./reservations.js";
-import { listenForColleagues, stopColleaguesListener } from "./colleagues.js";
+// ★ ↓ 呼び出す関数名が変わるため、import も修正
+import { fetchColleaguesOnTaskStart, stopColleaguesListener } from "./colleagues.js";
 import { updateTaskDisplaysForSelection, checkIfWarningIsNeeded, resetClientStateUI, updateBreakButton } from "./clientUI.js";
 
 // --- State variables managed by this module ---
@@ -176,9 +177,12 @@ export async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTim
         // Consider how to handle this error - maybe revert state?
     }
 
-
+    // --- ▼▼▼ ここを修正 ▼▼▼ ---
     // Start listening for colleagues on the new task
-    listenForColleagues(taskNameToLog);
+    // listenForColleagues(taskNameToLog); // ★古い呼び出しを削除
+    fetchColleaguesOnTaskStart(taskNameToLog); // ★新しい関数名 (getDocs) で呼び出し
+    // --- ▲▲▲ ここまで修正 ▲▲▲ ---
+    
     // Re-evaluate reservations based on the new state (might cancel/set timers)
     processReservations();
 }
@@ -564,5 +568,56 @@ export function clearTimerInterval() {
     }
      if (timerDisplay) {
         timerDisplay.textContent = "00:00:00";
+    }
+}
+
+/**
+ * Restores the client's working state (e.g., on page load).
+ * Fetches the current status from Firestore and resumes the timer/task if active.
+ */
+export async function restoreClientState() {
+    if (!userId || !userName) {
+        console.log("Cannot restore state: No user ID or name.");
+        resetClientStateUI(); // Ensure UI is in logged-out state
+        return;
+    }
+    console.log(`Restoring client state for user: ${userName} (ID: ${userId})`);
+
+    const statusRef = doc(db, "work_status", userId);
+    try {
+        const docSnap = await getDoc(statusRef);
+
+        if (docSnap.exists() && docSnap.data().isWorking === true) {
+            // User was working when they left/reloaded
+            const status = docSnap.data();
+            const task = status.currentTask;
+            const goalId = status.currentGoalId || null;
+            const goalTitle = status.currentGoalTitle || null;
+            const taskStartTime = status.startTime?.toDate(); // Convert Timestamp to Date
+
+            if (task && taskStartTime) {
+                console.log(`Restoring active task "${task}" started at ${taskStartTime}`);
+                // Use startTask to resume the state, passing the original startTime
+                await startTask(task, goalId, goalTitle, taskStartTime);
+                 // UI updates (like dropdown selection) are handled inside startTask
+            } else {
+                // Status is inconsistent (isWorking=true but no task/startTime)
+                console.warn("Inconsistent state: isWorking=true but task/startTime missing.");
+                resetClientStateUI();
+                // Fix the status in Firestore
+                await updateDoc(statusRef, { isWorking: false, currentTask: null, startTime: null, preBreakTask: null, currentGoalId: null, currentGoalTitle: null });
+            }
+        } else {
+            // User was not working
+            console.log("User is not currently working.");
+            resetClientStateUI(); // Ensure UI is in the stopped state
+             // Ensure isWorking is explicitly false if doc exists
+             if(docSnap.exists() && docSnap.data().isWorking !== false) {
+                 await updateDoc(statusRef, { isWorking: false });
+             }
+        }
+    } catch (error) {
+        console.error("Error restoring client state:", error);
+        resetClientStateUI(); // Reset UI on error
     }
 }
