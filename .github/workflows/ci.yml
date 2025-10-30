@@ -1,14 +1,16 @@
 # ワークフローの名前
 name: CI Checks (JavaScript Linting) # 名前を実態に合わせて変更
 
+# ワークフローを実行する「きっかけ」（トリガー）
 on:
+  workflow_dispatch: # 手動実行を可能にするトリガー
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
 
 jobs:
-  lint: # ジョブ名を変更 (例: lint)
+  lint: # ジョブ名を lint に変更
     runs-on: ubuntu-latest
     steps:
       # 1. リポジトリのコードをチェックアウト
@@ -26,7 +28,7 @@ jobs:
         run: npm install eslint # ワークフロー内でESLintをインストール
 
       # 4. ESLintを実行 (jsフォルダ以下の全.jsファイルを対象)
-      #    注意: リポジトリに .eslintrc.js 等の設定ファイルが必要です
+      #    注意: リポジトリに eslint.config.js 等の設定ファイルが必要です
       - name: Run ESLint
         run: npx eslint js/**/*.js # jsフォルダ配下のJavaScriptファイルをチェック
 
