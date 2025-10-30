@@ -1,9 +1,11 @@
 // js/views/personalDetail.js
+
 // Import missing functions/variables
 import { db, userName as currentUserName, authLevel, viewHistory, showView, VIEWS, allTaskObjects, updateGlobalTaskObjects, handleGoBack } from "../../main.js"; // Import allTaskObjects, updateGlobalTaskObjects, handleGoBack
 // Import Timestamp and getDoc, etc.
 import { collection, query, where, onSnapshot, doc, updateDoc, writeBatch, getDocs, deleteDoc, Timestamp, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // Import Timestamp, getDoc, etc.
 import { renderUnifiedCalendar } from "../components/calendar.js"; // Import calendar rendering function
+// getJSTDateString が utils.js からインポートされていることを確認
 import { formatDuration, formatTime, getJSTDateString, escapeHtml } from "../utils.js"; // Import utility functions, including escapeHtml
 import { showConfirmationModal, hideConfirmationModal, editLogModal, editMemoModal, editContributionModal } from "../components/modal.js"; // Import modal elements and functions
 
@@ -149,10 +151,33 @@ function startListeningForUserLogs(name) {
     }
     console.log(`Starting log listener for user: ${name}`);
 
+    // --- ▼▼▼ ここから修正 ▼▼▼ ---
+
+    // 1. 表示対象の月の初日と最終日を計算
+    // (currentCalendarDate はこのファイルで既に定義・管理されています)
+    const year = currentCalendarDate.getFullYear();
+    const month = currentCalendarDate.getMonth(); // 0-based
+    
+    // getJSTDateString を使って "YYYY-MM-DD" 形式にする
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0); // その月の最終日
+    
+    const startDateStr = getJSTDateString(firstDay); // "YYYY-MM-01"
+    const endDateStr = getJSTDateString(lastDay);   // "YYYY-MM-30" など
+
+    console.log(`Listening for logs for ${name} between ${startDateStr} and ${endDateStr}`);
+
+    // 2. クエリを修正
     const q = query(
         collection(db, "work_logs"),
-        where("userName", "==", name)
+        where("userName", "==", name),
+        where("date", ">=", startDateStr), // ★追加: 月の初日
+        where("date", "<=", endDateStr)   // ★追加: 月の最終日
     );
+    // (注意: このクエリにはFirestoreの複合インデックスが必要です。
+    //  ブラウザのコンソールエラーに従ってインデックスを作成してください。)
+
+    // --- ▲▲▲ ここまで修正 ▲▲▲ ---
 
     personalDetailUnsubscribe = onSnapshot(q, (snapshot) => {
         selectedUserLogs = snapshot.docs.map((d) => {
@@ -163,7 +188,7 @@ function startListeningForUserLogs(name) {
             if (log.endTime && log.endTime.toDate) log.endTime = log.endTime.toDate();
             return log;
         });
-        console.log(`Received ${selectedUserLogs.length} logs for ${name}.`);
+        console.log(`Received ${selectedUserLogs.length} logs for ${name} for month ${startDateStr.substring(0, 7)}.`);
         renderCalendar(); // Re-render calendar with updated log data
         // Re-render details if a date or month was previously selected
         if (selectedDateStr) {
@@ -172,16 +197,14 @@ function startListeningForUserLogs(name) {
              if (dayElement) {
                 showDailyLogs({ currentTarget: dayElement }); // Simulate event with element
              } else {
-                 console.warn("Previously selected day element not found after log update.");
-                 clearDetails(); // Clear details if element not found
+                 // If selected date is no longer in the (filtered) logs, clear selection/details
+                 console.warn("Previously selected day element not found after log update (or filtered out).");
+                 clearDetails(); // Clear details
+                 showMonthlyLogs(); // Show monthly logs for the current month instead
              }
         } else {
-             // If no specific date selected, check if month view was active
-             if (detailsTitleEl?.textContent.includes('月 の業務集計')) {
-                showMonthlyLogs();
-             } else {
-                clearDetails(); // Otherwise clear details
-             }
+             // If no specific date selected, show monthly logs for the current view
+             showMonthlyLogs();
         }
     }, (error) => {
         console.error(`Error listening for logs for user ${name}:`, error);
@@ -215,7 +238,7 @@ function renderCalendar() {
         calendarEl: calendarEl,
         monthYearEl: monthYearEl,
         dateToDisplay: currentCalendarDate,
-        logs: selectedUserLogs, // Pass the cached logs for the current user
+        logs: selectedUserLogs, // Pass the cached (filtered by month) logs
         onDayClick: showDailyLogs, // Function to call when a day is clicked
         onMonthClick: showMonthlyLogs, // Function to call when the month/year title is clicked
     });
@@ -236,8 +259,21 @@ function renderCalendar() {
 function moveMonth(direction) {
     selectedDateStr = null; // Clear date selection when changing month
     currentCalendarDate.setMonth(currentCalendarDate.getMonth() + direction);
-    renderCalendar(); // Re-render calendar for the new month
-    clearDetails(); // Clear details pane
+    
+    // --- ★ここから修正★ ---
+    // renderCalendar(); // renderCalendar() は listener が呼び出すので不要
+    // clearDetails();   // clearDetails() も listener が呼び出すので不要
+    
+    // 代わりに、新しい月のリスナーを開始する
+    // (currentUserForDetailView はモジュール状態に保存されている前提)
+    if (currentUserForDetailView) {
+        startListeningForUserLogs(currentUserForDetailView);
+    } else {
+         console.error("Cannot move month, currentUserForDetailView is not set.");
+         clearDetails(); // フォールバック
+         renderCalendar(); // フォールバック
+    }
+    // --- ▲▲▲ ここまで修正 ▲▲▲ ---
 }
 
 /**
@@ -268,7 +304,7 @@ function showDailyLogs(event) {
     calendarEl?.querySelectorAll(".calendar-day.selected").forEach((el) => el.classList.remove("selected"));
     dayElement.classList?.add("selected"); // Add selected class to clicked day
 
-    // Filter logs for the selected day
+    // Filter logs for the selected day (selectedUserLogs は既に月でフィルタリング済み)
     const logsForDay = selectedUserLogs.filter((log) => log.date === date);
     detailsTitleEl.textContent = `${date} の業務内訳`; // Update details title
 
@@ -400,7 +436,12 @@ function showDailyLogs(event) {
  * Displays the monthly summary of work logs in the details pane.
  */
 function showMonthlyLogs() {
-    clearDetails(); // Clear date selection and details first
+    // ★ 修正: clearDetails() は月の切り替え時にリスナーが再実行される前に
+    // 呼び出されるため、ここでは実行しないか、選択解除だけにする
+    // clearDetails(); 
+    selectedDateStr = null; // 日付選択は解除
+    calendarEl?.querySelectorAll(".calendar-day.selected").forEach((el) => el.classList.remove("selected"));
+
 
     if (!detailsTitleEl || !detailsContentEl || !monthYearEl) return;
 
@@ -408,10 +449,12 @@ function showMonthlyLogs() {
     const month = parseInt(monthYearEl.dataset.month || (new Date().getMonth() + 1).toString(), 10); // 1-based month
     detailsTitleEl.textContent = `${year}年 ${month}月 の業務集計`;
 
-    const monthStr = `${year}-${month.toString().padStart(2, "0")}`; // YYYY-MM format
-    const logsForMonth = selectedUserLogs.filter(
-        (log) => log.date && log.date.startsWith(monthStr)
-    );
+    // ★ 修正: logsForMonth は selectedUserLogs (既に月でフィルタリング済み) をそのまま使う
+    // const monthStr = `${year}-${month.toString().padStart(2, "0")}`; // YYYY-MM format
+    // const logsForMonth = selectedUserLogs.filter(
+    //     (log) => log.date && log.date.startsWith(monthStr)
+    // );
+    const logsForMonth = selectedUserLogs; // ★そのまま使用
 
     if (logsForMonth.length > 0) {
         const monthlySummary = {}; // Key: task/goal combo, Value: duration
@@ -839,3 +882,5 @@ function handleDeleteUserClick() {
 //     showView(previousView);
 // }
 
+
+}
