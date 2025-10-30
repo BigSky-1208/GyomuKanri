@@ -1,11 +1,9 @@
 // js/views/personalDetail.js
-
 // Import missing functions/variables
 import { db, userName as currentUserName, authLevel, viewHistory, showView, VIEWS, allTaskObjects, updateGlobalTaskObjects, handleGoBack } from "../../main.js"; // Import allTaskObjects, updateGlobalTaskObjects, handleGoBack
 // Import Timestamp and getDoc, etc.
 import { collection, query, where, onSnapshot, doc, updateDoc, writeBatch, getDocs, deleteDoc, Timestamp, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // Import Timestamp, getDoc, etc.
 import { renderUnifiedCalendar } from "../components/calendar.js"; // Import calendar rendering function
-// getJSTDateString が utils.js からインポートされていることを確認
 import { formatDuration, formatTime, getJSTDateString, escapeHtml } from "../utils.js"; // Import utility functions, including escapeHtml
 import { showConfirmationModal, hideConfirmationModal, editLogModal, editMemoModal, editContributionModal } from "../components/modal.js"; // Import modal elements and functions
 
@@ -260,7 +258,7 @@ function moveMonth(direction) {
     selectedDateStr = null; // Clear date selection when changing month
     currentCalendarDate.setMonth(currentCalendarDate.getMonth() + direction);
     
-    // --- ★ここから修正★ ---
+    // --- ▼▼▼ ここから修正 ▼▼▼ ---
     // renderCalendar(); // renderCalendar() は listener が呼び出すので不要
     // clearDetails();   // clearDetails() も listener が呼び出すので不要
     
@@ -881,6 +879,3 @@ function handleDeleteUserClick() {
 //     const previousView = viewHistory.pop() || VIEWS.HOST; // Get previous or default
 //     showView(previousView);
 // }
-
-
-}
