@@ -341,3 +341,4 @@ function renderArchiveWeeklySummary() {
     archiveChartContainer.classList.add("hidden");
     return;
   }
+}
