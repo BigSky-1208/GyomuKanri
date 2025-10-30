@@ -66,30 +66,53 @@ CI/Lint: GitHub Actions, ESLint
 
 js/ フォルダ以下に、アプリケーションの主要なロジックがモジュールとして分割されています。
 
-.
+
 ├── index.html          # メインHTML
+
 ├── css/style.css       # カスタムスタイル
+
 ├── js/
+
 │   ├── main.js         # エントリーポイント、ビュー管理
+
 │   ├── firebase.js     # Firebase初期化
+
 │   ├── okta.js         # Okta認証ロジック
+
 │   ├── utils.js        # 共通ヘルパー関数
+
 │   ├── components/     # 再利用可能なコンポーネント
+
 │   │   ├── calendar.js # カレンダー描画
+
 │   │   ├── chart.js    # グラフ描画 (Chart.jsラッパー)
+
 │   │   ├── modal.js    # モーダル管理
+
 │   │   └── notification.js # AI通知機能
+
 │   ├── views/          # 各画面（ビュー）のロジック
+
 │   │   ├── client/     # 従業員ビュー (タイマー、UI、予約など)
+
 │   │   ├── host/       # 管理者ビュー (ステータス表示、ユーザー管理)
+
 │   │   ├── personalDetail/ # 個人詳細ビュー (ログデータ、表示、編集)
+
 │   │   ├── progress/   # 業務進捗ビュー (データ集計、UI)
+
 │   │   ├── archive.js  # アーカイブビュー
+
 │   │   ├── report.js   # 業務レポートビュー
+
 │   │   └── taskSettings.js # タスク設定ビュー
+
 │   └── excelExport.js  # Excel出力ロジック
+
 ├── .github/workflows/
+
 │   └── ci.yml          # GitHub Actions (ESLint)
+
 └── eslint.config.js    # ESLint 設定
 
 
