@@ -492,7 +492,10 @@ function renderProgressLineChart(weekDates, data, goal) {
         try {
             const date = new Date(dateStr + 'T00:00:00');
             return `${date.getMonth() + 1}/${date.getDate()}`;
-        } catch (/* e */) { return dateStr; } // Commented out unused variable 'e'
+        } catch (error) { // Use standard catch block
+             console.error("Error parsing date for chart label:", dateStr, error); // Log error
+             return dateStr; // Fallback to YYYY-MM-DD on error
+        }
     });
 
     const yAxisTitle = progressChartType === "contribution" ? "合計件数" : "時間あたり件数 (件/h)";
