@@ -110,6 +110,11 @@ async function initialize() {
     // listenForDisplayPreferences(); // これはuserId設定後にokta.jsから呼ぶ方が良い
     await fetchAllUserLogs(); // 初回ログ取得
 
+    // ★★★ 読み取り回数急増の原因となるため、定期実行をコメントアウト ★★★
+    // 定期的なログフェッチを設定 (例: 5分ごと)
+    // setInterval(fetchAllUserLogs, 5 * 60 * 1000);
+    // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+
     console.log("Initialization sequence potentially complete (waiting for Okta status).");
 }
 
@@ -529,4 +534,3 @@ export function setAdminLoginDestination(viewId) {
 // --- アプリケーション開始 ---
 // DOMが完全に読み込まれたら初期化処理を開始
 document.addEventListener("DOMContentLoaded", initialize);
-
