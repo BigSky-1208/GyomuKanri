@@ -1,6 +1,6 @@
 // js/views/client/clientUI.js
 import { allTaskObjects, userDisplayPreferences, updateGlobalTaskObjects } from "../../main.js"; // Import global state and config
-import { currentTask, currentGoalId, clearTimerInterval } from "./timer.js"; // Import state/functions from timer module
+import { currentTask, currentGoalId, startTime, clearTimerInterval } from "./timer.js"; // Import state/functions from timer module
 import { renderSingleGoalDisplay } from "./goalProgress.js"; // Import goal display function
 import { updateReservationDisplay } from "./reservations.js"; // Import reservation display function
 import { stopColleaguesListener } from "./colleagues.js"; // Import colleague listener stop function
@@ -23,6 +23,8 @@ const goalProgressContainer = document.getElementById("goal-progress-container")
 const goalSelectContainer = document.getElementById("goal-select-container");
 const changeWarningMessage = document.getElementById("change-warning-message");
 const taskDisplaySettingsList = document.getElementById("task-display-settings-list");
+// ▼▼▼ 通知設定の入力欄への参照を追加 ▼▼▼
+const notificationIntervalInput = document.getElementById("notification-interval-input");
 
 
 /**
@@ -289,6 +291,7 @@ export function updateBreakButton(isOnBreak) {
 
 /**
  * Renders the checkboxes for task display preferences in the settings section.
+ * Also sets the value for the notification interval input.
  */
 export function renderTaskDisplaySettings() {
     if (!taskDisplaySettingsList) return;
@@ -303,7 +306,7 @@ export function renderTaskDisplaySettings() {
 
     if (configurableTasks.length === 0) {
         taskDisplaySettingsList.innerHTML = '<p class="text-sm text-gray-500">設定可能な業務がありません。</p>';
-        return;
+        // (Don't return, still need to set notification input below)
     }
 
     configurableTasks.forEach((task) => {
@@ -320,65 +323,117 @@ export function renderTaskDisplaySettings() {
 
         taskDisplaySettingsList.appendChild(label);
     });
+
+    // ▼▼▼ 通知間隔入力欄に値を設定する処理を追加 ▼▼▼
+    if (notificationIntervalInput) {
+        // グローバルの設定値から分数を読み込む (0または未設定の場合は 0 をセット)
+        const currentInterval = userDisplayPreferences?.notificationIntervalMinutes || 0;
+        notificationIntervalInput.value = currentInterval;
+    }
 }
 
 /**
- * Handles changes to the task display preference checkboxes.
+ * Handles changes to the task display preference checkboxes AND the notification interval.
  * Updates the user's preferences in Firestore and re-renders the main task dropdown.
- * @param {Event} event - The change event from the checkbox.
+ * @param {Event} event - The change event from the checkbox or input.
  */
 export async function handleDisplaySettingChange(event) {
-    if (event.target.type !== "checkbox" || !event.target.classList.contains('task-display-checkbox') || !userId) return;
+    if (!userId || !event.target) return;
 
-    const taskName = event.target.dataset.taskName;
-    const isChecked = event.target.checked; // Checked means "show", unchecked means "hide"
+    // --- 1. Handle Task Display Checkbox changes ---
+    if (event.target.type === "checkbox" && event.target.classList.contains('task-display-checkbox')) {
+        const taskName = event.target.dataset.taskName;
+        const isChecked = event.target.checked; // Checked means "show", unchecked means "hide"
 
-    // Ensure preferences object and hiddenTasks array exist
-    const currentPreferences = { ...(userDisplayPreferences || { hiddenTasks: [] }) };
-    if (!currentPreferences.hiddenTasks) {
-        currentPreferences.hiddenTasks = [];
-    }
-
-    let updatedHiddenTasks;
-    if (isChecked) {
-        // Show task: remove from hiddenTasks array
-        updatedHiddenTasks = currentPreferences.hiddenTasks.filter(name => name !== taskName);
-    } else {
-        // Hide task: add to hiddenTasks array if not already present
-        if (!currentPreferences.hiddenTasks.includes(taskName)) {
-            updatedHiddenTasks = [...currentPreferences.hiddenTasks, taskName];
-        } else {
-            updatedHiddenTasks = currentPreferences.hiddenTasks; // Already hidden, no change needed
+        // Ensure preferences object and hiddenTasks array exist
+        const currentPreferences = { ...(userDisplayPreferences || { hiddenTasks: [] }) };
+        if (!currentPreferences.hiddenTasks) {
+            currentPreferences.hiddenTasks = [];
         }
+
+        let updatedHiddenTasks;
+        if (isChecked) {
+            // Show task: remove from hiddenTasks array
+            updatedHiddenTasks = currentPreferences.hiddenTasks.filter(name => name !== taskName);
+        } else {
+            // Hide task: add to hiddenTasks array if not already present
+            if (!currentPreferences.hiddenTasks.includes(taskName)) {
+                updatedHiddenTasks = [...currentPreferences.hiddenTasks, taskName];
+            } else {
+                updatedHiddenTasks = currentPreferences.hiddenTasks; // Already hidden, no change needed
+            }
+        }
+
+        // Only update if the array actually changed
+        if (JSON.stringify(updatedHiddenTasks) !== JSON.stringify(currentPreferences.hiddenTasks)) {
+            const newPreferences = { ...currentPreferences, hiddenTasks: updatedHiddenTasks };
+
+            // Save updated preferences to Firestore
+            const prefRef = doc(db, `user_profiles/${userId}/preferences/display`);
+            try {
+                await setDoc(prefRef, newPreferences, { merge: true }); // Use merge:true
+                console.log(`Display preferences updated for task: ${taskName}, Hidden: ${!isChecked}`);
+                // Firestore listener in main.js will update global userDisplayPreferences
+                // Re-render task options immediately based on the change
+                renderTaskOptions();
+            } catch (error) {
+                console.error("Error saving display preferences:", error);
+                alert("表示設定の保存中にエラーが発生しました。");
+                // Revert checkbox state on error
+                event.target.checked = !isChecked;
+            }
+        }
+        return; // Stop processing after handling checkbox
     }
 
-    // Only update if the array actually changed
-    if (JSON.stringify(updatedHiddenTasks) !== JSON.stringify(currentPreferences.hiddenTasks)) {
-        const newPreferences = { ...currentPreferences, hiddenTasks: updatedHiddenTasks };
+    // --- 2. Handle Notification Interval Input changes ---
+    if (event.target.id === "notification-interval-input") {
+        const inputElement = event.target;
+        let minutes = parseInt(inputElement.value, 10);
 
-        // Save updated preferences to Firestore
+        // 入力が空欄、または数値でない、または負の数の場合は0として扱う
+        if (isNaN(minutes) || minutes < 0) {
+            minutes = 0;
+            // (オプション) 不正な入力の場合、UIを0にリセット
+            // inputElement.value = 0; 
+        }
+        
+        // 値が大きすぎる場合の上限設定 (例: 120分 = 2時間)
+        const MAX_MINUTES = 120;
+        if (minutes > MAX_MINUTES) {
+            minutes = MAX_MINUTES;
+            inputElement.value = MAX_MINUTES; // UIにも反映
+        }
+
+        // 現在の保存されている設定値と比較
+        const currentInterval = userDisplayPreferences?.notificationIntervalMinutes || 0;
+        if (minutes === currentInterval) {
+            // (オプション) もしUIの表示だけが補正された場合（例: "abc"->0）、
+            // UIの値は変わったが保存値は変わらないケースもある。
+            // 念のためUIの値を正しい数値に再セットする。
+            inputElement.value = minutes;
+            return; // 変更がなければ何もしない
+        }
+        
+        // Firestoreに保存
+        const newPreferences = { 
+            ...(userDisplayPreferences || { hiddenTasks: [] }), // 既存の設定（hiddenTasksなど）を保持
+            notificationIntervalMinutes: minutes // 新しい間隔（分）をセット
+        };
+        
         const prefRef = doc(db, `user_profiles/${userId}/preferences/display`);
         try {
-            await setDoc(prefRef, newPreferences, { merge: true }); // Use merge:true to avoid overwriting other potential preferences
-            console.log(`Display preferences updated for task: ${taskName}, Hidden: ${!isChecked}`);
-
-            // Update local state (assuming updateGlobalTaskObjects doesn't handle preferences)
-            // Ideally, main.js listener should update userDisplayPreferences,
-            // but for immediate UI response, we update it here too.
-            // Be cautious about potential race conditions if main.js listener is slow.
-             // userDisplayPreferences = newPreferences; // Direct update (use with caution)
-             // OR trigger a refresh/re-fetch of preferences if using a more complex state management
-
-             // Re-render the task dropdown immediately to reflect the change
-            renderTaskOptions();
-
-
+            await setDoc(prefRef, newPreferences, { merge: true });
+            console.log(`Notification interval saved: ${minutes} minutes.`);
+            // Firestore listener in main.js will update global userDisplayPreferences
+            
         } catch (error) {
-            console.error("Error saving display preferences:", error);
-            alert("表示設定の保存中にエラーが発生しました。");
-            // Revert checkbox state on error
-            event.target.checked = !isChecked;
+            console.error("Error saving notification interval:", error);
+            alert("通知設定の保存中にエラーが発生しました。");
+            // エラー時に入力値を元に戻す
+            inputElement.value = currentInterval;
         }
+        return; // Stop processing after handling input
     }
 }
 
