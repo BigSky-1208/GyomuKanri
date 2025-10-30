@@ -1,491 +1,630 @@
-// js/components/modal.js - モーダルダイアログ管理
-
-// Import necessary global state/functions (escapeHtml might be needed if dynamically adding HTML)
-import { allTaskObjects, /* escapeHtml */ } from "../main.js";
-
-// --- DOM Element References ---
-// 各モーダル要素への参照を取得し、exportして他のモジュールからも参照可能にする
-export const confirmationModal = document.getElementById("confirmation-modal");
-export const adminPasswordView = document.getElementById("admin-password-view"); // Strictly a view, but acts like a modal
-export const editLogModal = document.getElementById("edit-log-modal");
-export const fixCheckoutModal = document.getElementById("fix-checkout-modal");
-export const editMemoModal = document.getElementById("edit-memo-modal");
-export const helpModal = document.getElementById("help-modal");
-export const goalDetailsModal = document.getElementById("goal-details-modal");
-export const goalModal = document.getElementById("goal-modal");
-export const exportExcelModal = document.getElementById("export-excel-modal");
-export const editContributionModal = document.getElementById("edit-contribution-modal");
-export const breakReservationModal = document.getElementById("break-reservation-modal");
-export const addUserModal = document.getElementById("add-user-modal");
-
-// Confirmation Modal Elements
-const modalMessage = document.getElementById("modal-message");
-// These are reassigned via cloneNode, so declare with let if global scope modification is intended,
-// but it's safer to shadow them inside the function if possible.
-// Declaring globally for now as per original structure, but reassignment inside function might need care.
-let modalConfirmBtn = document.getElementById("modal-confirm-btn");
-let modalCancelBtn = document.getElementById("modal-cancel-btn");
+// js/views/archive.js
+import { allTaskObjects, allUserLogs, handleGoBack, showView, VIEWS } from "../../main.js"; // Import necessary state and functions, including handleGoBack, showView, VIEWS
+// import { formatHoursMinutes } from "../utils.js"; // Import utility functions - formatHoursMinutes IS used
+// import { handleGoalDetailClick } from "./progress.js"; // Import shared function if needed - Seems unused, commenting out
+// Import specific handlers for restore/delete actions
+import { showConfirmationModal, hideConfirmationModal /* openGoalDetailsModal */ } from "../components/modal.js"; // Import modal functions
+// Import functions to handle actual restore/delete logic from where they are defined (e.g., taskSettings.js)
+import { handleRestoreGoal, handleDeleteGoalCompletely } from "./taskSettings.js"; // Assuming restore/delete logic resides here
+// Import chart/table functions
+import { createLineChart, destroyCharts } from "../components/chart.js"; // Import chart functions
+import { getJSTDateString, formatHoursMinutes, escapeHtml } from "../utils.js"; // Import necessary utils
 
 
-// Goal Modal Elements
-const goalModalTitle = document.getElementById("goal-modal-title");
-const goalModalTaskNameInput = document.getElementById("goal-modal-task-name");
-const goalModalGoalIdInput = document.getElementById("goal-modal-goal-id");
-const goalModalTitleInput = document.getElementById("goal-modal-title-input");
-const goalModalTargetInput = document.getElementById("goal-modal-target-input");
-const goalModalDeadlineInput = document.getElementById("goal-modal-deadline-input");
-const goalModalEffortDeadlineInput = document.getElementById("goal-modal-effort-deadline-input");
-const goalModalMemoInput = document.getElementById("goal-modal-memo-input");
-// const goalModalSaveBtn = document.getElementById("goal-modal-save-btn"); // Save action is in taskSettings.js or progress.js - Removed unused variable
-const goalModalCancelBtn = document.getElementById("goal-modal-cancel-btn");
+// State specific to the archive view
+let selectedArchiveTaskName = null;
+let selectedArchiveGoalId = null;
+let archiveDatePageIndex = 0; // Index for paging through dates in the table
+let archiveChartInstance = null; // Store chart instance
 
-// Add User Modal Elements
-const addUserModalNameInput = document.getElementById("add-user-modal-name-input");
-const addUserModalError = document.getElementById("add-user-modal-error");
-// const addUserModalSaveBtn = document.getElementById("add-user-modal-save-btn"); // Save action in userManagement.js - Removed unused variable
-const addUserModalCancelBtn = document.getElementById("add-user-modal-cancel-btn");
+// Function to initialize the archive view
+export function initializeArchiveView() {
+  console.log("Initializing Archive View...");
+  // Reset selections when initializing the view? Or persist them? Let's reset for now.
+  // selectedArchiveTaskName = null;
+  // selectedArchiveGoalId = null;
+  // archiveDatePageIndex = 0; // Keep page index? Let's reset.
+  archiveDatePageIndex = 0;
 
-// Help Modal Elements
-const helpModalTitle = document.getElementById("help-modal-title");
-const helpModalContent = document.getElementById("help-modal-content");
-const helpModalCloseBtn = document.getElementById("help-modal-close-btn");
+  renderArchiveTaskList(); // Render the initial task list
 
-// Goal Details Modal Elements
-const goalDetailsModalTitle = document.getElementById("goal-details-modal-title");
-const goalDetailsModalContent = document.getElementById("goal-details-modal-content");
-const goalDetailsModalCloseBtn = document.getElementById("goal-details-modal-close-btn");
+  // If a task/goal was previously selected, re-render the necessary parts
+   if (selectedArchiveTaskName) {
+       renderArchiveGoalList();
+       if (selectedArchiveGoalId) {
+           renderArchiveGoalDetails();
+           renderArchiveWeeklySummary();
+       } else {
+           // Clear goal-specific sections if only task was selected
+           const goalListContainer = document.getElementById("archive-goal-list");
+           const detailsContainer = document.getElementById("archive-goal-details-container");
+           const weeklyContainer = document.getElementById("archive-weekly-summary-container");
+           const chartContainer = document.getElementById("archive-chart-container");
+           if(goalListContainer) goalListContainer.innerHTML = '<p class="text-gray-500">完了済み工数を選択</p>'; // Reset goal list placeholder
+           if(detailsContainer) detailsContainer.classList.add("hidden");
+           if(weeklyContainer) weeklyContainer.classList.add("hidden");
+           if(chartContainer) chartContainer.classList.add("hidden");
+           destroyCharts([archiveChartInstance]); // Destroy chart if goal deselected
+           archiveChartInstance = null;
+       }
+   } else {
+        // Clear everything if no task selected
+       const goalListContainer = document.getElementById("archive-goal-list");
+       const detailsContainer = document.getElementById("archive-goal-details-container");
+       const weeklyContainer = document.getElementById("archive-weekly-summary-container");
+       const chartContainer = document.getElementById("archive-chart-container");
+       if(goalListContainer) goalListContainer.innerHTML = '<p class="text-gray-500">業務を選択してください</p>';
+       if(detailsContainer) detailsContainer.classList.add("hidden");
+       if(weeklyContainer) weeklyContainer.classList.add("hidden");
+       if(chartContainer) chartContainer.classList.add("hidden");
+       destroyCharts([archiveChartInstance]); // Ensure chart is destroyed
+       archiveChartInstance = null;
+   }
 
-// Break Reservation Modal Elements
-const breakReservationModalTitle = document.getElementById("break-reservation-modal-title");
-const breakReservationTimeInput = document.getElementById("break-reservation-time-input");
-const breakReservationIdInput = document.getElementById("break-reservation-id");
-// const breakReservationSaveBtn = document.getElementById("break-reservation-save-btn"); // Save action in reservations.js - Removed unused variable
-const breakReservationCancelBtn = document.getElementById("break-reservation-cancel-btn");
-
-// Admin Password Modal Elements (References for Cancel button)
-const adminPasswordCancelBtn = document.getElementById("admin-password-cancel-btn");
-const adminPasswordError = document.getElementById("admin-password-error");
-const adminPasswordInput = document.getElementById("admin-password-input");
-
-// --- State ---
-let onConfirmCallback = null; // Callback function for confirmation modal
-
-// --- Basic Modal Functions ---
-
-/**
- * Hides the specified modal element.
- * @param {HTMLElement} modalElement - The modal element to hide.
- */
-export function closeModal(modalElement) {
-    if (modalElement) {
-        modalElement.classList.add("hidden");
-    }
 }
 
 /**
- * Shows the specified modal element.
- * @param {HTMLElement} modalElement - The modal element to show.
+ * Sets up event listeners for the Archive View.
  */
-function showModal(modalElement) {
-    if (modalElement) {
-        modalElement.classList.remove("hidden");
-    }
-}
+export function setupArchiveEventListeners() {
+    console.log("Setting up Archive View event listeners...");
+    const backButton = document.getElementById("back-to-progress-from-archive");
+    backButton?.addEventListener("click", handleGoBack); // Use global go back
 
+     // Event delegation for dynamically added buttons (restore, delete)
+     const detailsContainer = document.getElementById("archive-goal-details-container");
+     detailsContainer?.addEventListener('click', (event) => {
+         const target = event.target;
+         const taskName = target.dataset.taskName;
+         const goalId = target.dataset.goalId;
 
-// --- Confirmation Modal ---
-
-/**
- * Displays a confirmation modal with a message and sets callbacks for buttons.
- * @param {string} message - The message to display in the modal.
- * @param {function} onConfirm - Function to call when the confirm button is clicked.
- * @param {function} [onCancel=hideConfirmationModal] - Function to call when cancel is clicked (defaults to hiding modal).
- */
-export function showConfirmationModal(message, onConfirm, onCancel = hideConfirmationModal) {
-    if (!confirmationModal || !modalMessage || !modalConfirmBtn || !modalCancelBtn) {
-        console.error("Confirmation modal elements not found.");
-        // Fallback to basic confirm if elements are missing
-        if (confirm(message)) { // Using native confirm as a last resort fallback
-            if (typeof onConfirm === 'function') onConfirm();
-        } else {
-            if (typeof onCancel === 'function') onCancel();
-        }
-        return;
-    }
-
-    modalMessage.textContent = message; // Set the message text
-    onConfirmCallback = onConfirm; // Store the confirm callback
-
-    // --- Assign Button Listeners ---
-    // Remove previous listeners before adding new ones to prevent multiple calls
-    // Clone and replace to ensure listeners are clean
-    const newConfirmBtn = modalConfirmBtn.cloneNode(true);
-    modalConfirmBtn.parentNode.replaceChild(newConfirmBtn, modalConfirmBtn);
-    newConfirmBtn.addEventListener('click', () => {
-        if (typeof onConfirmCallback === 'function') {
-            onConfirmCallback(); // Execute the stored callback
-        }
-        // Let the callback handle hiding the modal if necessary
-    });
-    // Update the reference AFTER replacing
-    modalConfirmBtn = newConfirmBtn;
-
-
-    const newCancelBtn = modalCancelBtn.cloneNode(true);
-    modalCancelBtn.parentNode.replaceChild(newCancelBtn, modalCancelBtn);
-    newCancelBtn.addEventListener('click', () => {
-         if (typeof onCancel === 'function') {
-             onCancel(); // Execute the cancel callback
+         if (target.classList.contains('restore-goal-btn') && taskName && goalId) {
+             handleRestoreGoalClick(taskName, goalId); // Call restore handler
+         } else if (target.classList.contains('delete-goal-btn') && taskName && goalId) {
+             handleDeleteGoalClick(taskName, goalId); // Call delete handler
          }
-         // Ensure modal hides even if onCancel doesn't explicitly do it.
-         hideConfirmationModal();
-    });
-    // Update the reference AFTER replacing
-    modalCancelBtn = newCancelBtn;
-    // --- End Assign Button Listeners ---
+     });
 
-
-    showModal(confirmationModal); // Show the modal
-}
-
-/**
- * Hides the confirmation modal and clears the confirm callback.
- */
-export function hideConfirmationModal() {
-    closeModal(confirmationModal);
-    onConfirmCallback = null; // Clear the callback when hiding
-}
-
-
-// --- Goal Add/Edit Modal ---
-
-/**
- * Opens the Goal Add/Edit modal and populates it based on the mode and data.
- * @param {'add' | 'edit'} mode - 'add' for new goal, 'edit' for existing.
- * @param {string} taskName - The name of the parent task.
- * @param {string} [goalId=null] - The ID of the goal to edit (null if adding).
- */
-export function openGoalModal(mode, taskName, goalId = null) {
-    // Ensure all required elements exist
-    if (!goalModal || !goalModalTitle || !goalModalTaskNameInput || !goalModalGoalIdInput ||
-        !goalModalTitleInput || !goalModalTargetInput || !goalModalDeadlineInput ||
-        !goalModalEffortDeadlineInput || !goalModalMemoInput) {
-        console.error("Goal modal elements not found.");
-        alert("工数編集モーダルを開けません。");
-        return;
-    }
-
-
-    goalModalTaskNameInput.value = taskName; // Store parent task name (hidden input)
-    goalModalGoalIdInput.value = goalId || ""; // Store goal ID if editing (hidden input)
-
-    // Reset fields
-    goalModalTitleInput.value = "";
-    goalModalTargetInput.value = "";
-    goalModalDeadlineInput.value = "";
-    goalModalEffortDeadlineInput.value = "";
-    goalModalMemoInput.value = "";
-
-    if (mode === 'edit' && goalId) {
-        goalModalTitle.textContent = "工数の編集";
-        // Find the goal data from the global state
-        const task = allTaskObjects.find((t) => t.name === taskName);
-        const goal = task?.goals?.find((g) => g.id === goalId);
-
-        if (goal) {
-            // Populate fields with existing goal data
-            goalModalTitleInput.value = goal.title || "";
-            goalModalTargetInput.value = goal.target || "";
-            // Ensure deadline is formatted as YYYY-MM-DD for the date input
-            goalModalDeadlineInput.value = goal.deadline || ""; // Assumes deadline is stored as YYYY-MM-DD string
-            goalModalEffortDeadlineInput.value = goal.effortDeadline || ""; // Assumes effortDeadline is stored as YYYY-MM-DD string
-            goalModalMemoInput.value = goal.memo || "";
-        } else {
-             console.error(`Goal with ID ${goalId} not found in task ${taskName} for editing.`);
-             alert("編集対象の工数が見つかりません。");
-             return; // Don't show modal if goal data is missing
+     // Event delegation for weekly summary navigation (using page index now)
+     const weeklyContainer = document.getElementById("archive-weekly-summary-container");
+     weeklyContainer?.addEventListener('click', (event) => {
+        const target = event.target;
+        if (target.id === 'archive-prev-page-btn') {
+            if (archiveDatePageIndex > 0) {
+                archiveDatePageIndex--;
+                renderArchiveWeeklySummary();
+            }
+        } else if (target.id === 'archive-next-page-btn') {
+            // Need total pages to check boundary, calculate within render or pass it
+            // For now, increment and let render function handle boundary
+            archiveDatePageIndex++;
+            renderArchiveWeeklySummary(); // Re-render with new page index
         }
-    } else {
-        // Use escapeHtml if taskName might contain special characters, though unlikely here
-        goalModalTitle.textContent = `[${taskName}] に工数を追加`; // Show task name in title for adding
-    }
+     });
 
-    showModal(goalModal); // Show the modal
-    goalModalTitleInput.focus(); // Focus the title input
+
+    console.log("Archive View event listeners set up complete.");
 }
 
-/**
- * Closes the Goal Add/Edit modal.
- */
-export function closeGoalModal() {
-    closeModal(goalModal);
-}
 
-// --- Add User Modal ---
+// Function to render the list of tasks with completed goals
+function renderArchiveTaskList() {
+  const taskListContainer = document.getElementById("archive-task-list");
+  if (!taskListContainer) return;
+  taskListContainer.innerHTML = ""; // Clear previous list
 
-/**
- * Opens the Add User modal.
- */
-export function openAddUserModal() {
-     if (!addUserModal || !addUserModalNameInput || !addUserModalError) return;
-    addUserModalNameInput.value = ""; // Clear input
-    addUserModalError.textContent = ""; // Clear error
-    showModal(addUserModal);
-    addUserModalNameInput.focus();
-}
+  // Filter tasks that have at least one completed goal
+  const tasksWithCompletedGoals = allTaskObjects.filter(
+    (task) => task.goals && task.goals.some((g) => g.isComplete)
+  );
 
-/**
- * Closes the Add User modal.
- */
-export function closeAddUserModal() {
-    closeModal(addUserModal);
-}
+  // Sort tasks alphabetically (Japanese locale)
+  tasksWithCompletedGoals.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja"));
 
-// --- Help Modal ---
+  if (tasksWithCompletedGoals.length === 0) {
+    taskListContainer.innerHTML =
+      '<p class="text-gray-500 p-2">完了済みの工数がある業務はありません。</p>';
+    // Clear subsequent lists/details if no tasks are available
+    selectedArchiveTaskName = null; // Clear selection
+    selectedArchiveGoalId = null;
+    const goalListContainer = document.getElementById("archive-goal-list");
+    const detailsContainer = document.getElementById("archive-goal-details-container");
+    const weeklyContainer = document.getElementById("archive-weekly-summary-container");
+    const chartContainer = document.getElementById("archive-chart-container");
+    if(goalListContainer) goalListContainer.innerHTML = '<p class="text-gray-500">業務を選択してください</p>';
+    if(detailsContainer) detailsContainer.classList.add("hidden");
+    if(weeklyContainer) weeklyContainer.classList.add("hidden");
+    if(chartContainer) chartContainer.classList.add("hidden");
+    destroyCharts([archiveChartInstance]);
+    archiveChartInstance = null;
+    return;
+  }
 
-/**
- * Displays the help modal with content specific to the provided page key.
- * @param {string} pageKey - Key identifying the help content (e.g., 'client', 'host').
- */
-export function showHelpModal(pageKey) {
-    if (!helpModal || !helpModalTitle || !helpModalContent) {
-         console.error("Help modal elements not found.");
-         return;
-    }
+  // Render the list of tasks with completed goals
+  tasksWithCompletedGoals.forEach((task) => {
+    const button = document.createElement("button");
+    // Apply selected class if this task matches the stored state
+    button.className = `w-full text-left p-2 rounded-lg list-item hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-300 ${
+      selectedArchiveTaskName === task.name ? "selected bg-indigo-100" : ""
+    }`;
+    button.textContent = task.name;
+    button.dataset.taskName = task.name;
 
-    let title = "ヘルプ";
-    let content = "<p>ヘルプコンテンツが見つかりません。</p>";
+    // Event listener for selecting a task
+    button.onclick = () => {
+      selectedArchiveTaskName = task.name;
+      selectedArchiveGoalId = null; // Reset goal selection when task changes
+      archiveDatePageIndex = 0; // Reset date page index
 
-    // Define help content (can be moved to a separate JSON or module for larger apps)
-    const helpContents = {
-        client: {
-            title: "従業員画面ヘルプ",
-            content: `
-                <p class="font-semibold mb-2">従業員として業務時間を記録するためのメイン画面です。</p>
-                <h4 class="font-bold mt-3 mb-1 text-base border-b">基本操作</h4>
-                <ul class="list-disc list-inside ml-4 space-y-1 text-sm text-gray-700">
-                    <li><strong>業務の記録:</strong> 「業務内容」と、必要であれば「工数」を選択し、「業務変更」ボタン（初回は「業務開始」）を押して記録を開始・変更します。「その他」を選んだ場合は詳細を入力してください。</li>
-                    <li><strong>休憩:</strong> 「休憩開始」ボタンで休憩時間を記録できます。休憩を終了する際は、ボタンが「休憩前の業務に戻る」に変わるので、それを押してください。</li>
-                    <li><strong>帰宅:</strong> 1日の業務が終了したら「帰宅」ボタンを押してください。最後のタスクが保存され、タイマーがリセットされます。</li>
-                    <li><strong>メモ:</strong> 現在の業務に関するメモを自由に残せます。タスクを変更するか帰宅すると、その直前の業務ログにメモが紐づけられます。</li>
-                    <li><strong>警告:</strong> 選択中の業務/工数が現在記録中のものと違う場合、ボタンが点滅し警告が表示されます。「業務変更」を押して記録を更新してください。</li>
-                </ul>
-                <h4 class="font-bold mt-3 mb-1 text-base border-b">補助機能</h4>
-                <ul class="list-disc list-inside ml-4 space-y-1 text-sm text-gray-700">
-                    <li><strong>工数進捗:</strong> 左カラムで工数を選択すると、右カラム上部に進捗が表示されます。達成件数を入力し「加算」ボタンでチーム全体の進捗に反映できます。</li>
-                    <li><strong>予約設定:</strong> 休憩や帰宅を指定時刻に自動実行する予約を設定できます（毎日繰り返し）。手動で操作するとその日の予約はキャンセルされます。</li>
-                     <li><strong>表示設定:</strong> ドロップダウンに表示したくない業務を非表示に設定できます。「休憩」は非表示にできません。</li>
-                    <li><strong>同僚表示:</strong> 現在記録中の業務を、他の誰が同時に行っているかを表示します。相手の「今日の一言」も表示されます。</li>
-                    <li><strong>戸村さんステータス:</strong> 管理者が設定した戸村さんの現在の状況が表示されます。</li>
-                    <li><strong>個人記録/業務進捗:</strong> 各種詳細ページへ移動できます。</li>
-                    <li><strong>退勤忘れを修正:</strong> 前日以前の退勤時刻を忘れた場合に、後から正しい時刻を登録できます。指定日の最後の業務終了時刻が更新され、それ以降のログは削除されます。</li>
-                </ul>`
-        },
-        host: {
-            title: "管理者画面ヘルプ",
-            content: `
-                <p class="font-semibold mb-2">チーム全体の稼働状況をリアルタイムで把握し、データを管理するための画面です。</p>
-                <h4 class="font-bold mt-3 mb-1 text-base border-b">稼働状況の確認</h4>
-                <ul class="list-disc list-inside ml-4 space-y-1 text-sm text-gray-700">
-                    <li><strong>リアルタイム稼働状況:</strong> どの従業員が、どの業務（工数）を、どれくらいの時間行っているかリアルタイムで表示します。業務ごとに従事している人数も分かります。</li>
-                    <li><strong>強制停止:</strong> 稼働中の従業員の記録を強制的に停止（帰宅処理と同じ）させることができます。</li>
-                    <li><strong>アカウントリスト:</strong> 登録されている全従業員を表示します。名前をクリックすると個人の詳細記録ページに移動します。</li>
-                    <li><strong>戸村さんステータス設定:</strong> 戸村さんの現在の状況を設定し、従業員画面に表示させます（毎日リセットされます）。</li>
-                </ul>
-                <h4 class="font-bold mt-3 mb-1 text-base border-b">データ分析と管理</h4>
-                <ul class="list-disc list-inside ml-4 space-y-1 text-sm text-gray-700">
-                    <li><strong>ユーザーを追加:</strong> 新しい従業員アカウントを作成します。ユーザー名は空白不可で、既存ユーザー名とは重複できません。</li>
-                    <li><strong>稼働時間Excelを出力:</strong> 指定した月の全従業員の稼働記録（月次サマリー、日別サマリー）をExcelファイルでダウンロードします。</li>
-                    <li><strong>業務進捗を確認:</strong> チーム全体の工数（目標）進捗や、メンバーごとの貢献度・稼働時間などを詳細に確認・管理できます。</li>
-                    <li><strong>業務レポートを表示:</strong> 業務時間の割合を円グラフで視覚的に確認できます。カレンダーで日や月を指定して期間を絞り込めます。</li>
-                    <li><strong>全従業員の全業務記録を削除:</strong> 全従業員の全ての業務ログ (work_logs) を削除します。ユーザープロフィールは削除されません。この操作は元に戻せません。</li>
-                </ul>`
-        },
-         taskSettings: {
-            title: "業務内容設定ヘルプ",
-            content: `
-                <p class="font-semibold mb-2">従業員が選択する業務内容（タスク）の管理や、各タスクに紐づく工数（目標）を設定する画面です。</p>
-                <h4 class="font-bold mt-3 mb-1 text-base border-b">業務の管理</h4>
-                <ul class="list-disc list-inside ml-4 space-y-1 text-sm text-gray-700">
-                    <li><strong>業務の追加 (管理者のみ):</strong> 新しい業務を追加します。「休憩」は追加できません。空白は含められません。</li>
-                    <li><strong>業務の削除 (管理者のみ):</strong> 不要になった業務を削除します。「休憩」は削除できません。関連する工数も削除されますが、過去の業務ログは残ります。</li>
-                    <li><strong>業務メモ:</strong> 各業務にルールや補足情報をメモとして残せます。このメモは従業員が業務を選択した際に表示されます。変更後は「メモを保存」ボタンを押してください。</li>
-                    <li><strong>担当者別 合計時間:</strong> 「担当者別 合計時間 [+]」をクリックすると、その業務にこれまで誰がどれくらいの時間を費やしたかを通算で確認できます。</li>
-                </ul>
-                <h4 class="font-bold mt-3 mb-1 text-base border-b">工数（目標）設定</h4>
-                <ul class="list-disc list-inside ml-4 space-y-1 text-sm text-gray-700">
-                    <li><strong>工数を追加:</strong> 各業務に対して「〇〇を50件完了する」といった具体的な数値目標（工数）を設定できます。「休憩」には追加できません。</li>
-                    <li><strong>工数タイトル・目標値:</strong> 工数の名前と目標となる件数などを設定します。</li>
-                    <li><strong>納期・工数納期:</strong> それぞれの工数に対して、最終的な「納期」（製品・サービスの納期など）と、作業時間を見積もるための目安となる「工数納期」を設定できます（任意）。</li>
-                    <li><strong>メモ:</strong> 工数に関する詳細な指示などをメモとして残せます。</li>
-                    <li>設定した工数（タイトル、目標値、納期、メモ）は、「業務進捗を確認」ページで編集・完了・削除の管理ができます。</li>
-                </ul>`
-        },
-         progress: {
-            title: "業務進捗ページヘルプ",
-            content: `
-                <p class="font-semibold mb-2">設定された工数（目標）の進捗状況や、チーム全体の業務量を詳細に確認・管理する画面です。</p>
-                <h4 class="font-bold mt-3 mb-1 text-base border-b">基本的な使い方</h4>
-                <ul class="list-disc list-inside ml-4 space-y-1 text-sm text-gray-700">
-                    <li><strong>1. 業務選択:</strong> 左上のリストから、詳細を見たい業務を選択します（進行中の工数がある業務のみ表示されます）。</li>
-                    <li><strong>2. 工数選択:</strong> 右上のリストに、選択した業務に含まれる進行中の工数が表示されるので、目的のものを選択します。</li>
-                    <li><strong>3. 詳細確認:</strong> 選択すると、下にその工数の詳細情報（目標値、納期、メモ、現在の進捗率）、貢献度グラフ（日別）、稼働サマリー（週別）が表示されます。</li>
-                </ul>
-                <h4 class="font-bold mt-3 mb-1 text-base border-b">工数の管理 (読み取り専用モードでは不可)</h4>
-                <ul class="list-disc list-inside ml-4 space-y-1 text-sm text-gray-700">
-                    <li><strong>編集:</strong> 工数のタイトル、目標値、納期、メモなどを変更できます。「業務内容設定」画面からも編集可能です。</li>
-                    <li><strong>完了:</strong> 目標が達成されたら「完了」ボタンを押してください。完了した工数はこのリストから消え、「完了した工数を見る」ページ（アーカイブ）に移動します。</li>
-                    <li><strong>削除:</strong> 工数を完全に削除します。関連するログは残りますが、工数自体は復元できません。</li>
-                </ul>
-                <h4 class="font-bold mt-3 mb-1 text-base border-b">グラフ・サマリーの操作</h4>
-                <ul class="list-disc list-inside ml-4 space-y-1 text-sm text-gray-700">
-                    <li><strong>グラフ種別切替:</strong> グラフ右上のボタンで「合計件数」と「時間あたり件数」の表示を切り替えられます。</li>
-                    <li><strong>週/月の移動:</strong> サマリー表の上部にあるボタンで、表示する週や月を移動できます。</li>
-                </ul>
-                 <h4 class="font-bold mt-3 mb-1 text-base border-b">完了した工数</h4>
-                 <ul class="list-disc list-inside ml-4 space-y-1 text-sm text-gray-700">
-                    <li>右上の「完了した工数を見る」ボタンから、完了済みの工数の一覧と、その貢献履歴を確認できます。</li>
-                 </ul>`
-        },
-        // 他のページのヘルプコンテンツもここに追加
+      // Clear details and summaries before rendering new goal list
+      const detailsContainer = document.getElementById("archive-goal-details-container");
+      const weeklyContainer = document.getElementById("archive-weekly-summary-container");
+      const chartContainer = document.getElementById("archive-chart-container");
+      if(detailsContainer) detailsContainer.classList.add("hidden");
+      if(weeklyContainer) weeklyContainer.classList.add("hidden");
+      if(chartContainer) chartContainer.classList.add("hidden");
+      destroyCharts([archiveChartInstance]); // Destroy chart when task changes
+      archiveChartInstance = null;
+
+      renderArchiveGoalList(); // Render the list of completed goals for the selected task
+
+      // Update selection highlight in the task list
+      taskListContainer
+        .querySelectorAll(".list-item")
+        .forEach((item) => item.classList.remove("selected", "bg-indigo-100"));
+      button.classList.add("selected", "bg-indigo-100");
     };
+    taskListContainer.appendChild(button);
+  });
+}
 
-    if (helpContents[pageKey]) {
-        title = helpContents[pageKey].title;
-        content = helpContents[pageKey].content;
+// Function to render the list of completed goals for the selected task
+function renderArchiveGoalList() {
+  const goalListContainer = document.getElementById("archive-goal-list");
+  if (!goalListContainer || !selectedArchiveTaskName) {
+      if(goalListContainer) goalListContainer.innerHTML = '<p class="text-gray-500">業務を選択してください</p>';
+      return;
+  }
+  goalListContainer.innerHTML = ""; // Clear previous list
+
+  const task = allTaskObjects.find((t) => t.name === selectedArchiveTaskName);
+  if (!task || !task.goals) {
+    goalListContainer.innerHTML =
+      '<p class="text-gray-500">エラー：選択された業務が見つかりません。</p>';
+    return;
+  }
+
+  // Filter and sort completed goals by completion date (newest first)
+  const completedGoals = (task.goals || [])
+    .filter((g) => g.isComplete && g.completedAt) // Ensure completedAt exists (should be Date object from main.js)
+    .sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime()); // Use getTime() for Date objects
+
+
+  if (completedGoals.length === 0) {
+    goalListContainer.innerHTML =
+      '<p class="text-gray-500">この業務に完了済みの工数はありません。</p>';
+      // Clear subsequent selections
+      selectedArchiveGoalId = null;
+      const detailsContainer = document.getElementById("archive-goal-details-container");
+      const weeklyContainer = document.getElementById("archive-weekly-summary-container");
+      const chartContainer = document.getElementById("archive-chart-container");
+      if(detailsContainer) detailsContainer.classList.add("hidden");
+      if(weeklyContainer) weeklyContainer.classList.add("hidden");
+      if(chartContainer) chartContainer.classList.add("hidden");
+      destroyCharts([archiveChartInstance]);
+      archiveChartInstance = null;
+    return;
+  }
+
+  // Render the list of completed goals
+  completedGoals.forEach((goal) => {
+    const button = document.createElement("button");
+    // Apply selected class if this goal matches the stored state
+    button.className = `w-full text-left p-2 rounded-lg list-item hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-300 ${
+      selectedArchiveGoalId === goal.id ? "selected bg-indigo-100" : ""
+    }`;
+    // Use Date object's methods for formatting
+    const completedDate = goal.completedAt instanceof Date
+      ? goal.completedAt.toLocaleDateString("ja-JP")
+      : "不明";
+    button.innerHTML = `
+            <div>${escapeHtml(goal.title)}</div>
+            <div class="text-xs text-gray-500">完了日: ${completedDate}</div>
+        `;
+    button.dataset.goalId = goal.id;
+
+    // Event listener for selecting a goal
+    button.onclick = () => {
+      selectedArchiveGoalId = goal.id;
+      archiveDatePageIndex = 0; // Reset date page index when goal changes
+
+      renderArchiveGoalDetails(); // Show details for the selected goal
+      renderArchiveWeeklySummary(); // Show summary table/chart for the selected goal
+
+      // Update selection highlight in the goal list
+      goalListContainer
+        .querySelectorAll(".list-item")
+        .forEach((item) => item.classList.remove("selected", "bg-indigo-100"));
+      button.classList.add("selected", "bg-indigo-100");
+    };
+    goalListContainer.appendChild(button);
+  });
+
+}
+
+// Function to render the details of the selected completed goal
+function renderArchiveGoalDetails() {
+  const container = document.getElementById(
+    "archive-goal-details-container"
+  );
+  if (!container || !selectedArchiveTaskName || !selectedArchiveGoalId) {
+      if(container) container.classList.add("hidden");
+      return;
+  }
+  container.innerHTML = ""; // Clear previous details
+
+  const task = allTaskObjects.find((t) => t.name === selectedArchiveTaskName);
+  if (!task || !task.goals) {
+    container.classList.add("hidden");
+    return;
+  }
+
+  const goal = task.goals.find((g) => g.id === selectedArchiveGoalId);
+  if (!goal || !goal.isComplete) {
+    // Ensure the goal exists and is indeed complete
+    container.classList.add("hidden");
+    // If goal somehow became incomplete, reset selection and UI
+    if (goal && !goal.isComplete) {
+        selectedArchiveGoalId = null;
+        renderArchiveGoalList(); // Re-render goal list
+        const weeklyContainer = document.getElementById("archive-weekly-summary-container");
+        const chartContainer = document.getElementById("archive-chart-container");
+        if(weeklyContainer) weeklyContainer.classList.add("hidden");
+        if(chartContainer) chartContainer.classList.add("hidden");
+        destroyCharts([archiveChartInstance]);
+        archiveChartInstance = null;
     }
+    return;
+  }
 
-    helpModalTitle.textContent = title;
-    helpModalContent.innerHTML = content; // Assuming content is safe HTML
-    showModal(helpModal);
+  const completedDate = goal.completedAt instanceof Date
+    ? goal.completedAt.toLocaleString("ja-JP") // Include time potentially
+    : "不明";
+
+  // Buttons for restoring or permanently deleting the goal
+  const buttonsHtml = `
+    <div class="flex-shrink-0 ml-4 space-x-2">
+        <button class="restore-goal-btn bg-yellow-500 text-white font-bold py-1 px-3 rounded hover:bg-yellow-600 text-sm" data-task-name="${escapeHtml(task.name)}" data-goal-id="${goal.id}">進行中に戻す</button>
+        <button class="delete-goal-btn bg-red-500 text-white font-bold py-1 px-3 rounded hover:bg-red-600 text-sm" data-task-name="${escapeHtml(task.name)}" data-goal-id="${goal.id}">完全に削除</button>
+    </div>
+    `;
+
+  container.innerHTML = `
+    <div class="flex justify-between items-start flex-wrap">
+        <div class="flex-grow mb-2">
+            <h3 class="text-xl font-bold">[${escapeHtml(task.name)}] ${escapeHtml(goal.title)}</h3>
+            <p class="text-sm text-gray-500 mt-1">完了日時: ${completedDate}</p>
+            <p class="text-sm text-gray-600 mt-2 whitespace-pre-wrap">${
+              escapeHtml(goal.memo || "メモはありません")
+            }</p>
+        </div>
+        ${buttonsHtml}
+    </div>
+    <div class="mt-4">
+        <p class="text-lg text-right font-semibold text-gray-700 mt-1">最終結果: ${
+          goal.current || 0
+        } / ${goal.target || 0}</p>
+    </div>
+    `;
+  container.classList.remove("hidden"); // Show the details container
+  // Event listeners for buttons are added via delegation in setupArchiveEventListeners
 }
 
-/**
- * Closes the Help modal.
- */
-function closeHelpModal() {
-    closeModal(helpModal);
-}
+// Function to render the weekly summary table and chart for the selected completed goal
+function renderArchiveWeeklySummary() {
+  const weeklyContainer = document.getElementById(
+    "archive-weekly-summary-container"
+  );
+  const chartContainer = document.getElementById("archive-chart-container");
 
-// --- Goal Details Modal --- (Used in Archive View)
-/**
- * Opens the Goal Details modal (typically used for archive view).
- * @param {string} title - The title to display in the modal header.
- * @param {string} contentHtml - The HTML content to display in the modal body.
- */
-export function openGoalDetailsModal(title, contentHtml) {
-    if(!goalDetailsModal || !goalDetailsModalTitle || !goalDetailsModalContent) return;
-    goalDetailsModalTitle.textContent = title;
-    goalDetailsModalContent.innerHTML = contentHtml; // Caller is responsible for safe HTML
-    showModal(goalDetailsModal);
-}
+  if (!weeklyContainer || !chartContainer || !selectedArchiveTaskName || !selectedArchiveGoalId) {
+      if(weeklyContainer) weeklyContainer.classList.add("hidden");
+      if(chartContainer) chartContainer.classList.add("hidden");
+      destroyCharts([archiveChartInstance]);
+      archiveChartInstance = null;
+      return;
+  }
 
-/**
- * Closes the Goal Details modal.
- */
-function closeGoalDetailsModal() {
-    closeModal(goalDetailsModal);
-}
+  weeklyContainer.innerHTML = ""; // Clear previous content
+  chartContainer.innerHTML = "";   // Clear previous content
+  // Destroy previous chart
+  destroyCharts([archiveChartInstance]);
+  archiveChartInstance = null;
 
 
-// --- Break Reservation Modal ---
-/** Opens Break Reservation Modal */
-export function openBreakReservationModal(id = null) {
-    if(!breakReservationModal || !breakReservationModalTitle || !breakReservationTimeInput || !breakReservationIdInput) {
-        console.error("Break reservation modal elements not found.");
-        return;
-    }
+  const task = allTaskObjects.find((t) => t.name === selectedArchiveTaskName);
+  if (!task || !task.goals) {
+    weeklyContainer.classList.add("hidden");
+    chartContainer.classList.add("hidden");
+    return;
+  }
+  const goal = task.goals.find((g) => g.id === selectedArchiveGoalId);
+  if (!goal) {
+    weeklyContainer.classList.add("hidden");
+    chartContainer.classList.add("hidden");
+    return;
+  }
 
-    const titleEl = breakReservationModalTitle;
-    const timeInputEl = breakReservationTimeInput;
-    const idInputEl = breakReservationIdInput;
+  // Filter logs relevant to this specific goal
+  const relevantLogs = allUserLogs.filter((log) => log.goalId === goal.id);
 
-    if (id) {
-        titleEl.textContent = "休憩予約の編集";
-         // Need access to userReservations state, assuming it's imported or passed
-         // This implies reservations state might need to be managed more globally or passed around
-         // For now, let's assume reservations.js handles finding the data
-         // TODO: Refactor state access if needed
-        // Assuming userReservations is accessible, e.g., via window or import from reservations.js
-        const { userReservations } = import('../views/client/reservations.js'); // Assuming reservations.js exports its state
-        const reservation = userReservations?.find((r) => r.id === id);
-        if (reservation) {
-            timeInputEl.value = reservation.time || ""; // Use time string
-            idInputEl.value = id;
-        } else {
-             console.error("Reservation to edit not found:", id);
-             alert("編集対象の予約が見つかりません。");
-             return; // Don't open if data missing
-        }
-    } else {
-        titleEl.textContent = "休憩予約の追加";
-        timeInputEl.value = ""; // Clear time
-        idInputEl.value = ""; // Clear ID
-    }
-    showModal(breakReservationModal);
-    timeInputEl.focus();
-}
+  // Get unique user names who contributed to this goal, sorted
+  const usersWithContributions = [
+    ...new Set(relevantLogs.map((log) => log.userName).filter(Boolean)),
+  ].sort((a,b) => a.localeCompare(b, "ja"));
 
-/** Closes Break Reservation Modal */
-function closeBreakReservationModal() {
-    closeModal(breakReservationModal);
-}
+  // Get all unique dates where work or contribution happened for this goal, sorted chronologically
+  const allActiveDates = [
+    ...new Set(relevantLogs.map((log) => log.date).filter(Boolean)),
+  ].sort();
 
+  if (allActiveDates.length === 0) {
+    weeklyContainer.innerHTML = '<p class="text-gray-500 p-4 text-center">この工数に関する稼働記録はありません。</p>';
+    weeklyContainer.classList.remove("hidden"); // Changed from add to remove to show the message
+    chartContainer.classList.add("hidden");
+    return;
+  }
 
-// --- Event Listener Setup ---
+  // Paginate the dates (7 dates per page)
+  const datesPerPage = 7;
+  const totalPages = Math.ceil(allActiveDates.length / datesPerPage);
 
-/**
- * Sets up basic event listeners for modal close/cancel buttons.
- * Confirmation modal buttons are handled dynamically in `showConfirmationModal`.
- * Save/Confirm actions for other modals are typically handled in their respective view modules.
- */
-export function setupModalEventListeners() {
-    console.log("Setting up modal event listeners...");
+  // Ensure page index is within bounds
+  if (archiveDatePageIndex < 0) {
+      archiveDatePageIndex = 0;
+  } else if (archiveDatePageIndex >= totalPages && totalPages > 0) {
+      archiveDatePageIndex = totalPages - 1;
+  } else if (totalPages === 0) {
+       archiveDatePageIndex = 0; // Handle case with no dates
+  }
 
-    // Generic close functionality using data attributes (optional)
-    // document.body.addEventListener('click', (event) => {
-    //     if (event.target.matches('[data-modal-close]')) {
-    //         const modalId = event.target.closest('.modal')?.id; // Find parent modal ID
-    //         if (modalId) {
-    //             closeModal(document.getElementById(modalId));
-    //         }
-    //     }
-    // });
-
-    // --- Specific Cancel/Close buttons ---
-    // Confirmation cancel handled dynamically in showConfirmationModal
-
-    // Add references for buttons used only for closing (defined within this function's scope)
-    const editLogCancelBtn = document.getElementById('edit-log-cancel-btn');
-    const editMemoCancelBtn = document.getElementById('edit-memo-cancel-btn');
-    const editContributionCancelBtn = document.getElementById('edit-contribution-cancel-btn');
-    const fixCheckoutCancelBtn = document.getElementById('fix-checkout-cancel-btn');
-    const exportExcelCancelBtn = document.getElementById('cancel-export-excel-btn');
+  const finalStartIndex = archiveDatePageIndex * datesPerPage;
+  // Use let instead of const for datesToShow to allow reassignment
+  let datesToShow = allActiveDates.slice(
+    finalStartIndex,
+    finalStartIndex + datesPerPage
+  );
 
 
-    goalModalCancelBtn?.addEventListener('click', closeGoalModal);
-    addUserModalCancelBtn?.addEventListener('click', closeAddUserModal);
-    helpModalCloseBtn?.addEventListener('click', closeHelpModal);
-    goalDetailsModalCloseBtn?.addEventListener('click', closeGoalDetailsModal);
-    breakReservationCancelBtn?.addEventListener('click', closeBreakReservationModal);
-
-    // Other modal cancel/close buttons (if they only close the modal)
-    editLogCancelBtn?.addEventListener('click', () => closeModal(editLogModal));
-    editMemoCancelBtn?.addEventListener('click', () => closeModal(editMemoModal));
-    editContributionCancelBtn?.addEventListener('click', () => closeModal(editContributionModal));
-    fixCheckoutCancelBtn?.addEventListener('click', () => closeModal(fixCheckoutModal));
-    exportExcelCancelBtn?.addEventListener('click', () => closeModal(exportExcelModal));
+  if (datesToShow.length === 0 && allActiveDates.length > 0) {
+     // This case should ideally not happen with the boundary checks above, but as fallback:
+     weeklyContainer.innerHTML = '<p class="text-gray-500 p-4 text-center">表示する日付が見つかりません。</p>';
+     weeklyContainer.classList.remove("hidden"); // Show the container with message
+     chartContainer.classList.add("hidden");
+     return;
+  }
 
 
-    // Admin Password Cancel (If adminPasswordView is still used/relevant)
-    adminPasswordCancelBtn?.addEventListener("click", () => {
-         closeModal(adminPasswordView);
-         if(adminPasswordError) adminPasswordError.textContent = ''; // Clear error on cancel
-         if(adminPasswordInput) adminPasswordInput.value = ''; // Clear input
-         // Reset adminLoginDestination? Depends on main.js logic.
+  // Prepare data structure for chart and table
+  const weeklyData = usersWithContributions.map((userName) => {
+    const userData = { name: userName, dailyData: [] };
+    datesToShow.forEach((dateStr) => {
+      const logsForDay = relevantLogs.filter(
+        (log) => log.userName === userName && log.date === dateStr
+      );
+      // Sum duration (excluding goal contribution logs)
+      const totalDuration = logsForDay
+        .filter((l) => l.type !== "goal")
+        .reduce((sum, log) => sum + (log.duration || 0), 0);
+      // Sum contribution (only goal contribution logs)
+      const totalContribution = logsForDay
+        .filter((l) => l.type === "goal")
+        .reduce((sum, log) => sum + (log.contribution || 0), 0);
+      // Calculate efficiency (contribution per hour)
+      const hours = totalDuration / 3600;
+      const efficiency =
+        hours > 0
+          ? parseFloat((totalContribution / hours).toFixed(1)) // Keep one decimal place
+          : 0;
+
+      userData.dailyData.push({
+        contribution: totalContribution,
+        duration: totalDuration,
+        efficiency: efficiency,
+      });
     });
+    // Only include users if they had activity in the displayed dates
+    if (userData.dailyData.some(d => d.contribution > 0 || d.duration > 0)) {
+        return userData;
+    }
+    return null; // Return null for users with no activity in this period
+  }).filter(Boolean); // Filter out the null entries
 
 
-    console.log("Modal event listeners set up complete.");
+  // Render the line chart and the summary table
+  renderArchiveChart(chartContainer, datesToShow, weeklyData); // Pass filtered weeklyData
+  renderArchiveTable(
+    weeklyContainer,
+    datesToShow,
+    weeklyData, // Pass filtered weeklyData
+    archiveDatePageIndex + 1, // Current page number (1-based)
+    totalPages
+  );
+  chartContainer.classList.remove("hidden");
+  weeklyContainer.classList.remove("hidden");
+}
+
+
+// --- Functions specific to Archive View (Chart and Table Rendering) ---
+
+/**
+ * Renders the line chart for archive data (contribution).
+ * @param {HTMLElement} container - The container element for the chart.
+ * @param {string[]} datesToShow - Array of date strings for the x-axis.
+ * @param {Array} weeklyData - Array of user data for the week.
+ */
+function renderArchiveChart(container, datesToShow, weeklyData) {
+     if (!container) return;
+     container.innerHTML = ""; // Clear previous content
+
+     if (weeklyData.length === 0 || datesToShow.length === 0) {
+         container.innerHTML = '<p class="text-gray-500 text-center p-4">グラフデータがありません。</p>';
+         return;
+     }
+
+     const canvas = document.createElement("canvas");
+     canvas.style.minHeight = '250px';
+     container.appendChild(canvas);
+
+     const labels = datesToShow.map((dateStr) => {
+         try {
+             const date = new Date(dateStr + 'T00:00:00');
+             return `${date.getMonth() + 1}/${date.getDate()}`;
+         } catch(e) { return dateStr; }
+     });
+
+     const datasets = weeklyData.map((userData, index) => {
+         const hue = (index * 137.508) % 360;
+         const color = `hsl(${hue}, 70%, 50%)`;
+         return {
+             label: userData.name,
+             data: userData.dailyData.map((d) => d.contribution), // Show contribution
+             borderColor: color,
+             backgroundColor: color + '33',
+             fill: false,
+             tension: 0.1,
+             borderWidth: 2,
+             pointRadius: 3,
+             pointHoverRadius: 5
+         };
+     });
+
+     const ctx = canvas.getContext("2d");
+     archiveChartInstance = createLineChart( // Use imported function
+         ctx,
+         labels,
+         datasets,
+         "日別 貢献件数",
+         "合計件数"
+     );
+}
+
+/**
+ * Renders the data table for archive data.
+ * @param {HTMLElement} container - The container element for the table and navigation.
+ * @param {string[]} datesToShow - Array of date strings for table columns.
+ * @param {Array} weeklyData - Array of user data for the week.
+ * @param {number} currentPage - Current page number (1-based).
+ * @param {number} totalPages - Total number of pages.
+ */
+function renderArchiveTable(container, datesToShow, weeklyData, currentPage, totalPages) {
+     if (!container) return;
+     container.innerHTML = ""; // Clear previous content
+
+     // --- Navigation ---
+     let navHtml = `
+     <div class="flex justify-between items-center mb-2">
+         <h4 class="text-lg font-bold">稼働サマリー</h4>
+         <div class="flex items-center gap-2">
+             <button id="archive-prev-page-btn" class="p-2 rounded-lg hover:bg-gray-200 ${currentPage <= 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${currentPage <= 1 ? 'disabled' : ''}>&lt;</button>
+             <span class="text-sm font-semibold">ページ ${currentPage} / ${totalPages > 0 ? totalPages : 1}</span>
+             <button id="archive-next-page-btn" class="p-2 rounded-lg hover:bg-gray-200 ${currentPage >= totalPages ? 'opacity-50 cursor-not-allowed' : ''}" ${currentPage >= totalPages ? 'disabled' : ''}>&gt;</button>
+         </div>
+     </div>`;
+     container.innerHTML = navHtml;
+
+     // --- Table ---
+     if (weeklyData.length === 0 || datesToShow.length === 0) {
+         container.innerHTML += '<p class="text-gray-500 p-4 text-center mt-4">この期間の記録はありません。</p>';
+         return;
+     }
+
+     let tableHtml = '<div class="overflow-x-auto mt-4"><table class="w-full text-sm text-left text-gray-500">';
+     // Header
+     tableHtml += '<thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr><th scope="col" class="px-3 py-3 sticky left-0 bg-gray-50 z-10">名前</th>';
+     datesToShow.forEach((dateStr) => {
+         const date = new Date(dateStr + 'T00:00:00');
+         tableHtml += `<th scope="col" class="px-3 py-3 text-center min-w-[100px]">${date.getMonth() + 1}/${date.getDate()}</th>`;
+     });
+     tableHtml += "</tr></thead><tbody>";
+
+     // Body
+     weeklyData.forEach((userData) => {
+         tableHtml += `<tr class="bg-white border-b hover:bg-gray-50"><th scope="row" class="px-3 py-4 font-medium text-gray-900 whitespace-nowrap sticky left-0 bg-white z-10">${escapeHtml(userData.name)}</th>`;
+         userData.dailyData.forEach((d) => {
+             const cellClass = (d.contribution > 0 || d.duration > 0) ? "highlight-cell bg-yellow-50" : "";
+             tableHtml += `<td class="px-3 py-4 text-center ${cellClass}">
+                 <div title="件数 / 時間">${d.contribution}件 / ${formatHoursMinutes(d.duration)}</div>
+                 <div class="text-xs text-gray-400" title="時間あたり件数">${d.efficiency}件/h</div>
+             </td>`;
+         });
+         tableHtml += "</tr>";
+     });
+
+     tableHtml += "</tbody></table></div>";
+     container.innerHTML += tableHtml; // Append table after navigation
+}
+
+
+// --- Action Handlers ---
+
+/**
+ * Handles restoring a completed goal back to active.
+ * @param {string} taskName
+ * @param {string} goalId
+ */
+async function handleRestoreGoalClick(taskName, goalId) {
+    const goal = allTaskObjects?.find(t => t.name === taskName)?.goals?.find(g => g.id === goalId);
+    if (!goal) return;
+
+     showConfirmationModal(
+         `工数「${escapeHtml(goal.title)}」を進行中に戻しますか？`,
+         async () => {
+             await handleRestoreGoal(taskName, goalId); // Call imported function from taskSettings
+             // Refresh the archive view UI after successful restore
+             selectedArchiveGoalId = null; // Clear selection
+             renderArchiveTaskList(); // Task might disappear if it no longer has completed goals
+             renderArchiveGoalList(); // Goal will disappear
+             const detailsContainer = document.getElementById("archive-goal-details-container");
+             const weeklyContainer = document.getElementById("archive-weekly-summary-container");
+             const chartContainer = document.getElementById("archive-chart-container");
+             if(detailsContainer) detailsContainer.classList.add("hidden");
+             if(weeklyContainer) weeklyContainer.classList.add("hidden");
+             if(chartContainer) chartContainer.classList.add("hidden");
+             destroyCharts([archiveChartInstance]);
+             archiveChartInstance = null;
+             hideConfirmationModal();
+         }
+     );
+}
+
+/**
+ * Handles permanently deleting a goal.
+ * @param {string} taskName
+ * @param {string} goalId
+ */
+async function handleDeleteGoalClick(taskName, goalId) {
+    const goal = allTaskObjects?.find(t => t.name === taskName)?.goals?.find(g => g.id === goalId);
+    if (!goal) return;
+
+     showConfirmationModal(
+         `工数「${escapeHtml(goal.title)}」を完全に削除しますか？\n\n関連ログは残りますが、工数データは復元できません。`,
+         async () => {
+             await handleDeleteGoalCompletely(taskName, goalId); // Call imported function from taskSettings
+             // Refresh the archive view UI after successful deletion
+             selectedArchiveGoalId = null; // Clear selection
+             renderArchiveTaskList(); // Task might disappear if it no longer has completed goals
+             renderArchiveGoalList(); // Goal will disappear
+             const detailsContainer = document.getElementById("archive-goal-details-container");
+             const weeklyContainer = document.getElementById("archive-weekly-summary-container");
+             const chartContainer = document.getElementById("archive-chart-container");
+             if(detailsContainer) detailsContainer.classList.add("hidden");
+             if(weeklyContainer) weeklyContainer.classList.add("hidden");
+             if(chartContainer) chartContainer.classList.add("hidden");
+             destroyCharts([archiveChartInstance]);
+             archiveChartInstance = null;
+             hideConfirmationModal();
+         }
+     );
 }
 
