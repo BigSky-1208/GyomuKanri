@@ -1,4 +1,4 @@
-業務時間管理アプリ (Gyomu Kanri App)A
+業務時間管理アプリ (Gyomu Kanri App)
 
 チームでの業務時間と工数進捗をリアルタイムで管理・可視化するためのWebアプリケーションです。Firebase (Firestore) をバックエンドとして使用し、認証にはOktaを組み込んでいます。
 
