@@ -1,6 +1,7 @@
 // js/views/modeSelection.js
 import { db, userId, userName, authLevel, showView, VIEWS, adminPasswordView, setAdminLoginDestination } from "../../main.js"; // Import global state and functions
-import { handleLogout } from "../okta.js"; // Import logout function (adjust path if using okta.js)
+// 修正 1: auth.js から okta.js に変更し、handleOktaLogout をインポート
+import { handleOktaLogout } from "../okta.js"; // Import logout function from okta.js
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // Import Firestore functions
 
 // --- DOM Element references ---
@@ -18,7 +19,7 @@ const logoutButton = document.getElementById("logout-btn-selection");
  * Displays the username and fetches/displays the word of the day.
  */
 export function initializeModeSelectionView() {
-    console.log("Initializing Mode Selection View...");
+    // console.log("Initializing Mode Selection View..."); // 修正 2: console.log を削除
     if (userNameDisplay && userName) {
         userNameDisplay.textContent = userName; // Display the logged-in username
     } else if (userNameDisplay) {
@@ -32,7 +33,7 @@ export function initializeModeSelectionView() {
  * Should be called once during application initialization.
  */
 export function setupModeSelectionEventListeners() {
-    console.log("Setting up Mode Selection event listeners...");
+    // console.log("Setting up Mode Selection event listeners..."); // 修正 3: console.log を削除
 
     // Mode selection buttons
     selectHostButton?.addEventListener("click", () => {
@@ -42,7 +43,7 @@ export function setupModeSelectionEventListeners() {
             // Ask for admin password first
             setAdminLoginDestination(VIEWS.HOST); // Tell main.js where to go after login
             if (adminPasswordView) adminPasswordView.classList.remove("hidden");
-            else console.error("Admin password view element not found.");
+            // else console.error("Admin password view element not found."); // 修正 4: console.error を削除
         }
     });
 
@@ -55,7 +56,7 @@ export function setupModeSelectionEventListeners() {
             // Ask for password first (admin or task editor allowed)
             setAdminLoginDestination(VIEWS.TASK_SETTINGS); // Tell main.js where to go after login
             if (adminPasswordView) adminPasswordView.classList.remove("hidden");
-            else console.error("Admin password view element not found.");
+            // else console.error("Admin password view element not found."); // 修正 5: console.error を削除
         }
     });
 
@@ -63,6 +64,7 @@ export function setupModeSelectionEventListeners() {
     saveWordButton?.addEventListener("click", handleSaveWordOfTheDay);
 
     // Logout Button
+    // 修正 6: handleLogout ではなく handleOktaLogout を呼ぶ（これはインポート修正で解決）
     logoutButton?.addEventListener("click", handleOktaLogout); // Call imported logout function
 }
 
@@ -72,7 +74,7 @@ export function setupModeSelectionEventListeners() {
  */
 async function handleSaveWordOfTheDay() {
     if (!userId || !wordOfTheDayInput) {
-        console.error("Cannot save word of the day: userId or input element missing.");
+        // console.error("Cannot save word of the day: userId or input element missing."); // 修正 7: console.error を削除
         alert("ユーザー情報が見つからないため、保存できません。");
         return;
     }
@@ -85,11 +87,11 @@ async function handleSaveWordOfTheDay() {
         // Use setDoc with merge:true to create the document if it doesn't exist,
         // or update the field without overwriting other status info.
         await setDoc(statusRef, { wordOfTheDay: word }, { merge: true });
-        console.log("Word of the day saved:", word);
+        // console.log("Word of the day saved:", word); // 修正 8: console.log を削除
         // Optionally show a success message to the user (e.g., using a temporary notification)
         alert("今日の一言を保存しました。");
     } catch (error) {
-        console.error("Error saving word of the day:", error);
+        // console.error("Error saving word of the day:", error); // 修正 9: console.error を削除
         alert("今日の一言の保存中にエラーが発生しました。");
     }
 }
@@ -116,7 +118,7 @@ async function fetchAndDisplayWordOfTheDay() {
             wordOfTheDayInput.value = "";
         }
     } catch (error) {
-        console.error("Error fetching word of the day:", error);
+        // console.error("Error fetching word of the day:", error); // 修正 10: console.error を削除
         wordOfTheDayInput.value = ""; // Clear input on error
         // Optionally inform the user about the fetch error
     }
