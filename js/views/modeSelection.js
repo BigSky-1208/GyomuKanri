@@ -1,6 +1,6 @@
 // js/views/modeSelection.js
 import { db, userId, userName, authLevel, showView, VIEWS, adminPasswordView, setAdminLoginDestination } from "../../main.js"; // Import global state and functions
-import { handleLogout } from "../auth.js"; // Import logout function (adjust path if using okta.js)
+import { handleLogout } from "../okta.js"; // Import logout function (adjust path if using okta.js)
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // Import Firestore functions
 
 // --- DOM Element references ---
@@ -63,7 +63,7 @@ export function setupModeSelectionEventListeners() {
     saveWordButton?.addEventListener("click", handleSaveWordOfTheDay);
 
     // Logout Button
-    logoutButton?.addEventListener("click", handleLogout); // Call imported logout function
+    logoutButton?.addEventListener("click", handleOktaLogout); // Call imported logout function
 }
 
 
