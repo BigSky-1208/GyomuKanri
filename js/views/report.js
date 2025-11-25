@@ -1,198 +1,164 @@
 // js/views/report.js
-import { allUserLogs, fetchAllUserLogs, handleGoBack } from "../../main.js"; // Import global state and functions
-import { renderUnifiedCalendar } from "../components/calendar.js"; // Import calendar rendering function
-import { createPieChart, destroyCharts } from "../components/chart.js"; // Import chart functions
-import { formatDuration, formatHoursMinutes } from "../utils.js"; // Import utility functions
+import { db } from "../../firebase.js"; // Firestoreインスタンス
+import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { handleGoBack } from "../../main.js";
+import { renderUnifiedCalendar } from "../components/calendar.js";
+import { createPieChart, destroyCharts } from "../components/chart.js";
+import { formatDuration, formatHoursMinutes, getMonthDateRange } from "../utils.js"; // helperをimport
 
-// --- Module State ---
-let currentReportDate = new Date(); // Date displayed on the report calendar
-let activeReportCharts = []; // Store active Chart.js instances for destruction
-let selectedReportDateStr = null; // Store selected date "YYYY-MM-DD", null for month view
+let currentReportDate = new Date();
+let activeReportCharts = [];
+let selectedReportDateStr = null;
+let currentMonthLogs = []; // ★ 現在表示中の月のログを保持するローカル変数
 
-// --- DOM Element references ---
 const reportCalendarEl = document.getElementById("report-calendar");
 const reportMonthYearEl = document.getElementById("report-calendar-month-year");
 const reportPrevMonthBtn = document.getElementById("report-prev-month-btn");
 const reportNextMonthBtn = document.getElementById("report-next-month-btn");
 const reportTitleEl = document.getElementById("report-title");
 const reportChartsContainer = document.getElementById("report-charts-container");
-const backButton = document.getElementById("back-to-host-from-report"); // Assuming back goes to host
+const backButton = document.getElementById("back-to-host-from-report");
 
-/**
- * Initializes the Report View. Fetches logs, sets up the calendar, and renders initial charts.
- */
 export async function initializeReportView() {
     console.log("Initializing Report View...");
-    // Ensure latest logs are available
-    await fetchAllUserLogs();
-
-    currentReportDate = new Date(); // Reset to current month on initialization
-    selectedReportDateStr = null; // Default to month view
-
-    renderReportCalendar();       // Render the calendar UI
-    renderReportChartsForMonth(); // Render charts for the current month by default
+    currentReportDate = new Date();
+    selectedReportDateStr = null;
+    
+    // 初期化時に今月のデータを取得して表示
+    await fetchAndRenderForCurrentMonth();
 }
 
-/**
- * Cleans up the Report view when navigating away. Destroys active charts.
- */
 export function cleanupReportView() {
     console.log("Cleaning up Report View...");
-    destroyCharts(activeReportCharts); // Destroy charts using the utility function
-    activeReportCharts = []; // Clear the array
-    selectedReportDateStr = null; // Reset selection state
+    destroyCharts(activeReportCharts);
+    activeReportCharts = [];
+    selectedReportDateStr = null;
+    currentMonthLogs = []; // データをクリア
 }
 
-/**
- * Sets up event listeners for the Report View.
- */
 export function setupReportEventListeners() {
-    console.log("Setting up Report event listeners...");
     reportPrevMonthBtn?.addEventListener("click", () => moveReportMonth(-1));
     reportNextMonthBtn?.addEventListener("click", () => moveReportMonth(1));
-    backButton?.addEventListener("click", handleGoBack); // Use global go back handler
-
-    // Calendar month title click listener is set within renderUnifiedCalendar
-    // Calendar day click listener is set within renderUnifiedCalendar
-    console.log("Report event listeners set up complete.");
+    backButton?.addEventListener("click", handleGoBack);
 }
 
-/**
- * Renders the calendar for the report view.
- */
-function renderReportCalendar() {
-    if (!reportCalendarEl || !reportMonthYearEl) {
-        console.warn("Report calendar elements not found.");
-        return;
+// ★ 新規: 現在の月（currentReportDate）のデータを取得し、描画する関数
+async function fetchAndRenderForCurrentMonth() {
+    const { start, end } = getMonthDateRange(currentReportDate);
+    console.log(`Fetching report logs for ${start} to ${end}`);
+
+    // ローディング表示などを入れると親切
+    if(reportTitleEl) reportTitleEl.textContent = "データを読み込み中...";
+
+    try {
+        const q = query(
+            collection(db, "work_logs"),
+            where("date", ">=", start),
+            where("date", "<=", end)
+        );
+        const snapshot = await getDocs(q);
+        currentMonthLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        renderReportCalendar();       
+        renderReportChartsForMonth(); 
+
+    } catch (error) {
+        console.error("Error fetching report logs:", error);
+        if(reportChartsContainer) reportChartsContainer.innerHTML = `<p class="text-red-500 text-center">データの取得中にエラーが発生しました。</p>`;
     }
+}
+
+function renderReportCalendar() {
+    if (!reportCalendarEl || !reportMonthYearEl) return;
+    
     renderUnifiedCalendar({
         calendarEl: reportCalendarEl,
         monthYearEl: reportMonthYearEl,
         dateToDisplay: currentReportDate,
-        logs: allUserLogs, // Use globally fetched logs
-        onDayClick: (e) => { // Handle day click
+        logs: currentMonthLogs, // ★ ローカル変数を使用
+        onDayClick: (e) => {
             const dateStr = e.currentTarget.dataset.date;
-            selectedReportDateStr = dateStr; // Store selected date
-            // Highlight selected day (renderUnifiedCalendar doesn't handle selection persistence)
+            selectedReportDateStr = dateStr;
             reportCalendarEl.querySelectorAll(".calendar-day.selected").forEach(el => el.classList.remove("selected"));
             e.currentTarget.classList.add("selected");
             renderReportChartsForDay(dateStr);
         },
-        onMonthClick: () => { // Handle month click (month title)
-             selectedReportDateStr = null; // Clear date selection for month view
-             // Remove selected class from any day
+        onMonthClick: () => {
+             selectedReportDateStr = null;
              reportCalendarEl.querySelectorAll(".calendar-day.selected").forEach(el => el.classList.remove("selected"));
              renderReportChartsForMonth();
         },
     });
-     // Re-apply selected class after calendar re-render if a date was selected
      if(selectedReportDateStr){
         const dayElement = reportCalendarEl.querySelector(`.calendar-day[data-date="${selectedReportDateStr}"]`);
         dayElement?.classList.add('selected');
      }
 }
 
-/**
- * Moves the report calendar to the previous or next month and updates charts.
- * @param {number} direction - -1 for previous, 1 for next.
- */
-function moveReportMonth(direction) {
-    selectedReportDateStr = null; // Reset to month view when changing month
+async function moveReportMonth(direction) {
+    selectedReportDateStr = null;
     currentReportDate.setMonth(currentReportDate.getMonth() + direction);
-    renderReportCalendar();       // Re-render calendar
-    renderReportChartsForMonth(); // Re-render charts for the new month
+    // 月移動時は必ずデータをフェッチし直す
+    await fetchAndRenderForCurrentMonth();
 }
 
-/**
- * Renders the report charts for the entire month currently displayed on the calendar.
- */
 function renderReportChartsForMonth() {
      if (!reportTitleEl) return;
     const year = currentReportDate.getFullYear();
-    const month = currentReportDate.getMonth(); // 0-based month
+    const month = currentReportDate.getMonth();
     reportTitleEl.textContent = `${year}年 ${month + 1}月 月次レポート`;
 
-    const monthStr = `${year}-${(month + 1).toString().padStart(2, "0")}`; // YYYY-MM format
-
-    // Filter logs for the specified month
-    const logsForMonth = allUserLogs.filter(
-        (log) => log.date && log.date.startsWith(monthStr)
-    );
-
-    renderReportCharts(logsForMonth); // Render charts with the filtered data
+    // 既に今月分のみに絞り込まれているので、そのまま渡す
+    renderReportCharts(currentMonthLogs);
 }
 
-/**
- * Renders the report charts for a specific selected day.
- * @param {string} dateStr - The date string in "YYYY-MM-DD" format.
- */
 function renderReportChartsForDay(dateStr) {
      if (!reportTitleEl || !dateStr) return;
     reportTitleEl.textContent = `${dateStr} 日次レポート`;
 
-    // Filter logs for the specified day
-    const logsForDay = allUserLogs.filter((log) => log.date === dateStr);
-
-    renderReportCharts(logsForDay); // Render charts with the filtered data
+    // ローカルデータから該当日のみフィルタリング
+    const logsForDay = currentMonthLogs.filter((log) => log.date === dateStr);
+    renderReportCharts(logsForDay);
 }
 
-/**
- * Core function to render the pie charts based on the provided log data.
- * Calculates totals per task and per user, then creates charts.
- * @param {Array} logs - Array of work log objects for the selected period (day or month).
- */
 function renderReportCharts(logs) {
     if (!reportChartsContainer) return;
 
-    // Destroy previously created charts before rendering new ones
     destroyCharts(activeReportCharts);
     activeReportCharts = [];
-    reportChartsContainer.innerHTML = ""; // Clear the container
+    reportChartsContainer.innerHTML = "";
 
-    // --- Data Aggregation ---
-    const personalData = {}; // { userName: { taskName: duration } }
-    const totalData = {};    // { taskName: duration }
-    const allTasksSet = new Set(); // To get a unique list of tasks in this period
+    // --- 集計ロジック (変更なし) ---
+    const personalData = {};
+    const totalData = {};
+    const allTasksSet = new Set();
 
     logs.forEach((log) => {
-        // Exclude logs without user/task, breaks, or goal contribution logs
-        if (!log.userName || !log.task || log.task === "休憩" || log.type === "goal") {
-            return;
-        }
+        if (!log.userName || !log.task || log.task === "休憩" || log.type === "goal") return;
 
-        const taskName = log.task.startsWith("その他_") ? log.task.substring(4) : log.task; // Clean "Other" task name for display
+        const taskName = log.task.startsWith("その他_") ? log.task.substring(4) : log.task;
         allTasksSet.add(taskName);
 
-        // Aggregate total duration per task
         if (!totalData[taskName]) totalData[taskName] = 0;
         totalData[taskName] += (log.duration || 0);
 
-        // Aggregate duration per user per task
         if (!personalData[log.userName]) personalData[log.userName] = {};
         if (!personalData[log.userName][taskName]) personalData[log.userName][taskName] = 0;
         personalData[log.userName][taskName] += (log.duration || 0);
     });
-    // --- End Data Aggregation ---
 
-
-    // --- Color Mapping for Tasks ---
     const taskColorMap = {};
     const uniqueTasks = Array.from(allTasksSet).sort((a, b) => a.localeCompare(b, "ja"));
     uniqueTasks.forEach((task, index) => {
-        const hue = (index * 137.508) % 360; // Use golden angle for distinct colors
-        taskColorMap[task] = `hsl(${hue}, 70%, 60%)`; // Assign color based on index
+        const hue = (index * 137.508) % 360;
+        taskColorMap[task] = `hsl(${hue}, 70%, 60%)`;
     });
-    // --- End Color Mapping ---
 
-
-    // --- Render Charts ---
     if (Object.keys(totalData).length > 0) {
-        // 1. Render Overall Total Chart and List
+        // 全体チャート描画
         const totalDuration = Object.values(totalData).reduce((sum, duration) => sum + duration, 0);
         const totalChartWrapper = document.createElement("div");
-        totalChartWrapper.className = "p-4 border rounded-lg bg-white shadow"; // Added bg and shadow
-
-        // Use grid for better layout within the total section
+        totalChartWrapper.className = "p-4 border rounded-lg bg-white shadow";
         totalChartWrapper.innerHTML = `
             <div class="text-center mb-4">
                 <h3 class="text-xl font-semibold">全従業員 合計</h3>
@@ -207,12 +173,11 @@ function renderReportCharts(logs) {
         `;
         reportChartsContainer.appendChild(totalChartWrapper);
 
-        // Render the list of tasks and durations for the total chart
         const totalListContainer = totalChartWrapper.querySelector("#total-report-list");
-        const sortedTotalTasks = Object.entries(totalData).sort(([, a], [, b]) => b - a); // Sort by duration desc
+        const sortedTotalTasks = Object.entries(totalData).sort(([, a], [, b]) => b - a);
         let totalListHtml = '<ul class="space-y-1">';
         sortedTotalTasks.forEach(([task, duration]) => {
-            const color = taskColorMap[task] || "#CCCCCC"; // Fallback color
+            const color = taskColorMap[task] || "#CCCCCC";
              totalListHtml += `
                  <li class="flex items-center justify-between p-1.5 rounded-md hover:bg-gray-50">
                      <span class="flex items-center"><span class="w-3 h-3 rounded-full mr-2 flex-shrink-0" style="background-color: ${color};"></span>${escapeHtml(task)}</span>
@@ -222,30 +187,21 @@ function renderReportCharts(logs) {
         totalListHtml += "</ul>";
         if(totalListContainer) totalListContainer.innerHTML = totalListHtml;
 
-        // Create the total pie chart
         const totalCtx = totalChartWrapper.querySelector("#total-report-chart-canvas")?.getContext("2d");
         if (totalCtx) {
-            const totalChart = createPieChart(
-                totalCtx,
-                totalData,
-                taskColorMap,
-                false // Show legend only for total chart? Maybe false is better with list. Let's try false.
-            );
+            const totalChart = createPieChart(totalCtx, totalData, taskColorMap, false);
             if (totalChart) activeReportCharts.push(totalChart);
         }
 
-        // 2. Render Individual User Charts
+        // 個人チャート描画
         const sortedUserNames = Object.keys(personalData).sort((a, b) => a.localeCompare(b, "ja"));
         sortedUserNames.forEach((name) => {
             const userData = personalData[name];
             const userDuration = Object.values(userData).reduce((sum, duration) => sum + duration, 0);
-
-            // Skip rendering if user has no duration in this period
             if (userDuration <= 0) return;
 
             const userChartWrapper = document.createElement("div");
-            userChartWrapper.className = "p-4 border rounded-lg bg-white shadow flex flex-col"; // Added bg/shadow, flex col
-
+            userChartWrapper.className = "p-4 border rounded-lg bg-white shadow flex flex-col";
             userChartWrapper.innerHTML = `
                 <div class="text-center mb-2">
                     <h3 class="text-lg font-semibold">${escapeHtml(name)}</h3>
@@ -257,38 +213,19 @@ function renderReportCharts(logs) {
             `;
             reportChartsContainer.appendChild(userChartWrapper);
 
-            // Create pie chart for the user (legend typically off for small multiples)
             const userCtx = userChartWrapper.querySelector("canvas")?.getContext("2d");
             if (userCtx) {
-                const userChart = createPieChart(
-                    userCtx,
-                    userData,
-                    taskColorMap,
-                    false // Legend off for individual charts
-                );
+                const userChart = createPieChart(userCtx, userData, taskColorMap, false);
                  if (userChart) activeReportCharts.push(userChart);
             }
         });
 
     } else {
-        // No log data found for the selected period
         reportChartsContainer.innerHTML = `<p class="text-gray-500 text-center col-span-full py-10">この期間の業務記録はありません。</p>`;
     }
-    // --- End Render Charts ---
 }
 
-
-/**
- * Simple HTML escaping function to prevent XSS.
- * @param {string | null | undefined} unsafe - The potentially unsafe string.
- * @returns {string} The escaped string.
- */
 function escapeHtml(unsafe) {
     if (typeof unsafe !== 'string') return '';
-    return unsafe
-         .replace(/&/g, "&amp;")
-         .replace(/</g, "&lt;")
-         .replace(/>/g, "&gt;")
-         .replace(/"/g, "&quot;")
-         .replace(/'/g, "&#039;");
- }
+    return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
