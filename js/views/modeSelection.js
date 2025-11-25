@@ -1,8 +1,10 @@
 // js/views/modeSelection.js
 // ★修正: js/views/modeSelection.js から見て main.js は ../main.js
-import { db, userId, userName, authLevel, showView, VIEWS, adminPasswordView, setAdminLoginDestination } from "../main.js"; 
+import { db, userId, userName, authLevel, showView, VIEWS, setAdminLoginDestination } from "../main.js"; 
 import { handleOktaLogout } from "../okta.js"; // Import logout function from okta.js
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // Import Firestore functions
+// ★追加: adminPasswordView を modal.js からインポート
+import { adminPasswordView } from "../components/modal.js";
 
 // --- DOM Element references ---
 const userNameDisplay = document.getElementById("user-name-display"); // User name in selection view
