@@ -1,14 +1,11 @@
 // js/utils.js - 汎用ヘルパー関数
 
-import { db } from "./firebase.js"; // Firestoreインスタンスをインポート
+import { db } from "./firebase.js"; 
 import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { showConfirmationModal, hideConfirmationModal } from "./components/modal.js"; // モーダル関数をインポート
+// ★修正: 確認モーダルではなく、退勤修正モーダルを操作するためにインポート
+import { fixCheckoutModal } from "./components/modal.js"; 
 
-/**
- * 秒数を HH:MM:SS 形式の文字列にフォーマットします。
- * @param {number} seconds - フォーマットする秒数。
- * @returns {string} フォーマットされた時間文字列 (例: "01:23:45")。
- */
+// ... (formatDuration, formatHoursMinutes, formatHoursAndMinutesSimple, formatTime, getJSTDateString, getMonthDateRange は変更なし)
 export function formatDuration(seconds) {
     if (isNaN(seconds) || seconds < 0) return "00:00:00";
     const h = Math.floor(seconds / 3600);
@@ -17,24 +14,13 @@ export function formatDuration(seconds) {
     return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
-/**
- * 秒数を "X時間 Y分" 形式の文字列にフォーマットします。
- * @param {number} seconds - フォーマットする秒数。
- * @returns {string} フォーマットされた時間文字列 (例: "1時間 23分")。
- */
 export function formatHoursMinutes(seconds) {
     if (isNaN(seconds) || seconds < 0) return "0時間 0分";
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
-    // 秒は切り捨て
     return `${h}時間 ${m}分`;
 }
 
-/**
- * 秒数を H:MM 形式の文字列にフォーマットします (Excel出力用など)。
- * @param {number} seconds - フォーマットする秒数。
- * @returns {string} フォーマットされた時間文字列 (例: "1:23", "0:45")。
- */
 export function formatHoursAndMinutesSimple(seconds) {
     if (isNaN(seconds) || seconds < 0) return "0:00";
     const h = Math.floor(seconds / 3600);
@@ -42,19 +28,14 @@ export function formatHoursAndMinutesSimple(seconds) {
     return `${h}:${m.toString().padStart(2, "0")}`;
 }
 
-/**
- * Firestore TimestampオブジェクトまたはDateオブジェクトを HH:MM 形式の文字列にフォーマットします。
- * @param {object | Date | null | undefined} timestamp - Firestore TimestampオブジェクトまたはDateオブジェクト。
- * @returns {string} フォーマットされた時間文字列 (例: "09:30")、無効な場合は空文字列。
- */
 export function formatTime(timestamp) {
     let date;
     if (timestamp && typeof timestamp.toDate === 'function') {
-        date = timestamp.toDate(); // Firestore Timestamp
+        date = timestamp.toDate(); 
     } else if (timestamp instanceof Date && !isNaN(timestamp)) {
-        date = timestamp; // JavaScript Date
+        date = timestamp; 
     } else {
-        return ""; // 無効な入力
+        return ""; 
     }
 
     try {
@@ -63,16 +44,10 @@ export function formatTime(timestamp) {
         return `${hours}:${minutes}`;
     } catch (error) {
         console.error("Error formatting time:", error, timestamp);
-        return ""; // フォーマットエラー時
+        return ""; 
     }
 }
 
-/**
- * Dateオブジェクトを "YYYY-MM-DD" 形式の文字列に変換します。
- * タイムゾーンは考慮せず、Dateオブジェクトのローカルな年月日を使用します。
- * @param {Date} dateObj - 変換するDateオブジェクト。
- * @returns {string} フォーマットされた日付文字列 (例: "2023-10-28")、無効な場合は空文字列。
- */
 export function getJSTDateString(dateObj) {
      if (!(dateObj instanceof Date) || isNaN(dateObj)) {
          console.warn("Invalid date object passed to getJSTDateString:", dateObj);
@@ -85,15 +60,10 @@ export function getJSTDateString(dateObj) {
         return `${year}-${month}-${day}`;
     } catch (error) {
         console.error("Error formatting date string:", error, dateObj);
-        return ""; // フォーマットエラー時
+        return ""; 
     }
 }
 
-/**
- * 指定された月（Dateオブジェクト）の初日と末日の日付文字列を返します。
- * @param {Date} dateObj - 対象の月を含むDateオブジェクト
- * @returns {object} { start: "YYYY-MM-01", end: "YYYY-MM-31" }
- */
 export function getMonthDateRange(dateObj) {
     const year = dateObj.getFullYear();
     const month = dateObj.getMonth();
@@ -107,10 +77,10 @@ export function getMonthDateRange(dateObj) {
     };
 }
 
-
 /**
- * Firestoreのユーザーステータスを確認し、退勤忘れ修正が必要な場合にモーダルを表示します。
- * 確認後、Firestoreのフラグをリセットします。
+ * Firestoreのユーザーステータスを確認し、退勤忘れ修正が必要な場合に修正モーダルを表示します。
+ * ★修正: 確認モーダルではなく、修正モーダルを直接開き、ここでのフラグ解除は行わない。
+ * (フラグ解除は修正完了時に clientActions.js で行う)
  * @param {string} uid - 確認対象のユーザーID。
  */
 export async function checkForCheckoutCorrection(uid) {
@@ -123,29 +93,33 @@ export async function checkForCheckoutCorrection(uid) {
         const statusSnap = await getDoc(statusRef);
         if (statusSnap.exists() && statusSnap.data().needsCheckoutCorrection === true) {
             console.log(`User ${uid} needs checkout correction.`);
-            // モーダルを表示
-            showConfirmationModal(
-                "前回の退勤が自動処理されました。正しい退勤時刻を「退勤忘れを修正」ボタンから登録してください。",
-                hideConfirmationModal // 確認ボタンでモーダルを閉じるだけ
-            );
-            // 確認モーダル表示後、フラグをリセットする
-            await updateDoc(statusRef, { needsCheckoutCorrection: false });
-             console.log(`Reset needsCheckoutCorrection flag for user ${uid}.`);
-        } else {
-             // console.log(`No checkout correction needed for user ${uid}.`);
+            
+            if (fixCheckoutModal) {
+                const dateInput = fixCheckoutModal.querySelector("#fix-checkout-date-input");
+                const cancelBtn = fixCheckoutModal.querySelector("#fix-checkout-cancel-btn");
+                
+                // 昨日をデフォルト設定
+                if (dateInput) {
+                    const yesterday = new Date();
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    dateInput.value = getJSTDateString(yesterday);
+                }
+
+                // ★修正: 「必ず修正させる」ため、キャンセルボタンを一時的に非表示にする
+                if (cancelBtn) cancelBtn.style.display = "none";
+
+                // モーダルを表示
+                fixCheckoutModal.classList.remove("hidden");
+                
+                // ユーザーへの案内（アラート等）を出す場合
+                alert("前回の退勤処理が完了していません。\n正しい退勤時刻を入力して修正してください。");
+            }
         }
     } catch (error) {
-        console.error(`Error checking or resetting checkout correction flag for user ${uid}:`, error);
-        // エラーが発生しても処理は続行するが、ログには残す
+        console.error(`Error checking checkout correction flag for user ${uid}:`, error);
     }
 }
 
-/**
- * Simple HTML escaping function to prevent XSS.
- * Use this when inserting dynamic text content into innerHTML.
- * @param {string | null | undefined} unsafe - The potentially unsafe string.
- * @returns {string} The escaped string.
- */
 export function escapeHtml(unsafe) {
     if (typeof unsafe !== 'string') return '';
     return unsafe
