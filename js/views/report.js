@@ -1,7 +1,10 @@
 // js/views/report.js
-import { db } from "../../firebase.js"; // Firestoreインスタンス
+// ★修正: js/views/report.js から見て firebase.js は ../firebase.js
+import { db } from "../firebase.js"; 
 import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { handleGoBack } from "../../main.js";
+// ★修正: js/views/report.js から見て main.js は ../main.js
+import { handleGoBack } from "../main.js"; 
+// ★修正: js/views/report.js から見て js/components/ は ../components/ (これは正しかった)
 import { renderUnifiedCalendar } from "../components/calendar.js";
 import { createPieChart, destroyCharts } from "../components/chart.js";
 import { formatDuration, formatHoursMinutes, getMonthDateRange } from "../utils.js"; // helperをimport
