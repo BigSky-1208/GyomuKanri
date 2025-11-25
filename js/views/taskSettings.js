@@ -1,7 +1,9 @@
 // js/views/taskSettings.js
-import { db, allTaskObjects, authLevel, updateGlobalTaskObjects, handleGoBack, showView, VIEWS } from "../../main.js"; 
+// ★修正: js/views/taskSettings.js から見て main.js は ../main.js
+import { db, allTaskObjects, authLevel, updateGlobalTaskObjects, handleGoBack, showView, VIEWS } from "../main.js"; 
 import { doc, setDoc, getDocs, collection, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { showConfirmationModal, hideConfirmationModal, openGoalModal, showHelpModal } from "../../components/modal.js"; 
+// ★修正: js/views/taskSettings.js から見て js/components/modal.js は ../components/modal.js
+import { showConfirmationModal, hideConfirmationModal, openGoalModal, showHelpModal } from "../components/modal.js"; 
 import { formatHoursMinutes } from "../utils.js"; 
 
 const taskListEditor = document.getElementById("task-list-editor");
