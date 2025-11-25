@@ -1,6 +1,6 @@
 // js/views/modeSelection.js
-import { db, userId, userName, authLevel, showView, VIEWS, adminPasswordView, setAdminLoginDestination } from "../../main.js"; // Import global state and functions
-// 修正 1: auth.js から okta.js に変更し、handleOktaLogout をインポート
+// ★修正: js/views/modeSelection.js から見て main.js は ../main.js
+import { db, userId, userName, authLevel, showView, VIEWS, adminPasswordView, setAdminLoginDestination } from "../main.js"; 
 import { handleOktaLogout } from "../okta.js"; // Import logout function from okta.js
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // Import Firestore functions
 
