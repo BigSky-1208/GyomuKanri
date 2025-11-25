@@ -76,20 +76,35 @@ export function formatTime(timestamp) {
 export function getJSTDateString(dateObj) {
      if (!(dateObj instanceof Date) || isNaN(dateObj)) {
          console.warn("Invalid date object passed to getJSTDateString:", dateObj);
-         // 現在の日付で代替するか、エラーを示す文字列を返すか検討
-         // ここでは現在の日付を使う例
          dateObj = new Date();
-         // return "";
      }
     try {
         const year = dateObj.getFullYear();
-        const month = (dateObj.getMonth() + 1).toString().padStart(2, "0"); // 月は0から始まるため+1
+        const month = (dateObj.getMonth() + 1).toString().padStart(2, "0");
         const day = dateObj.getDate().toString().padStart(2, "0");
         return `${year}-${month}-${day}`;
     } catch (error) {
         console.error("Error formatting date string:", error, dateObj);
         return ""; // フォーマットエラー時
     }
+}
+
+/**
+ * 指定された月（Dateオブジェクト）の初日と末日の日付文字列を返します。
+ * @param {Date} dateObj - 対象の月を含むDateオブジェクト
+ * @returns {object} { start: "YYYY-MM-01", end: "YYYY-MM-31" }
+ */
+export function getMonthDateRange(dateObj) {
+    const year = dateObj.getFullYear();
+    const month = dateObj.getMonth();
+    
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+
+    return {
+        start: getJSTDateString(firstDay),
+        end: getJSTDateString(lastDay)
+    };
 }
 
 
