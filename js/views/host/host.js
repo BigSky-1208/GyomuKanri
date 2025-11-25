@@ -1,11 +1,12 @@
-// js/views/host.js
+// js/views/host/host.js
 // Main coordinator for the Host (Admin) View.
 // Imports functionalities from specialized modules like statusDisplay and userManagement.
 
 import { db, showView, VIEWS } from "../../main.js"; // Import global state and functions
 import { doc, setDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // Import necessary Firestore functions (e.g., for Tomura status)
 import { openAddUserModal, showHelpModal } from "../../components/modal.js"; // Import modal functions
-import { openExportExcelModal } from "../excelExport.js"; // Import Excel export modal function
+// ★修正: js/views/host/host.js から見て js/excelExport.js は ../../excelExport.js
+import { openExportExcelModal } from "../../excelExport.js"; 
 
 // Import functions from the host view submodules
 import { startListeningForStatusUpdates, stopListeningForStatusUpdates, forceStopUser } from "./statusDisplay.js";
