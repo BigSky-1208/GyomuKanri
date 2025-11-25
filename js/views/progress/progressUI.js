@@ -3,17 +3,11 @@
 import { escapeHtml, formatHoursMinutes } from "../../utils.js";
 import { createLineChart } from "../../components/chart.js";
 
-/**
- * Renders the list of tasks with active goals.
- * @param {Array} allTaskObjects - The global array of task objects.
- * @param {string | null} selectedProgressTaskName - The name of the currently selected task.
- * @param {function} handleTaskClick - The callback function to execute when a task is clicked.
- */
 export function renderProgressTaskList(allTaskObjects, selectedProgressTaskName, handleTaskClick) {
     const taskListContainer = document.getElementById("progress-task-list");
     if (!taskListContainer) return;
 
-    taskListContainer.innerHTML = ""; // Clear existing list
+    taskListContainer.innerHTML = ""; 
 
     const tasksWithActiveGoals = allTaskObjects
         .filter(task => task.goals && task.goals.some(g => !g.isComplete))
@@ -21,7 +15,6 @@ export function renderProgressTaskList(allTaskObjects, selectedProgressTaskName,
 
     if (tasksWithActiveGoals.length === 0) {
         taskListContainer.innerHTML = '<p class="text-gray-500 p-2">進行中の工数がある業務はありません。</p>';
-        // Clear subsequent list if no tasks are available
         const goalListContainer = document.getElementById("progress-goal-list");
         if (goalListContainer) goalListContainer.innerHTML = '<p class="text-gray-500">業務を選択してください</p>';
         return;
@@ -33,20 +26,12 @@ export function renderProgressTaskList(allTaskObjects, selectedProgressTaskName,
         button.textContent = escapeHtml(task.name);
         button.dataset.taskName = task.name;
 
-        // 司令塔から渡されたクリックハンドラを登録
         button.onclick = () => handleTaskClick(task.name);
         
         taskListContainer.appendChild(button);
     });
 }
 
-/**
- * Renders the list of active goals for the selected task.
- * @param {Array} allTaskObjects - The global array of task objects.
- * @param {string} selectedProgressTaskName - The name of the currently selected task.
- * @param {string | null} selectedProgressGoalId - The ID of the currently selected goal.
- * @param {function} handleGoalClick - The callback function to execute when a goal is clicked.
- */
 export function renderProgressGoalList(allTaskObjects, selectedProgressTaskName, selectedProgressGoalId, handleGoalClick) {
     const goalListContainer = document.getElementById("progress-goal-list");
     if (!goalListContainer) return;
@@ -56,7 +41,7 @@ export function renderProgressGoalList(allTaskObjects, selectedProgressTaskName,
         return;
     }
 
-    goalListContainer.innerHTML = ""; // Clear existing list
+    goalListContainer.innerHTML = ""; 
 
     const task = allTaskObjects.find((t) => t.name === selectedProgressTaskName);
     if (!task || !task.goals) {
@@ -79,18 +64,12 @@ export function renderProgressGoalList(allTaskObjects, selectedProgressTaskName,
         button.textContent = escapeHtml(goal.title);
         button.dataset.goalId = goal.id;
 
-        // 司令塔から渡されたクリックハンドラを登録
         button.onclick = () => handleGoalClick(goal.id);
         
         goalListContainer.appendChild(button);
     });
 }
 
-/**
- * Updates the UI highlighting for the task list.
- * @param {HTMLElement} taskListContainer - The container element for the task list.
- * @param {string} taskName - The name of the task to select.
- */
 export function updateTaskSelectionUI(taskListContainer, taskName) {
     if (!taskListContainer) return;
     taskListContainer.querySelectorAll(".list-item").forEach((item) => {
@@ -102,11 +81,6 @@ export function updateTaskSelectionUI(taskListContainer, taskName) {
     });
 }
 
-/**
- * Updates the UI highlighting for the goal list.
- * @param {HTMLElement} goalListContainer - The container element for the goal list.
- * @param {string} goalId - The ID of the goal to select.
- */
 export function updateGoalSelectionUI(goalListContainer, goalId) {
     if (!goalListContainer) return;
     goalListContainer.querySelectorAll(".list-item").forEach((item) => {
@@ -118,13 +92,6 @@ export function updateGoalSelectionUI(goalListContainer, goalId) {
     });
 }
 
-/**
- * Renders the detailed information and action buttons for the selected goal.
- * @param {object} goal - The selected goal object.
- * @param {string} taskName - The name of the parent task.
- * @param {boolean} readOnlyMode - Whether the view is in read-only mode.
- * @param {HTMLElement} goalDetailsContainer - The container element for the goal details.
- */
 export function renderProgressGoalDetails(goal, taskName, readOnlyMode, goalDetailsContainer) {
     if (!goalDetailsContainer) return;
 
@@ -156,38 +123,18 @@ export function renderProgressGoalDetails(goal, taskName, readOnlyMode, goalDeta
     goalDetailsContainer.classList.remove("hidden");
 }
 
-/**
- * Clears the goal details, chart, and summary sections.
- * @param {HTMLElement} goalDetailsContainer
- * @param {HTMLElement} chartContainer
- * @param {HTMLElement} weeklySummaryContainer
- * @param {Array} chartInstances - Array containing the chart instance to destroy.
- */
 export function clearGoalDetailsAndSummary(goalDetailsContainer, chartContainer, weeklySummaryContainer, chartInstances) {
     if (goalDetailsContainer) goalDetailsContainer.classList.add("hidden");
     if (chartContainer) chartContainer.classList.add("hidden");
     if (weeklySummaryContainer) weeklySummaryContainer.classList.add("hidden");
     
-    // destroyCharts は progress.js (司令塔) に移動したため、ここでは呼ばない
-    // ただし、chartInstances は司令塔が管理する必要がある
 }
 
 
-/**
- * Renders the line chart for weekly progress (contribution or efficiency).
- * (Private function, called by renderChartAndTable)
- * @param {HTMLElement} chartContainer - The canvas's parent container.
- * @param {string[]} weekDates - Array of date strings ("YYYY-MM-DD") for the x-axis labels.
- * @param {Array} data - Aggregated data array [{ name, dailyData: [{ contribution, efficiency }] }].
- * @param {object} goal - The goal object (for context).
- * @param {string} progressChartType - 'contribution' or 'efficiency'.
- * @returns {Chart | null} The new Chart.js instance or null.
- */
 function _renderProgressLineChart(chartContainer, weekDates, data, goal, progressChartType) {
     if (!chartContainer) return null;
-    chartContainer.innerHTML = ""; // Clear previous chart and buttons
+    chartContainer.innerHTML = ""; 
 
-    // Add Toggle Buttons for Chart Type
     const buttonsDiv = document.createElement("div");
     buttonsDiv.className = "flex justify-center md:justify-end gap-2 mb-2";
     buttonsDiv.innerHTML = `
@@ -204,7 +151,6 @@ function _renderProgressLineChart(chartContainer, weekDates, data, goal, progres
     canvas.style.minHeight = '250px';
     chartContainer.appendChild(canvas);
 
-    // Prepare datasets for Chart.js
     const datasets = data.map((userData, index) => {
         const hue = (index * 137.508) % 360;
         const color = `hsl(${hue}, 70%, 50%)`;
@@ -237,16 +183,9 @@ function _renderProgressLineChart(chartContainer, weekDates, data, goal, progres
     const chartTitle = `${escapeHtml(goal.title)} - 週間進捗グラフ`;
 
     const ctx = canvas.getContext("2d");
-    return createLineChart(ctx, labels, datasets, chartTitle, yAxisTitle); // createLineChart は chart.js からインポート
+    return createLineChart(ctx, labels, datasets, chartTitle, yAxisTitle); 
 }
 
-/**
- * Renders the data table for the weekly summary.
- * (Private function, called by renderChartAndTable)
- * @param {HTMLElement} weeklySummaryContainer - The table's parent container.
- * @param {string[]} weekDates - Array of date strings ("YYYY-MM-DD") for table columns.
- * @param {Array} data - Aggregated data array [{ name, dailyData: [...] }].
- */
 function _renderProgressTable(weeklySummaryContainer, weekDates, data) {
     if (!weeklySummaryContainer) return;
 
@@ -271,16 +210,9 @@ function _renderProgressTable(weeklySummaryContainer, weekDates, data) {
     });
 
     tableHtml += "</tbody></table></div>";
-    weeklySummaryContainer.innerHTML += tableHtml; // ナビゲーションの後に追加
+    weeklySummaryContainer.innerHTML += tableHtml; 
 }
 
-/**
- * Renders only the navigation part of the weekly summary table.
- * (Private function, called by renderChartAndTable)
- * @param {HTMLElement} weeklySummaryContainer - The container to render into.
- * @param {number} progressMonthOffset - The current month offset.
- * @param {number} progressWeekOffset - The current week offset.
- */
 function _renderProgressTableNavigation(weeklySummaryContainer, progressMonthOffset, progressWeekOffset) {
      if (!weeklySummaryContainer) return;
 
@@ -322,22 +254,9 @@ function _renderProgressTableNavigation(weeklySummaryContainer, progressMonthOff
              <button id="progress-next-month-btn" class="p-1 md:p-2 rounded-lg hover:bg-gray-200 text-xs md:text-sm font-bold" title="次の月へ">月 &gt;&gt;</button>
          </div>
      </div>`;
-     weeklySummaryContainer.innerHTML = navHtml; // Set navigation html first
+     weeklySummaryContainer.innerHTML = navHtml; 
  }
 
-/**
- * Renders the chart and table based on aggregated data.
- * This is the main public function called by the "司令塔".
- * @param {string[]} weekDates
- * @param {Array} chartAndTableData
- * @param {object} goal
- * @param {string} progressChartType
- * @param {number} progressMonthOffset
- * @param {number} progressWeekOffset
- * @param {HTMLElement} chartContainer
- * @param {HTMLElement} weeklySummaryContainer
- * @returns {Chart | null} The new Chart.js instance (or null).
- */
 export function renderChartAndTable(
     weekDates,
     chartAndTableData,
@@ -352,20 +271,17 @@ export function renderChartAndTable(
 
     let chartInstance = null;
     
-    // 常にナビゲーションを描画
     _renderProgressTableNavigation(weeklySummaryContainer, progressMonthOffset, progressWeekOffset);
 
     if (chartAndTableData.length > 0) {
-        // データがある場合のみグラフと表を描画
         chartInstance = _renderProgressLineChart(chartContainer, weekDates, chartAndTableData, goal, progressChartType);
         _renderProgressTable(weeklySummaryContainer, weekDates, chartAndTableData);
         
         chartContainer.classList.remove('hidden');
         weeklySummaryContainer.classList.remove('hidden');
     } else {
-        // データがない場合のメッセージ
         chartContainer.innerHTML = '<p class="text-gray-500 text-center p-4">この期間のグラフデータはありません。</p>';
-        weeklySummaryContainer.innerHTML += '<p class="text-gray-500 text-center p-4 mt-4">この期間の集計データはありません。</p>'; // ナビゲーションの後に追加
+        weeklySummaryContainer.innerHTML += '<p class="text-gray-500 text-center p-4 mt-4">この期間の集計データはありません。</p>'; 
         
         chartContainer.classList.remove('hidden');
         weeklySummaryContainer.classList.remove('hidden');
