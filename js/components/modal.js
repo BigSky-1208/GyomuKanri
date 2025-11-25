@@ -1,7 +1,7 @@
 // js/components/modal.js - モーダルダイアログ管理
 
 import { allTaskObjects, escapeHtml } from "../main.js"; 
-// userReservationsのインポートパスを修正
+// ★ このインポート文が正しく動くようになります（reservations.jsでexportされたため）
 import { userReservations } from '../views/client/reservations.js'; 
 
 // --- DOM Element References ---
@@ -215,7 +215,7 @@ export function showHelpModal(pageKey) {
                     <li><strong>同僚表示:</strong> 現在記録中の業務を、他の誰が同時に行っているかを表示します。相手の「今日の一言」も表示されます。</li>
                     <li><strong>戸村さんステータス:</strong> 管理者が設定した戸村さんの現在の状況が表示されます。</li>
                     <li><strong>個人記録/業務進捗:</strong> 各種詳細ページへ移動できます。</li>
-                    <li><strong>退勤忘れを修正:</strong> 前日以前の退勤時刻を忘れた場合に、後から正しい時刻を登録できます。指定日の最後の業務終了時刻が更新され、それ以降のログは削除されます。</li>
+                    <li><strong>退勤忘れを修正:</strong> 前日以前の退勤打刻を忘れた場合に、後から正しい時刻を登録できます。指定日の最後の業務終了時刻が更新され、それ以降のログは削除されます。</li>
                 </ul>`
         },
         host: {
@@ -320,6 +320,7 @@ export function openBreakReservationModal(id = null) {
 
     if (id) {
         titleEl.textContent = "休憩予約の編集";
+         // Note: userReservations is imported from client/reservations.js
          const reservation = userReservations?.find((r) => r.id === id); 
         if (reservation) {
             timeInputEl.value = reservation.time || ""; 
