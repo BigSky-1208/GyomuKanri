@@ -1,8 +1,9 @@
 // js/excelExport.js
-import { db } from "./firebase.js"; // Firestoreインスタンス
+import { db } from "./firebase.js"; // Correct: Same directory
 import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { formatHoursAndMinutesSimple, getMonthDateRange } from "./utils.js";
-import { exportExcelModal } from "../components/modal.js";
+import { formatHoursAndMinutesSimple, getMonthDateRange } from "./utils.js"; // Correct: Same directory
+// ★修正: js/excelExport.js から見て js/components/modal.js は ./components/modal.js
+import { exportExcelModal } from "./components/modal.js"; 
 
 const yearSelect = document.getElementById("export-year-select");
 const monthSelect = document.getElementById("export-month-select");
@@ -72,7 +73,7 @@ async function handleExportExcel() {
     let logsForMonth = [];
 
     try {
-        // ★ 修正: 指定された月のデータのみをFirestoreから取得
+        // 指定された月のデータのみをFirestoreから取得
         const q = query(
             collection(db, "work_logs"),
             where("date", ">=", start),
