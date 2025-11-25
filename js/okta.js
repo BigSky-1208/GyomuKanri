@@ -291,26 +291,26 @@ export async function handleOktaLogout() {
 //         return null;
 //     }
 // }
-```
-/*
-**このファイルを使うための次のステップ:**
-
-1.  **`index.html` の修正**:
-    * Okta Sign-In Widget の CDN スクリプトと CSS を `<head>` に追加します。
-    * `@okta/okta-auth-js` の CDN スクリプトを追加します。
-    * Firebase Authentication (`firebase-auth.js`) の `<script>` タグを削除します。
-    * `js/auth.js` の代わりに `js/okta.js` を読み込むように `<script type="module">` タグを修正します。
-2.  **`main.js` の修正**:
-    * `import { ... } from './auth.js'` を `import { handleOktaLogout, checkOktaAuthentication } from './okta.js'` に変更します。
-    * `initialize` 関数内の `onAuthStateChanged` や `signInAnonymously` の呼び出しを削除し、代わりに `checkOktaAuthentication()` を呼び出します。
-    * `handleLogout` の呼び出し箇所を `handleOktaLogout` に変更します。
-    * `handleAdminLogin` の呼び出し箇所を削除します（Oktaグループで権限管理するため）。
-    * `setAuthLevel` 関数を追加し、`export` します。
-        ```javascript
-        export function setAuthLevel(level) {
-            authLevel = level;
-            console.log("Auth level set to:", authLevel);
-            // Optionally trigger UI updates based on new authLevel
-        }
-        
-*/
+//```
+//
+//**このファイルを使うための次のステップ:**
+//
+//1.  **`index.html` の修正**:
+//    * Okta Sign-In Widget の CDN スクリプトと CSS を `<head>` に追加します。
+//    * `@okta/okta-auth-js` の CDN スクリプトを追加します。
+//    * Firebase Authentication (`firebase-auth.js`) の `<script>` タグを削除します。
+//    * `js/auth.js` の代わりに `js/okta.js` を読み込むように `<script type="module">` タグを修正します。
+//2.  **`main.js` の修正**:
+//    * `import { ... } from './auth.js'` を `import { handleOktaLogout, checkOktaAuthentication } from './okta.js'` に変更します。
+//    * `initialize` 関数内の `onAuthStateChanged` や `signInAnonymously` の呼び出しを削除し、代わりに `checkOktaAuthentication()` を呼び出します。
+//    * `handleLogout` の呼び出し箇所を `handleOktaLogout` に変更します。
+//    * `handleAdminLogin` の呼び出し箇所を削除します（Oktaグループで権限管理するため）。
+//    * `setAuthLevel` 関数を追加し、`export` します。
+//        ```javascript
+//        export function setAuthLevel(level) {
+//            authLevel = level;
+//            console.log("Auth level set to:", authLevel);
+//            // Optionally trigger UI updates based on new authLevel
+//        }
+//        
+//
