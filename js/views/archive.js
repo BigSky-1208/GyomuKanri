@@ -1,15 +1,15 @@
 // js/views/archive.js
-// ★ dbとFirestore関数をインポート
 import { db, allTaskObjects, handleGoBack } from "../main.js"; 
 import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { formatHoursMinutes, escapeHtml } from "../utils.js";
-import { renderArchiveChart, renderArchiveTable, destroyCharts } from "../components/chart.js";
+// ★修正: chart.js からは汎用関数のみをインポート
+import { createLineChart, destroyCharts } from "../components/chart.js";
 
 let selectedArchiveTaskName = null;
 let selectedArchiveGoalId = null;
 let archiveDatePageIndex = 0;
 let archiveChartInstance = null;
-let selectedGoalLogs = []; // ★ 選択されたゴールのログを保持するローカル変数
+let selectedGoalLogs = []; 
 
 const archiveTaskListContainer = document.getElementById("archive-task-list");
 const archiveGoalListContainer = document.getElementById("archive-goal-list");
@@ -22,7 +22,7 @@ export async function initializeArchiveView() {
     selectedArchiveTaskName = null;
     selectedArchiveGoalId = null;
     archiveDatePageIndex = 0;
-    selectedGoalLogs = []; // クリア
+    selectedGoalLogs = []; 
 
     renderArchiveTaskList();
     
@@ -68,7 +68,7 @@ export function setupArchiveEventListeners() {
         }
      });
 
-    archiveGoalListContainer?.addEventListener('click', async (event) => { // async追加
+    archiveGoalListContainer?.addEventListener('click', async (event) => { 
         const button = event.target.closest('.list-item');
         if (button && button.dataset.goalId) {
             selectedArchiveGoalId = button.dataset.goalId;
@@ -77,7 +77,6 @@ export function setupArchiveEventListeners() {
              archiveGoalListContainer.querySelectorAll(".list-item").forEach(item => item.classList.remove("selected", "bg-indigo-100"));
              button.classList.add("selected", "bg-indigo-100");
 
-            // ★ ゴールが選択されたら、そのゴールのログを取得
             await fetchLogsForGoal(selectedArchiveGoalId);
 
             renderArchiveGoalDetails();
@@ -91,7 +90,7 @@ export function setupArchiveEventListeners() {
             selectedArchiveTaskName = button.dataset.taskName;
             selectedArchiveGoalId = null;
             archiveDatePageIndex = 0;
-            selectedGoalLogs = []; // クリア
+            selectedGoalLogs = []; 
 
              archiveTaskListContainer.querySelectorAll(".list-item").forEach(item => item.classList.remove("selected", "bg-indigo-100"));
              button.classList.add("selected", "bg-indigo-100");
@@ -107,7 +106,6 @@ export function setupArchiveEventListeners() {
     });
 }
 
-// ★ 新規: 指定されたゴールIDのログを取得する
 async function fetchLogsForGoal(goalId) {
     console.log(`Fetching logs for goal: ${goalId}`);
     try {
@@ -133,7 +131,6 @@ async function fetchLogsForGoal(goalId) {
     }
 }
 
-// ... renderArchiveTaskList, renderArchiveGoalList ... (これらは変更なし)
 function renderArchiveTaskList() {
   if (!archiveTaskListContainer) return;
   archiveTaskListContainer.innerHTML = ""; 
@@ -290,7 +287,6 @@ function renderArchiveWeeklySummary() {
   destroyCharts([archiveChartInstance]); 
   archiveChartInstance = null;
 
-  // ★ ローカル変数のログを使用する (selectedGoalLogs)
   const relevantLogs = selectedGoalLogs;
 
   const usersWithContributions = [
@@ -359,8 +355,10 @@ function renderArchiveWeeklySummary() {
        renderArchiveTableNavigation(datesToShow, archiveDatePageIndex + 1, totalPages);
 
        if (weeklyData.length > 0) {
-           archiveChartInstance = renderArchiveChart(archiveChartContainer, datesToShow, weeklyData); 
-           renderArchiveTable(archiveWeeklySummaryContainer, datesToShow, weeklyData); 
+           // ★修正: 汎用の createLineChart を使用して描画ロジックを実装
+           _renderArchiveChart(archiveChartContainer, datesToShow, weeklyData); 
+           // ★修正: 内部関数 _renderArchiveTable を呼び出し
+           _renderArchiveTable(archiveWeeklySummaryContainer, datesToShow, weeklyData); 
            archiveChartContainer.classList.remove("hidden");
        } else {
            archiveWeeklySummaryContainer.innerHTML += '<p class="text-gray-500 p-4 text-center">選択された期間に貢献記録はありません。</p>';
@@ -376,8 +374,62 @@ function renderArchiveWeeklySummary() {
 
 }
 
+// ★新規: 内部関数として実装
+function _renderArchiveChart(container, activeDates, data) {
+    container.innerHTML = "";
+    const canvas = document.createElement("canvas");
+    canvas.style.minHeight = '250px';
+    container.appendChild(canvas);
+
+    const datasets = data.map((userData, index) => {
+        const hue = (index * 137.508) % 360;
+        const color = `hsl(${hue}, 70%, 50%)`;
+        return {
+            label: userData.name,
+            data: userData.dailyData.map((d) => d.contribution),
+            borderColor: color,
+            backgroundColor: color,
+            fill: false,
+            tension: 0.1,
+        };
+    });
+
+    const labels = activeDates.map((dateStr) => {
+        const date = new Date(dateStr);
+        return `${date.getMonth() + 1}/${date.getDate()}`;
+    });
+
+    archiveChartInstance = createLineChart(canvas.getContext("2d"), labels, datasets, "日別貢献件数", "合計件数");
+}
+
+// ★新規: 内部関数として実装
+function _renderArchiveTable(container, activeDates, data) {
+    let tableHtml = '<div class="overflow-x-auto mt-4"><table class="w-full text-sm text-left text-gray-500">';
+    tableHtml += '<thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr><th scope="col" class="px-4 py-3">名前</th>';
+
+    activeDates.forEach((dateStr) => {
+        const date = new Date(dateStr);
+        tableHtml += `<th scope="col" class="px-4 py-3 text-center">${date.getMonth() + 1}/${date.getDate()}</th>`;
+    });
+    tableHtml += "</tr></thead><tbody>";
+
+    data.forEach((userData) => {
+        tableHtml += `<tr class="bg-white border-b"><th scope="row" class="px-4 py-4 font-medium text-gray-900 whitespace-nowrap">${escapeHtml(userData.name)}</th>`;
+        userData.dailyData.forEach((d) => {
+            const cellClass = d.duration > 0 || d.contribution > 0 ? "highlight-cell bg-yellow-50" : "";
+            tableHtml += `<td class="px-4 py-4 text-center ${cellClass}">
+                <div>${d.contribution}件 / ${formatHoursMinutes(d.duration)}</div>
+                <div class="text-xs text-gray-400">${d.efficiency}件/h</div>
+            </td>`;
+        });
+        tableHtml += "</tr>";
+    });
+
+    tableHtml += "</tbody></table></div>";
+    container.innerHTML += tableHtml;
+}
+
 function calculateTotalPages() {
-    // ★ ローカル変数のログを使用
     const relevantLogs = selectedGoalLogs;
     const allActiveDates = [...new Set(relevantLogs.map((log) => log.date).filter(Boolean))];
     const datesPerPage = 7;
