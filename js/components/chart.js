@@ -1,6 +1,6 @@
 // js/components/chart.js - Chart.jsによるグラフ描画関連
 
-import { formatHoursMinutes } from "../utils.js"; // 同じcomponentsフォルダからは ../utils.js で正しい
+import { formatHoursMinutes } from "../utils.js"; 
 
 export function createPieChart(ctx, data, colorMap, showLegend = true) {
     if (!ctx || !data || typeof data !== 'object') {
@@ -126,7 +126,7 @@ export function createLineChart(ctx, labels, datasets, titleText = "グラフ", 
                 responsive: true,
                 maintainAspectRatio: false, 
                 interaction: { 
-                    mode: 'index',
+                    mode: 'index', // Use 'index' mode for tooltip
                     intersect: false,
                 },
                 plugins: {
@@ -142,11 +142,6 @@ export function createLineChart(ctx, labels, datasets, titleText = "グラフ", 
                         text: titleText, 
                         font: { size: 16 }
                     },
-                    tooltip: {
-                        position: 'nearest',
-                        callbacks: {
-                        }
-                    },
                     datalabels: {
                          display: false
                     }
@@ -154,9 +149,6 @@ export function createLineChart(ctx, labels, datasets, titleText = "グラフ", 
                 scales: {
                     x: { 
                         display: true,
-                        title: {
-                            display: false, 
-                        },
                         grid: {
                              display: false 
                         }
@@ -193,7 +185,6 @@ export function destroyCharts(chartInstances) {
             }
         }
     });
-    console.log(`Destroyed ${chartInstances.length} chart(s).`);
 }
 
 function generateRandomColor() {
