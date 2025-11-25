@@ -1,51 +1,34 @@
 // js/firebase.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-// AuthはOkta移行後もFirestoreルール等で必要になる可能性があるので残す
 import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-
-// --- Firebase Configuration ---
-// IMPORTANT: Replace with your actual Firebase configuration
-// Consider moving this to a separate configuration file and adding it to .gitignore
-const firebaseConfig = {
-    apiKey: "YOUR_API_KEY", // Replace with your actual API key
-    authDomain: "YOUR_AUTH_DOMAIN", // Replace with your actual auth domain
-    projectId: "YOUR_PROJECT_ID", // Replace with your actual project ID
-    storageBucket: "YOUR_STORAGE_BUCKET", // Replace with your actual storage bucket
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID", // Replace with your actual sender ID
-    appId: "YOUR_APP_ID", // Replace with your actual app ID
-    measurementId: "YOUR_MEASUREMENT_ID" // Optional: Replace with your actual measurement ID
-};
+// ★生成された config.js から設定を読み込む
+import { firebaseConfig } from "./config.js";
 
 // --- Firebase Initialization and Exports ---
 let app;
 let db;
 let auth;
-let initializationError = null; // Store initialization error
+let initializationError = null;
 
 try {
     app = initializeApp(firebaseConfig);
     db = getFirestore(app);
-    auth = getAuth(app); // Initialize Auth
-    console.log("Firebase initialized successfully in firebase.js.");
+    auth = getAuth(app);
+    console.log("Firebase initialized successfully.");
 } catch (error) {
     console.error("Firebase Initialization Error in firebase.js:", error);
-    initializationError = error; // Store the error
-    // Don't alert here, let main.js handle UI feedback if needed
+    initializationError = error;
 }
 
-// Export the initialized instances (even if null/undefined on error)
 export { app, db, auth, firebaseConfig, initializationError };
 
 /**
- * Checks if the Firebase configuration is valid (basic check).
- * @returns {boolean} True if config seems valid, false otherwise.
+ * Checks if the Firebase configuration is valid.
  */
 export function isFirebaseConfigValid() {
     return firebaseConfig &&
            firebaseConfig.apiKey &&
-           !firebaseConfig.apiKey.startsWith("YOUR_") &&
-           firebaseConfig.projectId &&
-           !firebaseConfig.projectId.startsWith("YOUR_");
+           !firebaseConfig.apiKey.startsWith("YOUR_") && // 環境変数がセットされていない場合のチェック
+           firebaseConfig.projectId;
 }
-
