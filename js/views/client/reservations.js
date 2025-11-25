@@ -3,19 +3,27 @@ import { db, userId } from "../../main.js"; // Import global state (db, userId)
 import { collection, query, onSnapshot, doc, updateDoc, addDoc, deleteDoc, writeBatch, getDoc, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // Import Firestore functions
 import { getJSTDateString } from "../../utils.js"; // Import utility functions
 import { handleBreakClick, handleStopClick } from "./timer.js"; // Import action execution functions
-import { openBreakReservationModal, breakReservationModal } from "../../components/modal.js"; // Import modal functions/elements
+// 循環参照を防ぐため、modal.js からの import を関数内で行うか、必要なものだけにする
+// openBreakReservationModal, breakReservationModal はここでは使わず、client.js 側で制御するのがベターだが、
+// 既存ロジックを維持するなら、ここでの import は最小限にする。
+// updateReservationDisplay からの呼び出しのために modal 要素への参照が必要なら、
+// それらを引数で受け取るか、DOMから直接取得する方が安全。
+// 今回はDOM参照を直接取得するように変更して、循環参照リスクを減らします。
 
 // --- State variables managed by this module ---
-let userReservations = []; // Holds reservation data from Firestore {id, time:"HH:MM", action:"break"|"stop", lastExecutedDate:"YYYY-MM-DD"|null}
+// ★修正: userReservations を export する
+export let userReservations = []; // Holds reservation data from Firestore {id, time:"HH:MM", action:"break"|"stop", lastExecutedDate:"YYYY-MM-DD"|null}
 let reservationTimers = []; // Holds active setTimeout IDs
 let reservationsUnsubscribe = null; // Firestore listener unsubscribe function
 
-// --- DOM Element references ---
-const breakList = document.getElementById("break-reservation-list");
-const stopSetter = document.getElementById("stop-reservation-setter");
-const stopStatus = document.getElementById("stop-reservation-status");
-const stopStatusText = document.getElementById("stop-reservation-status-text");
-const stopTimeInput = document.getElementById("stop-reservation-time-input");
+// --- DOM Element references (fetched on demand or at top level if safe) ---
+// To avoid circular dependency issues during initialization, fetch elements inside functions where possible
+// or ensure the DOM is ready.
+const getBreakList = () => document.getElementById("break-reservation-list");
+const getStopSetter = () => document.getElementById("stop-reservation-setter");
+const getStopStatus = () => document.getElementById("stop-reservation-status");
+const getStopStatusText = () => document.getElementById("stop-reservation-status-text");
+const getStopTimeInput = () => document.getElementById("stop-reservation-time-input");
 
 /**
  * Sets up the Firestore listener for user reservations.
@@ -66,7 +74,7 @@ export async function processReservations() {
     // 1. Clear currently set timers
     reservationTimers.forEach(clearTimeout);
     reservationTimers = [];
-    console.log("Processing reservations, clearing existing timers.");
+    // console.log("Processing reservations, clearing existing timers.");
 
     const now = new Date();
     const todayStr = getJSTDateString(now); // "YYYY-MM-DD"
@@ -75,7 +83,7 @@ export async function processReservations() {
     for (const res of userReservations) {
         // 3. Skip if already executed today
         if (res.lastExecutedDate === todayStr) {
-            console.log(`Reservation ${res.id} (${res.action}@${res.time}) already executed today.`);
+            // console.log(`Reservation ${res.id} (${res.action}@${res.time}) already executed today.`);
             continue; // Move to the next reservation
         }
 
@@ -104,7 +112,7 @@ export async function processReservations() {
         } else {
             // Reservation time is in the future, set a timer
             const delay = executionTime.getTime() - now.getTime();
-            console.log(`Setting timer for future reservation (${res.action} at ${res.time}) in ${delay}ms`);
+            // console.log(`Setting timer for future reservation (${res.action} at ${res.time}) in ${delay}ms`);
             const timerId = setTimeout(async () => {
                 // When timer fires, execute the action
                 await executeAutoAction(res.action, executionTime, res.id);
@@ -178,12 +186,12 @@ async function executeAutoAction(action, executionTime, reservationId) {
 export async function cancelAllReservations() {
     if (!userId) return;
 
-    console.log("Cancelling all future reservation timers and resetting execution state for today.");
+    // console.log("Cancelling all future reservation timers and resetting execution state for today.");
 
     // 1. Clear local timers immediately
     reservationTimers.forEach(clearTimeout);
     reservationTimers = [];
-    console.log("Cleared local reservation timers.");
+    // console.log("Cleared local reservation timers.");
 
     // 2. Reset lastExecutedDate in Firestore for ALL reservations for this user
     if (userReservations.length > 0) {
@@ -201,7 +209,7 @@ export async function cancelAllReservations() {
         if (requiresCommit) {
             try {
                 await batch.commit();
-                console.log("Reset lastExecutedDate for relevant reservations in Firestore.");
+                // console.log("Reset lastExecutedDate for relevant reservations in Firestore.");
                 // Manually update local state after successful commit to reflect the reset
                 userReservations = userReservations.map(res => ({ ...res, lastExecutedDate: null }));
             } catch (error) {
@@ -210,11 +218,11 @@ export async function cancelAllReservations() {
                 // A subsequent snapshot update should eventually correct it.
             }
         } else {
-             console.log("No reservations needed Firestore reset for lastExecutedDate.");
+             // console.log("No reservations needed Firestore reset for lastExecutedDate.");
         }
 
     } else {
-        console.log("No local reservations to reset.");
+        // console.log("No local reservations to reset.");
     }
 
     // 3. Re-process reservations AFTER resetting Firestore.
@@ -251,6 +259,12 @@ export async function deleteReservation(id) {
  * based on the current `userReservations` state.
  */
 export function updateReservationDisplay() {
+    const breakList = getBreakList();
+    const stopSetter = getStopSetter();
+    const stopStatus = getStopStatus();
+    const stopStatusText = getStopStatusText();
+    const stopTimeInput = getStopTimeInput();
+
     // Ensure elements exist before manipulating
     if (!breakList || !stopSetter || !stopStatus || !stopStatusText || !stopTimeInput) {
         // console.warn("Reservation UI elements not found. Skipping display update.");
@@ -305,6 +319,7 @@ export async function handleSaveBreakReservation() {
     // Find the modal elements within this scope or ensure they are passed/imported
     const timeInputElem = document.getElementById("break-reservation-time-input");
     const idInputElem = document.getElementById("break-reservation-id");
+    const modalElem = document.getElementById("break-reservation-modal"); // DOM参照
 
     if(!timeInputElem || !idInputElem) {
         console.error("Break reservation modal elements not found.");
@@ -344,7 +359,7 @@ export async function handleSaveBreakReservation() {
             console.log(`New break reservation added at ${timeInputVal}.`);
         }
         // Close modal after successful save
-        if(breakReservationModal) breakReservationModal.classList.add("hidden");
+        if(modalElem) modalElem.classList.add("hidden");
         // Firestore listener will trigger processReservations and UI update.
 
     } catch (error) {
@@ -357,6 +372,7 @@ export async function handleSaveBreakReservation() {
  * Handles setting the stop reservation time. Deletes existing stop reservations first.
  */
 export async function handleSetStopReservation() {
+    const stopTimeInput = getStopTimeInput();
     if (!stopTimeInput) return;
     const timeInputVal = stopTimeInput.value;
 
