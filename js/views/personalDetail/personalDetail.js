@@ -1,9 +1,10 @@
 // js/views/personalDetail.js (リファクタリング版 - 司令塔)
 
 import { db, userName as currentUserName, authLevel, viewHistory, showView, VIEWS, allTaskObjects, updateGlobalTaskObjects, handleGoBack } from "../../main.js";
-import { renderUnifiedCalendar } from "../components/calendar.js";
-// モーダル本体の参照は、各ロジックファイルが個別に import するように変更しても良い
-import { editLogModal, editMemoModal, editContributionModal } from "../components/modal.js";
+// ★修正: js/views/personalDetail/personalDetail.js から見て components は ../../components
+import { renderUnifiedCalendar } from "../../components/calendar.js"; 
+// ★修正: js/views/personalDetail/personalDetail.js から見て components は ../../components
+import { editLogModal, editMemoModal, editContributionModal } from "../../components/modal.js"; 
 
 // --- 新しく分割したモジュールをインポート ---
 import { startListeningForUserLogs, stopListeningForUserLogs } from "./logData.js";
