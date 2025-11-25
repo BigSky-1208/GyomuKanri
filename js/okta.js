@@ -1,11 +1,14 @@
 // js/okta.js
-import { db, setUserId, setUserName, setAuthLevel, showView, VIEWS, fetchAllUserLogs, listenForDisplayPreferences, updateGlobalTaskObjects, checkForCheckoutCorrection } from './main.js'; // Import global state setters and view management
+import { db, setUserId, setUserName, setAuthLevel, showView, VIEWS, listenForDisplayPreferences, updateGlobalTaskObjects } from './main.js'; 
+// ★修正: checkForCheckoutCorrection は utils.js からインポート
+import { checkForCheckoutCorrection } from './utils.js'; 
+
 // Import Okta Sign-In Widget CSS (make sure index.html includes the JS)
 // Note: Okta Auth JS SDK is typically included via CDN in index.html for widget usage
 // If using npm: import OktaSignIn from '@okta/okta-signin-widget';
 //              import { OktaAuth } from '@okta/okta-auth-js';
 
-import { collection, query, where, getDocs, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, query, where, getDocs, doc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // --- Okta Configuration (Replace with your actual values) ---
 const OKTA_DOMAIN = "YOUR_OKTA_DOMAIN"; // 例: dev-123456.okta.com
@@ -230,14 +233,17 @@ export async function handleOktaLogout() {
     const appContainer = document.getElementById('app-container');
 
     try {
-        const userIdToLogout = userId; // Get current userId before clearing state
+        // const userIdToLogout = userId; // Get current userId before clearing state (imported from main.js)
+        // userId is imported from main.js, assume it's current
 
         // Mark user as offline in Firestore *before* signing out
-        if (userIdToLogout) {
-            const statusRef = doc(db, "work_status", userIdToLogout);
+        /*
+        if (userId) {
+            const statusRef = doc(db, "work_status", userId);
             await updateDoc(statusRef, { onlineStatus: false }); // Don't merge, just update online status
              console.log(`User ${userName} marked as offline.`);
         }
+        */
 
         // Sign out from Okta session
         await oktaAuthClient.signOut();
@@ -266,51 +272,3 @@ export async function handleOktaLogout() {
         renderSignInWidget();
     }
 }
-
-// Optional: Function to get the current access token
-// export async function getAccessToken() {
-//     try {
-//         const accessToken = await oktaAuthClient.tokenManager.get('accessToken');
-//         return accessToken?.accessToken;
-//     } catch (error) {
-//         console.error("Error getting access token:", error);
-//         return null;
-//     }
-// }
-
-// Optional: Function to get user claims if needed later
-// export async function getUserClaims() {
-//     try {
-//         const isAuthenticated = await oktaAuthClient.isAuthenticated();
-//         if (isAuthenticated) {
-//             return await oktaAuthClient.getUser();
-//         }
-//         return null;
-//     } catch (error) {
-//         console.error("Error getting user claims:", error);
-//         return null;
-//     }
-// }
-//```
-//
-//**このファイルを使うための次のステップ:**
-//
-//1.  **`index.html` の修正**:
-//    * Okta Sign-In Widget の CDN スクリプトと CSS を `<head>` に追加します。
-//    * `@okta/okta-auth-js` の CDN スクリプトを追加します。
-//    * Firebase Authentication (`firebase-auth.js`) の `<script>` タグを削除します。
-//    * `js/auth.js` の代わりに `js/okta.js` を読み込むように `<script type="module">` タグを修正します。
-//2.  **`main.js` の修正**:
-//    * `import { ... } from './auth.js'` を `import { handleOktaLogout, checkOktaAuthentication } from './okta.js'` に変更します。
-//    * `initialize` 関数内の `onAuthStateChanged` や `signInAnonymously` の呼び出しを削除し、代わりに `checkOktaAuthentication()` を呼び出します。
-//    * `handleLogout` の呼び出し箇所を `handleOktaLogout` に変更します。
-//    * `handleAdminLogin` の呼び出し箇所を削除します（Oktaグループで権限管理するため）。
-//    * `setAuthLevel` 関数を追加し、`export` します。
-//        ```javascript
-//        export function setAuthLevel(level) {
-//            authLevel = level;
-//            console.log("Auth level set to:", authLevel);
-//            // Optionally trigger UI updates based on new authLevel
-//        }
-//        
-//
