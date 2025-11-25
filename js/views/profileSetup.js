@@ -1,9 +1,8 @@
 // js/views/profileSetup.js
-import { db, setUserId, setUserName, showView, VIEWS, checkForCheckoutCorrection } from "../../main.js"; // Import global state/functions
+import { db, setUserId, setUserName, showView, VIEWS } from "../../main.js"; // Import global state/functions
+// ★修正: checkForCheckoutCorrection は utils.js からインポート
+import { checkForCheckoutCorrection } from "../../utils.js"; 
 import { collection, query, where, getDocs, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // Import Firestore functions
-// Import functions needed after login (might be called from main.js instead)
-// import { listenForUserReservations } from './client/reservations.js';
-// import { listenForDisplayPreferences } from './client/clientUI.js'; // Assuming preferences listener setup is moved
 
 // --- DOM Element references ---
 const usernameInput = document.getElementById("profile-username");
