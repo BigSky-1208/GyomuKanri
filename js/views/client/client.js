@@ -3,13 +3,13 @@
 // importing functionalities from specialized modules.
 
 import { showView, VIEWS } from "../../main.js"; // Import view management
-import { handleStartClick, handleStopClick, handleBreakClick, restoreClientState as restoreTimerState } from "./client/timer.js"; // Import timer actions
-import { listenForUserReservations, handleSaveBreakReservation, handleSetStopReservation, handleCancelStopReservation, deleteReservation } from "./client/reservations.js"; // Import reservation actions
+import { handleStartClick, handleStopClick, handleBreakClick, restoreClientState as restoreTimerState } from "./timer.js"; // Import timer actions
+import { listenForUserReservations, handleSaveBreakReservation, handleSetStopReservation, handleCancelStopReservation, deleteReservation } from "./reservations.js"; // Import reservation actions
 // goalProgress functions are mainly called by clientUI, so direct import might not be needed here unless for specific setup
-// import {} from './client/goalProgress.js';
+// import {} from './goalProgress.js';
 // colleagues functions are mainly called by timer (startTask), so direct import might not be needed here
-// import {} from './client/colleagues.js';
-import { handleTaskSelectionChange, handleGoalSelectionChange, handleDisplaySettingChange, renderTaskOptions, renderTaskDisplaySettings } from "./client/clientUI.js"; // Import UI update handlers
+// import {} from './colleagues.js';
+import { handleTaskSelectionChange, handleGoalSelectionChange, handleDisplaySettingChange, renderTaskOptions, renderTaskDisplaySettings } from "./clientUI.js"; // Import UI update handlers
 
 // --- DOM Element references ---
 // Get references to elements whose event listeners are set up here
@@ -151,4 +151,3 @@ export function setupClientEventListeners() {
 //     // Stop reservation listener? Maybe not, if needed globally or handled by auth state change
 //     // if(reservationsUnsubscribe) reservationsUnsubscribe();
 // }
-
