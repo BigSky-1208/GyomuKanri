@@ -296,6 +296,11 @@ export function showHelpModal(pageKey) {
     showModal(helpModal);
 }
 
+// ★追加: ヘルプモーダルを閉じる関数
+function closeHelpModal() {
+    closeModal(helpModal);
+}
+
 export function openGoalDetailsModal(title, contentHtml) {
     if(!goalDetailsModal || !goalDetailsModalTitle || !goalDetailsModalContent) return;
     goalDetailsModalTitle.textContent = title;
