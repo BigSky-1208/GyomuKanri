@@ -1,15 +1,15 @@
 // js/components/notification.js
 
-// ★生成された config.js から設定を読み込む
 import { groqConfig } from "../config.js";
 
 const GROQ_API_KEY = groqConfig.apiKey;
 
 /**
- * 経過時間に基づいて励ましの通知をトリガーします。
+ * 経過時間に基づいて通知をトリガーします。
  * @param {number} elapsedSeconds - 経過秒数
+ * @param {string} type - 通知タイプ ('encouragement' | 'breather')
  */
-export async function triggerEncouragementNotification(elapsedSeconds) {
+export async function triggerEncouragementNotification(elapsedSeconds, type = 'encouragement') {
     if (window.isNotificationFetching) {
         console.log("Notification fetch already in progress, skipping.");
         return;
@@ -19,12 +19,16 @@ export async function triggerEncouragementNotification(elapsedSeconds) {
     const elapsedMinutes = Math.round(elapsedSeconds / 60);
 
     try {
-        const message = await fetchEncouragementFromGroq(elapsedMinutes);
+        const message = await fetchMessageFromGroq(elapsedMinutes, type);
         if (message) {
-            await showBrowserNotification(message);
+            let title = "お疲れ様です！";
+            if (type === 'breather') {
+                title = "そろそろ一息つきませんか？";
+            }
+            await showBrowserNotification(title, message);
         }
     } catch (error) {
-        console.error("Failed to get encouragement message:", error);
+        console.error("Failed to get notification message:", error);
     } finally {
         setTimeout(() => {
             window.isNotificationFetching = false;
@@ -32,13 +36,19 @@ export async function triggerEncouragementNotification(elapsedSeconds) {
     }
 }
 
-async function fetchEncouragementFromGroq(minutes) {
+async function fetchMessageFromGroq(minutes, type) {
     if (!GROQ_API_KEY) {
-        // APIキーがない場合は何もしない（エラーにはしない）
-        return null; 
+        if (type === 'breather') {
+            return `業務を始めて${minutes}分が経過しました。少し休憩してリフレッシュしましょう！`;
+        }
+        return "お疲れ様です！順調ですね。"; 
     }
 
-    const prompt = `同じ業務を${minutes}分続けている人を褒める言葉をください。簡潔に、労う内容でお願いします。`;
+    let prompt = `同じ業務を${minutes}分続けている人を褒める言葉をください。簡潔に、労う内容でお願いします。`;
+    
+    if (type === 'breather') {
+        prompt = `ユーザーが同じ業務を${minutes}分続けています。過集中を防ぐため、優しく休憩を促すメッセージをください。50文字以内で簡潔に。`;
+    }
 
     try {
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -52,11 +62,11 @@ async function fetchEncouragementFromGroq(minutes) {
                 messages: [
                     { 
                         role: "system", 
-                        content: "あなたはユーザーを優しく励ますアシスタントです。日本のビジネス文化に合った、丁寧かつ前向きなメッセージを生成してください。" 
+                        content: "あなたはユーザーを優しくサポートするアシスタントです。日本のビジネス文化に合った、丁寧かつ前向きなメッセージを生成してください。" 
                     },
                     { role: "user", content: prompt }
                 ],
-                temperature: 0.8,
+                temperature: 0.7,
                 max_tokens: 100,
             })
         });
@@ -71,7 +81,7 @@ async function fetchEncouragementFromGroq(minutes) {
         if (message) {
             return message.replace(/["「」]/g, ''); 
         } else {
-            return "お疲れ様です！順調ですね。";
+            return type === 'breather' ? "少し休憩しませんか？" : "お疲れ様です！";
         }
 
     } catch (error) {
@@ -80,18 +90,18 @@ async function fetchEncouragementFromGroq(minutes) {
     }
 }
 
-async function showBrowserNotification(message) {
+async function showBrowserNotification(title, message) {
     if (!("Notification" in window)) return;
 
     let permission = Notification.permission;
 
     if (permission === "granted") {
-        createNotification(message);
+        createNotification(title, message);
     } else if (permission !== "denied") {
         try {
             permission = await Notification.requestPermission();
             if (permission === "granted") {
-                createNotification(message);
+                createNotification(title, message);
             }
         } catch (error) {
             console.error("Error requesting notification permission:", error);
@@ -99,12 +109,12 @@ async function showBrowserNotification(message) {
     }
 }
 
-function createNotification(message) {
+function createNotification(title, message) {
     try {
-        const notification = new Notification("お疲れ様です！", {
+        const notification = new Notification(title, {
             body: message,
-            tag: "gyomukanri-encouragement",
-            renotify: false,
+            tag: "gyomukanri-notification",
+            renotify: true, // Re-notify even if tag is same
             silent: false,
         });
         
@@ -113,9 +123,10 @@ function createNotification(message) {
             notification.close();
         };
 
+        // Auto close after a while
         setTimeout(() => {
             notification.close();
-        }, 10000);
+        }, 15000);
 
     } catch (error) {
         console.error("Error creating notification:", error);
