@@ -1,9 +1,11 @@
 // js/views/progress/progress.js
 // ★ dbとFirestore関数をインポート
+// ★修正: js/views/progress/progress.js から見て main.js は ../../main.js (Correct)
 import { db, allTaskObjects, handleGoBack, showView, VIEWS, escapeHtml } from "../../main.js";
 import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { openGoalModal, showHelpModal } from "../components/modal.js";
-import { destroyCharts } from "../components/chart.js";
+// ★修正: js/views/progress/ から js/components/ は ../../components/
+import { openGoalModal, showHelpModal } from "../../components/modal.js";
+import { destroyCharts } from "../../components/chart.js";
 
 import {
     renderProgressTaskList,
@@ -13,17 +15,17 @@ import {
     clearGoalDetailsAndSummary,
     updateTaskSelectionUI,
     updateGoalSelectionUI
-} from "./progress/progressUI.js";
+} from "./progressUI.js";
 
 import {
     calculateDateRange,
     aggregateWeeklyData
-} from "./progress/progressData.js";
+} from "./progressData.js";
 
 import {
     handleCompleteGoal,
     handleDeleteGoal
-} from "./progress/progressActions.js";
+} from "./progressActions.js";
 
 let selectedProgressTaskName = null;
 let selectedProgressGoalId = null;
