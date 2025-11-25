@@ -6,10 +6,10 @@ import { renderUnifiedCalendar } from "../components/calendar.js";
 import { editLogModal, editMemoModal, editContributionModal } from "../components/modal.js";
 
 // --- 新しく分割したモジュールをインポート ---
-import { startListeningForUserLogs, stopListeningForUserLogs } from "./personalDetail/logData.js";
-import { showDailyLogs, showMonthlyLogs, clearDetails } from "./personalDetail/logDisplay.js";
-import { handleTimelineClick, handleSaveLogDuration, handleSaveMemo, handleSaveContribution } from "./personalDetail/logEditor.js";
-import { handleDeleteUserClick } from "./personalDetail/adminActions.js";
+import { startListeningForUserLogs, stopListeningForUserLogs } from "./logData.js";
+import { showDailyLogs, showMonthlyLogs, clearDetails } from "./logDisplay.js";
+import { handleTimelineClick, handleSaveLogDuration, handleSaveMemo, handleSaveContribution } from "./logEditor.js";
+import { handleDeleteUserClick } from "./adminActions.js";
 
 // --- Module State (ビュー全体のグローバル状態) ---
 let selectedUserLogs = []; // Cache for the currently viewed user's logs
@@ -234,4 +234,3 @@ function escapeHtml(unsafe) {
          .replace(/"/g, "&quot;")
          .replace(/'/g, "&#039;");
  }
-
