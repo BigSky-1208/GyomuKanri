@@ -1,13 +1,6 @@
 // js/okta.js
 import { db, setUserId, setUserName, setAuthLevel, showView, VIEWS, listenForDisplayPreferences, updateGlobalTaskObjects } from './main.js'; 
-// ★修正: checkForCheckoutCorrection は utils.js からインポート
 import { checkForCheckoutCorrection } from './utils.js'; 
-
-// Import Okta Sign-In Widget CSS (make sure index.html includes the JS)
-// Note: Okta Auth JS SDK is typically included via CDN in index.html for widget usage
-// If using npm: import OktaSignIn from '@okta/okta-signin-widget';
-//              import { OktaAuth } from '@okta/okta-auth-js';
-
 import { collection, query, where, getDocs, doc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // --- Okta Configuration (Replace with your actual values) ---
@@ -18,33 +11,48 @@ const ISSUER = `https://${OKTA_DOMAIN}/oauth2/default`; // 例: https://dev-1234
 // Scope for requesting user info and groups
 const SCOPES = ['openid', 'profile', 'email', 'groups']; // 'groups' を追加してグループ情報を要求
 
-// Okta Auth JS Client Initialization
-const oktaAuthClient = new OktaAuth({
-    issuer: ISSUER,
-    clientId: CLIENT_ID,
-    redirectUri: REDIRECT_URI,
-    scopes: SCOPES,
-    pkce: true // Recommended for SPAs
-});
+let oktaAuthClient;
+let signInWidget;
 
-// Okta Sign-In Widget Initialization
-const signInWidget = new OktaSignIn({
-    baseUrl: `https://${OKTA_DOMAIN}`,
-    clientId: CLIENT_ID,
-    redirectUri: REDIRECT_URI,
-    authClient: oktaAuthClient, // Use the same Auth JS client
-    authParams: {
+function initializeOkta() {
+    // グローバルスコープ (window) から Okta ライブラリを取得
+    const OktaAuth = window.OktaAuth;
+    const OktaSignIn = window.OktaSignIn;
+
+    if (!OktaAuth || !OktaSignIn) {
+        console.error("Okta SDKs are not loaded. Please check your internet connection or index.html script tags.");
+        return false;
+    }
+
+    // Okta Auth JS Client Initialization
+    oktaAuthClient = new OktaAuth({
         issuer: ISSUER,
+        clientId: CLIENT_ID,
+        redirectUri: REDIRECT_URI,
         scopes: SCOPES,
-        pkce: true
-    },
-    features: {
-        // Registration, Password Recoveryなどの機能を有効/無効にする場合
-        // registration: true,
-    },
-    // logo: '/path/to/your/logo.png', // Optional: Custom logo
-    // brandName: 'Your Application Name' // Optional: Custom brand name
-});
+        pkce: true // Recommended for SPAs
+    });
+
+    // Okta Sign-In Widget Initialization
+    signInWidget = new OktaSignIn({
+        baseUrl: `https://${OKTA_DOMAIN}`,
+        clientId: CLIENT_ID,
+        redirectUri: REDIRECT_URI,
+        authClient: oktaAuthClient, // Use the same Auth JS client
+        authParams: {
+            issuer: ISSUER,
+            scopes: SCOPES,
+            pkce: true
+        },
+        features: {
+            // Registration, Password Recoveryなどの機能を有効/無効にする場合
+            // registration: true,
+        },
+        // logo: '/path/to/your/logo.png', // Optional: Custom logo
+        // brandName: 'Your Application Name' // Optional: Custom brand name
+    });
+    return true;
+}
 
 // --- Authentication Functions ---
 
@@ -53,6 +61,13 @@ const signInWidget = new OktaSignIn({
  * Handles login success by redirecting or using tokens.
  */
 export function renderSignInWidget() {
+    // Ensure Okta is initialized
+    if (!oktaAuthClient && !initializeOkta()) {
+        const widgetContainer = document.getElementById('okta-signin-widget-container');
+        if (widgetContainer) widgetContainer.innerHTML = '<p class="text-red-500 text-center">Okta SDKの読み込みに失敗しました。</p>';
+        return;
+    }
+
     const widgetContainer = document.getElementById('okta-signin-widget-container');
     const appContainer = document.getElementById('app-container');
 
@@ -88,6 +103,13 @@ export function renderSignInWidget() {
  */
 export async function checkOktaAuthentication() {
     console.log("Checking Okta authentication status...");
+    
+    // Initialize Okta first
+    if (!initializeOkta()) {
+        console.warn("Okta initialization failed, skipping auth check.");
+        return;
+    }
+
     try {
         // Handle redirect from Okta if tokens are in the URL
         if (oktaAuthClient.isLoginRedirect()) {
@@ -229,6 +251,16 @@ async function handleOktaLoginSuccess() {
  */
 export async function handleOktaLogout() {
     console.log("Handling Okta logout...");
+    
+    // Ensure Okta client is initialized before trying to sign out
+    if (!oktaAuthClient && !initializeOkta()) {
+         console.error("Okta client not initialized, cannot perform standard logout.");
+         // Fallback cleanup
+         localStorage.removeItem("workTrackerUser");
+         window.location.reload(); // Reload to reset state
+         return;
+    }
+
     const widgetContainer = document.getElementById('okta-signin-widget-container');
     const appContainer = document.getElementById('app-container');
 
@@ -254,7 +286,7 @@ export async function handleOktaLogout() {
         // Continue cleanup even if sign out fails
     } finally {
         // Clear tokens and local storage regardless of sign-out success
-        oktaAuthClient.tokenManager.clear();
+        if (oktaAuthClient) oktaAuthClient.tokenManager.clear();
         localStorage.removeItem("workTrackerUser");
         console.log("Cleared Okta tokens and localStorage.");
 
