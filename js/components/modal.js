@@ -1,15 +1,12 @@
 // js/components/modal.js - モーダルダイアログ管理
 
-// Import necessary global state/functions (escapeHtml might be needed if dynamically adding HTML)
-import { allTaskObjects, escapeHtml } from "../main.js"; // escapeHtml をインポート
-// Import userReservations state if needed for openBreakReservationModal
-import { userReservations } from '../views/client/reservations.js'; // reservations.js から状態をインポート (必要に応じて)
-
+import { allTaskObjects, escapeHtml } from "../main.js"; 
+// userReservationsのインポートパスを修正
+import { userReservations } from '../views/client/reservations.js'; 
 
 // --- DOM Element References ---
-// 各モーダル要素への参照を取得し、exportして他のモジュールからも参照可能にする
 export const confirmationModal = document.getElementById("confirmation-modal");
-export const adminPasswordView = document.getElementById("admin-password-view"); // Strictly a view, but acts like a modal
+export const adminPasswordView = document.getElementById("admin-password-view"); 
 export const editLogModal = document.getElementById("edit-log-modal");
 export const fixCheckoutModal = document.getElementById("fix-checkout-modal");
 export const editMemoModal = document.getElementById("edit-memo-modal");
@@ -23,10 +20,8 @@ export const addUserModal = document.getElementById("add-user-modal");
 
 // Confirmation Modal Elements
 const modalMessage = document.getElementById("modal-message");
-// These are reassigned via cloneNode in showConfirmationModal, so declare with let
 let modalConfirmBtn = document.getElementById("modal-confirm-btn");
 let modalCancelBtn = document.getElementById("modal-cancel-btn");
-
 
 // Goal Modal Elements
 const goalModalTitle = document.getElementById("goal-modal-title");
@@ -37,13 +32,11 @@ const goalModalTargetInput = document.getElementById("goal-modal-target-input");
 const goalModalDeadlineInput = document.getElementById("goal-modal-deadline-input");
 const goalModalEffortDeadlineInput = document.getElementById("goal-modal-effort-deadline-input");
 const goalModalMemoInput = document.getElementById("goal-modal-memo-input");
-// const goalModalSaveBtn = document.getElementById("goal-modal-save-btn"); // Save action handled elsewhere - Removed unused variable
 const goalModalCancelBtn = document.getElementById("goal-modal-cancel-btn");
 
 // Add User Modal Elements
 const addUserModalNameInput = document.getElementById("add-user-modal-name-input");
 const addUserModalError = document.getElementById("add-user-modal-error");
-// const addUserModalSaveBtn = document.getElementById("add-user-modal-save-btn"); // Save action handled elsewhere - Removed unused variable
 const addUserModalCancelBtn = document.getElementById("add-user-modal-cancel-btn");
 
 // Help Modal Elements
@@ -60,53 +53,36 @@ const goalDetailsModalCloseBtn = document.getElementById("goal-details-modal-clo
 const breakReservationModalTitle = document.getElementById("break-reservation-modal-title");
 const breakReservationTimeInput = document.getElementById("break-reservation-time-input");
 const breakReservationIdInput = document.getElementById("break-reservation-id");
-// const breakReservationSaveBtn = document.getElementById("break-reservation-save-btn"); // Save action handled elsewhere - Removed unused variable
 const breakReservationCancelBtn = document.getElementById("break-reservation-cancel-btn");
 
-// Admin Password Modal Elements (References for Cancel button)
+// Admin Password Modal Elements
 const adminPasswordCancelBtn = document.getElementById("admin-password-cancel-btn");
 const adminPasswordError = document.getElementById("admin-password-error");
 const adminPasswordInput = document.getElementById("admin-password-input");
 
 // --- State ---
-let onConfirmCallback = null; // Callback function for confirmation modal
+let onConfirmCallback = null; 
 
 // --- Basic Modal Functions ---
 
-/**
- * Hides the specified modal element.
- * @param {HTMLElement} modalElement - The modal element to hide.
- */
 export function closeModal(modalElement) {
     if (modalElement) {
         modalElement.classList.add("hidden");
     }
 }
 
-/**
- * Shows the specified modal element.
- * @param {HTMLElement} modalElement - The modal element to show.
- */
 function showModal(modalElement) {
     if (modalElement) {
         modalElement.classList.remove("hidden");
     }
 }
 
-
 // --- Confirmation Modal ---
 
-/**
- * Displays a confirmation modal with a message and sets callbacks for buttons.
- * @param {string} message - The message to display in the modal.
- * @param {function} onConfirm - Function to call when the confirm button is clicked.
- * @param {function} [onCancel=hideConfirmationModal] - Function to call when cancel is clicked (defaults to hiding modal).
- */
 export function showConfirmationModal(message, onConfirm, onCancel = hideConfirmationModal) {
     if (!confirmationModal || !modalMessage || !modalConfirmBtn || !modalCancelBtn) {
         console.error("Confirmation modal elements not found.");
-        // Fallback to basic confirm if elements are missing
-        if (confirm(message)) { // Using native confirm as a last resort fallback
+        if (confirm(message)) { 
             if (typeof onConfirm === 'function') onConfirm();
         } else {
             if (typeof onCancel === 'function') onCancel();
@@ -114,60 +90,40 @@ export function showConfirmationModal(message, onConfirm, onCancel = hideConfirm
         return;
     }
 
-    modalMessage.textContent = message; // Set the message text
-    onConfirmCallback = onConfirm; // Store the confirm callback
+    modalMessage.textContent = message; 
+    onConfirmCallback = onConfirm; 
 
-    // --- Assign Button Listeners ---
-    // Remove previous listeners before adding new ones to prevent multiple calls
-    // Clone and replace to ensure listeners are clean
     const newConfirmBtn = modalConfirmBtn.cloneNode(true);
     modalConfirmBtn.parentNode.replaceChild(newConfirmBtn, modalConfirmBtn);
     newConfirmBtn.addEventListener('click', () => {
         if (typeof onConfirmCallback === 'function') {
-            onConfirmCallback(); // Execute the stored callback
+            onConfirmCallback(); 
         }
-        // Let the callback handle hiding the modal if necessary
+        hideConfirmationModal(); // Close modal explicitly
     });
-    // Update the reference AFTER replacing
     modalConfirmBtn = newConfirmBtn;
-
 
     const newCancelBtn = modalCancelBtn.cloneNode(true);
     modalCancelBtn.parentNode.replaceChild(newCancelBtn, modalCancelBtn);
     newCancelBtn.addEventListener('click', () => {
          if (typeof onCancel === 'function') {
-             onCancel(); // Execute the cancel callback
+             onCancel(); 
          }
-         // Ensure modal hides even if onCancel doesn't explicitly do it.
          hideConfirmationModal();
     });
-    // Update the reference AFTER replacing
     modalCancelBtn = newCancelBtn;
-    // --- End Assign Button Listeners ---
 
-
-    showModal(confirmationModal); // Show the modal
+    showModal(confirmationModal); 
 }
 
-/**
- * Hides the confirmation modal and clears the confirm callback.
- */
 export function hideConfirmationModal() {
     closeModal(confirmationModal);
-    onConfirmCallback = null; // Clear the callback when hiding
+    onConfirmCallback = null; 
 }
-
 
 // --- Goal Add/Edit Modal ---
 
-/**
- * Opens the Goal Add/Edit modal and populates it based on the mode and data.
- * @param {'add' | 'edit'} mode - 'add' for new goal, 'edit' for existing.
- * @param {string} taskName - The name of the parent task.
- * @param {string} [goalId=null] - The ID of the goal to edit (null if adding).
- */
 export function openGoalModal(mode, taskName, goalId = null) {
-    // Ensure all required elements exist
     if (!goalModal || !goalModalTitle || !goalModalTaskNameInput || !goalModalGoalIdInput ||
         !goalModalTitleInput || !goalModalTargetInput || !goalModalDeadlineInput ||
         !goalModalEffortDeadlineInput || !goalModalMemoInput) {
@@ -176,11 +132,9 @@ export function openGoalModal(mode, taskName, goalId = null) {
         return;
     }
 
+    goalModalTaskNameInput.value = taskName; 
+    goalModalGoalIdInput.value = goalId || ""; 
 
-    goalModalTaskNameInput.value = taskName; // Store parent task name (hidden input)
-    goalModalGoalIdInput.value = goalId || ""; // Store goal ID if editing (hidden input)
-
-    // Reset fields
     goalModalTitleInput.value = "";
     goalModalTargetInput.value = "";
     goalModalDeadlineInput.value = "";
@@ -189,65 +143,48 @@ export function openGoalModal(mode, taskName, goalId = null) {
 
     if (mode === 'edit' && goalId) {
         goalModalTitle.textContent = "工数の編集";
-        // Find the goal data from the global state
         const task = allTaskObjects.find((t) => t.name === taskName);
         const goal = task?.goals?.find((g) => g.id === goalId);
 
         if (goal) {
-            // Populate fields with existing goal data
             goalModalTitleInput.value = goal.title || "";
             goalModalTargetInput.value = goal.target || "";
-            // Ensure deadline is formatted as YYYY-MM-DD for the date input
-            goalModalDeadlineInput.value = goal.deadline || ""; // Assumes deadline is stored as YYYY-MM-DD string
-            goalModalEffortDeadlineInput.value = goal.effortDeadline || ""; // Assumes effortDeadline is stored as YYYY-MM-DD string
+            goalModalDeadlineInput.value = goal.deadline || ""; 
+            goalModalEffortDeadlineInput.value = goal.effortDeadline || ""; 
             goalModalMemoInput.value = goal.memo || "";
         } else {
              console.error(`Goal with ID ${goalId} not found in task ${taskName} for editing.`);
              alert("編集対象の工数が見つかりません。");
-             return; // Don't show modal if goal data is missing
+             return; 
         }
     } else {
-        // Use escapeHtml if taskName might contain special characters, though unlikely here
-        goalModalTitle.textContent = `[${escapeHtml(taskName)}] に工数を追加`; // Show task name in title for adding
+        goalModalTitle.textContent = `[${escapeHtml(taskName)}] に工数を追加`; 
     }
 
-    showModal(goalModal); // Show the modal
-    goalModalTitleInput.focus(); // Focus the title input
+    showModal(goalModal); 
+    goalModalTitleInput.focus(); 
 }
 
-/**
- * Closes the Goal Add/Edit modal.
- */
 export function closeGoalModal() {
     closeModal(goalModal);
 }
 
 // --- Add User Modal ---
 
-/**
- * Opens the Add User modal.
- */
 export function openAddUserModal() {
      if (!addUserModal || !addUserModalNameInput || !addUserModalError) return;
-    addUserModalNameInput.value = ""; // Clear input
-    addUserModalError.textContent = ""; // Clear error
+    addUserModalNameInput.value = ""; 
+    addUserModalError.textContent = ""; 
     showModal(addUserModal);
     addUserModalNameInput.focus();
 }
 
-/**
- * Closes the Add User modal.
- */
 export function closeAddUserModal() {
     closeModal(addUserModal);
 }
 
 // --- Help Modal ---
 
-/**
- * Displays the help modal with content specific to the provided page key.
- * @param {string} pageKey - Key identifying the help content (e.g., 'client', 'host').
- */
 export function showHelpModal(pageKey) {
     if (!helpModal || !helpModalTitle || !helpModalContent) {
          console.error("Help modal elements not found.");
@@ -257,7 +194,6 @@ export function showHelpModal(pageKey) {
     let title = "ヘルプ";
     let content = "<p>ヘルプコンテンツが見つかりません。</p>";
 
-    // Define help content (can be moved to a separate JSON or module for larger apps)
     const helpContents = {
         client: {
             title: "従業員画面ヘルプ",
@@ -289,7 +225,7 @@ export function showHelpModal(pageKey) {
                 <h4 class="font-bold mt-3 mb-1 text-base border-b">稼働状況の確認</h4>
                 <ul class="list-disc list-inside ml-4 space-y-1 text-sm text-gray-700">
                     <li><strong>リアルタイム稼働状況:</strong> どの従業員が、どの業務（工数）を、どれくらいの時間行っているかリアルタイムで表示します。業務ごとに従事している人数も分かります。</li>
-                    <li><strong>強制停止:</strong> 稼働中の従業員の記録を強制的に停止（帰宅処理と同じ）させることができます。</li>
+                    <li><strong>強制停止:</strong> 稼働中の従業員の記録を強制的に停止（帰宅処理）させることができます。</li>
                     <li><strong>アカウントリスト:</strong> 登録されている全従業員を表示します。名前をクリックすると個人の詳細記録ページに移動します。</li>
                     <li><strong>戸村さんステータス設定:</strong> 戸村さんの現在の状況を設定し、従業員画面に表示させます（毎日リセットされます）。</li>
                 </ul>
@@ -348,7 +284,6 @@ export function showHelpModal(pageKey) {
                     <li>右上の「完了した工数を見る」ボタンから、完了済みの工数の一覧と、その貢献履歴を確認できます。</li>
                  </ul>`
         },
-        // 他のページのヘルプコンテンツもここに追加
     };
 
     if (helpContents[pageKey]) {
@@ -357,40 +292,22 @@ export function showHelpModal(pageKey) {
     }
 
     helpModalTitle.textContent = title;
-    helpModalContent.innerHTML = content; // Assuming content is safe HTML
+    helpModalContent.innerHTML = content; 
     showModal(helpModal);
 }
 
-/**
- * Closes the Help modal.
- */
-function closeHelpModal() {
-    closeModal(helpModal);
-}
-
-// --- Goal Details Modal --- (Used in Archive View)
-/**
- * Opens the Goal Details modal (typically used for archive view).
- * @param {string} title - The title to display in the modal header.
- * @param {string} contentHtml - The HTML content to display in the modal body.
- */
 export function openGoalDetailsModal(title, contentHtml) {
     if(!goalDetailsModal || !goalDetailsModalTitle || !goalDetailsModalContent) return;
     goalDetailsModalTitle.textContent = title;
-    goalDetailsModalContent.innerHTML = contentHtml; // Caller is responsible for safe HTML
+    goalDetailsModalContent.innerHTML = contentHtml; 
     showModal(goalDetailsModal);
 }
 
-/**
- * Closes the Goal Details modal.
- */
 function closeGoalDetailsModal() {
     closeModal(goalDetailsModal);
 }
 
-
 // --- Break Reservation Modal ---
-/** Opens Break Reservation Modal */
 export function openBreakReservationModal(id = null) {
     if(!breakReservationModal || !breakReservationModalTitle || !breakReservationTimeInput || !breakReservationIdInput) {
         console.error("Break reservation modal elements not found.");
@@ -403,47 +320,33 @@ export function openBreakReservationModal(id = null) {
 
     if (id) {
         titleEl.textContent = "休憩予約の編集";
-         // Need access to userReservations state
-         // Assuming userReservations is accessible, e.g., via window or import from reservations.js
-         // const { userReservations } = await import('../views/client/reservations.js'); // Async import example
-         const reservation = userReservations?.find((r) => r.id === id); // Use imported/global state
+         const reservation = userReservations?.find((r) => r.id === id); 
         if (reservation) {
-            timeInputEl.value = reservation.time || ""; // Use time string
+            timeInputEl.value = reservation.time || ""; 
             idInputEl.value = id;
         } else {
              console.error("Reservation to edit not found:", id);
              alert("編集対象の予約が見つかりません。");
-             return; // Don't open if data missing
+             return; 
         }
     } else {
         titleEl.textContent = "休憩予約の追加";
-        timeInputEl.value = ""; // Clear time
-        idInputEl.value = ""; // Clear ID
+        timeInputEl.value = ""; 
+        idInputEl.value = ""; 
     }
     showModal(breakReservationModal);
     timeInputEl.focus();
 }
 
-/** Closes Break Reservation Modal */
 function closeBreakReservationModal() {
     closeModal(breakReservationModal);
 }
 
-
 // --- Event Listener Setup ---
 
-/**
- * Sets up basic event listeners for modal close/cancel buttons.
- * Confirmation modal buttons are handled dynamically in `showConfirmationModal`.
- * Save/Confirm actions for other modals are typically handled in their respective view modules.
- */
 export function setupModalEventListeners() {
     console.log("Setting up modal event listeners...");
 
-    // --- Specific Cancel/Close buttons ---
-    // Confirmation cancel handled dynamically in showConfirmationModal
-
-    // Add references for buttons used only for closing (defined within this function's scope)
     const editLogCancelBtn = document.getElementById('edit-log-cancel-btn');
     const editMemoCancelBtn = document.getElementById('edit-memo-cancel-btn');
     const editContributionCancelBtn = document.getElementById('edit-contribution-cancel-btn');
@@ -457,23 +360,17 @@ export function setupModalEventListeners() {
     goalDetailsModalCloseBtn?.addEventListener('click', closeGoalDetailsModal);
     breakReservationCancelBtn?.addEventListener('click', closeBreakReservationModal);
 
-    // Other modal cancel/close buttons (if they only close the modal)
     editLogCancelBtn?.addEventListener('click', () => closeModal(editLogModal));
     editMemoCancelBtn?.addEventListener('click', () => closeModal(editMemoModal));
     editContributionCancelBtn?.addEventListener('click', () => closeModal(editContributionModal));
     fixCheckoutCancelBtn?.addEventListener('click', () => closeModal(fixCheckoutModal));
     exportExcelCancelBtn?.addEventListener('click', () => closeModal(exportExcelModal));
 
-
-    // Admin Password Cancel (If adminPasswordView is still used/relevant)
     adminPasswordCancelBtn?.addEventListener("click", () => {
          closeModal(adminPasswordView);
-         if(adminPasswordError) adminPasswordError.textContent = ''; // Clear error on cancel
-         if(adminPasswordInput) adminPasswordInput.value = ''; // Clear input
-         // Reset adminLoginDestination? Depends on main.js logic.
+         if(adminPasswordError) adminPasswordError.textContent = ''; 
+         if(adminPasswordInput) adminPasswordInput.value = ''; 
     });
-
 
     console.log("Modal event listeners set up complete.");
 }
-
