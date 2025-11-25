@@ -292,7 +292,7 @@ export async function handleOktaLogout() {
 //     }
 // }
 ```
-
+/*
 **このファイルを使うための次のステップ:**
 
 1.  **`index.html` の修正**:
@@ -313,3 +313,4 @@ export async function handleOktaLogout() {
             // Optionally trigger UI updates based on new authLevel
         }
         
+*/
