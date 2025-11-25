@@ -8,8 +8,8 @@ import { openAddUserModal, showHelpModal } from "../../components/modal.js"; // 
 import { openExportExcelModal } from "../excelExport.js"; // Import Excel export modal function
 
 // Import functions from the host view submodules
-import { startListeningForStatusUpdates, stopListeningForStatusUpdates, forceStopUser } from "./host/statusDisplay.js";
-import { startListeningForUsers, stopListeningForUsers, handleUserDetailClick, handleAddNewUser, handleDeleteAllLogs, updateStatusesCache } from "./host/userManagement.js";
+import { startListeningForStatusUpdates, stopListeningForStatusUpdates, forceStopUser } from "./statusDisplay.js";
+import { startListeningForUsers, stopListeningForUsers, handleUserDetailClick, handleAddNewUser, handleDeleteAllLogs, updateStatusesCache } from "./userManagement.js";
 
 // --- DOM Element references for event listeners ---
 const backButton = document.getElementById("back-to-selection-host");
