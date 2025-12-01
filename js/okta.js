@@ -47,9 +47,9 @@ function initializeOkta() {
         baseUrl: `https://${OKTA_DOMAIN}`,
         clientId: CLIENT_ID,
         redirectUri: REDIRECT_URI,
-        // ★修正: サーバー設定と合わせるため、Interaction Code Flow を明示的に無効化します
-        // これにより、許可されている authorization_code (PKCE) フローが使用されます
+        // ★修正: Interaction Code Flow を確実に無効化するための設定
         useInteractionCodeFlow: false, 
+        useClassicEngine: true, // ★追加: これにより強制的に標準のOIDCフロー(Classic)を使用させます
         authClient: oktaAuthClient,
         authParams: {
             issuer: ISSUER,
