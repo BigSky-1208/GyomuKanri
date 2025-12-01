@@ -11,7 +11,9 @@ import { oktaConfig } from "./config.js";
 const OKTA_DOMAIN = oktaConfig.domain; 
 const CLIENT_ID = oktaConfig.clientId;
 const REDIRECT_URI = window.location.origin + window.location.pathname; 
-const ISSUER = `https://${OKTA_DOMAIN}/oauth2/default`; 
+// ★修正: /oauth2/default を削除して、Org Authorization Server を使用するように変更
+// const ISSUER = `https://${OKTA_DOMAIN}/oauth2/default`; 
+const ISSUER = `https://${OKTA_DOMAIN}`;
 const SCOPES = ['openid', 'profile', 'email', 'groups']; 
 
 // Okta Client & Widget Variables
