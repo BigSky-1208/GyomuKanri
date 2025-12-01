@@ -47,6 +47,9 @@ function initializeOkta() {
         baseUrl: `https://${OKTA_DOMAIN}`,
         clientId: CLIENT_ID,
         redirectUri: REDIRECT_URI,
+        // ★追加: Interaction Code Flow を無効化し、標準の認証フローを強制する
+        // これにより /interact エンドポイントへのアクセスエラーを回避します
+        useInteractionCodeFlow: false, 
         authClient: oktaAuthClient,
         authParams: {
             issuer: ISSUER,
