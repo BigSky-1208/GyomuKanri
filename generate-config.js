@@ -1,5 +1,12 @@
 const fs = require('fs');
 
+// --- 診断用ログ出力 (キーの値は見せずに、設定されているかだけ確認) ---
+console.log("--- [DEBUG] Environment Variable Check ---");
+console.log("FIREBASE_API_KEY exists:", !!process.env.FIREBASE_API_KEY); // trueならOK, falseなら空
+console.log("OKTA_DOMAIN exists:", !!process.env.OKTA_DOMAIN);
+console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("------------------------------------------");
+
 const configContent = `
 export const firebaseConfig = {
     apiKey: "${process.env.FIREBASE_API_KEY || ''}",
@@ -21,6 +28,11 @@ export const groqConfig = {
 };
 `;
 
-// js/config.js ファイルを生成（なければ作成、あれば上書き）
+// js/config.js ファイルを生成
+// ディレクトリが存在しない場合の対策も念のため追加
+if (!fs.existsSync('./js')) {
+    fs.mkdirSync('./js');
+}
+
 fs.writeFileSync('./js/config.js', configContent);
-console.log('js/config.js generated from environment variables.');
+console.log('js/config.js generated successfully.');
