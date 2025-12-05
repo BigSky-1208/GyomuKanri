@@ -130,9 +130,9 @@ async function handleOktaLoginSuccess() {
         let oktaName = userClaims.name;
 
         // もし family_name や given_name があれば、それらを結合して使用する（優先度高）
-        // ※ nameクレームがメールアドレスのままだったり空だったりする場合への対策
+        // ★修正: 空白なしで結合するように変更
         if (userClaims.family_name || userClaims.given_name) {
-            oktaName = `${userClaims.family_name || ''} ${userClaims.given_name || ''}`.trim();
+            oktaName = `${userClaims.family_name || ''}${userClaims.given_name || ''}`.trim();
         }
 
         // それでも名前が空ならメールアドレスをフォールバックとして使用
@@ -144,8 +144,16 @@ async function handleOktaLoginSuccess() {
         let appUserId = null;
         let appUserName = oktaName;
 
-        const profileQuery = query(collection(db, "user_profiles"), where("email", "==", oktaEmail));
-        const profileSnapshot = await getDocs(profileQuery);
+        // ★修正: まずEmailで検索
+        let profileQuery = query(collection(db, "user_profiles"), where("email", "==", oktaEmail));
+        let profileSnapshot = await getDocs(profileQuery);
+
+        // ★追加: Emailで見つからなければ、結合した名前で再検索
+        if (profileSnapshot.empty) {
+            console.log(`User not found by email (${oktaEmail}). Trying search by name: ${oktaName}`);
+            profileQuery = query(collection(db, "user_profiles"), where("name", "==", oktaName));
+            profileSnapshot = await getDocs(profileQuery);
+        }
 
         if (!profileSnapshot.empty) {
             // 既存ユーザーの場合
@@ -156,14 +164,19 @@ async function handleOktaLoginSuccess() {
             appUserName = userDoc.data().name || appUserName;
 
             // Okta IDを紐付け
-            await updateDoc(doc(db, "user_profiles", appUserId), { oktaUserId: oktaUserId });
+            // もしEmailが登録されていなければ、次回のためにEmailも保存しておく
+            const updateData = { oktaUserId: oktaUserId };
+            if (!userDoc.data().email) {
+                updateData.email = oktaEmail;
+            }
+            await updateDoc(doc(db, "user_profiles", appUserId), updateData);
 
         } else {
             // 新規ユーザーの場合（自動登録する場合）
-            console.error(`No Firestore user_profile found for ${oktaEmail}.`);
+            console.error(`No Firestore user_profile found for ${oktaEmail} or name ${oktaName}.`);
             
             // ★変更箇所: エラー発生時にログアウトせず、アラート後に停止させる
-            alert(`ログインエラー: ユーザー登録が見つかりません。\n\n管理者に以下の情報を伝えて登録を依頼してください。\nEmail: ${oktaEmail}\n(このまま画面を閉じてもログアウトされません。確認用に残しています)`);
+            alert(`ログインエラー: ユーザー登録が見つかりません。\n\n管理者に以下の情報を伝えて登録を依頼してください。\nEmail: ${oktaEmail}\nName: ${oktaName}\n(このまま画面を閉じてもログアウトされません。確認用に残しています)`);
             
             // エラー表示用にUIを切り替えるなどの処理を追加しても良いですが、
             // 今回は console.log と alert だけで停止させます。
