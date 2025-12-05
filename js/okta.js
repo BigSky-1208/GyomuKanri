@@ -120,9 +120,24 @@ async function handleOktaLoginSuccess() {
     try {
         const userClaims = await oktaAuthClient.getUser();
         const oktaEmail = userClaims.email;
-        const oktaName = userClaims.name || oktaEmail;
         const oktaUserId = userClaims.sub;
         const oktaGroups = userClaims.groups || [];
+
+        // --- 名前決定ロジックの修正 ---
+        // デフォルトは name クレームを使用
+        let oktaName = userClaims.name;
+
+        // もし family_name や given_name があれば、それらを結合して使用する（優先度高）
+        // ※ nameクレームがメールアドレスのままだったり空だったりする場合への対策
+        if (userClaims.family_name || userClaims.given_name) {
+            oktaName = `${userClaims.family_name || ''} ${userClaims.given_name || ''}`.trim();
+        }
+
+        // それでも名前が空ならメールアドレスをフォールバックとして使用
+        if (!oktaName) {
+            oktaName = oktaEmail;
+        }
+        // -----------------------------
 
         let appUserId = null;
         let appUserName = oktaName;
@@ -131,13 +146,32 @@ async function handleOktaLoginSuccess() {
         const profileSnapshot = await getDocs(profileQuery);
 
         if (!profileSnapshot.empty) {
+            // 既存ユーザーの場合
             const userDoc = profileSnapshot.docs[0];
             appUserId = userDoc.id;
+            
+            // Firestore上の名前が未設定、またはメールアドレスと同じ場合のみ、Oktaの名前で更新する
+            // (ユーザーが手動で名前を変更している可能性もあるため、常に上書きはしない方が無難だが、
+            //  今回は「Oktaの名前を反映させたい」という要望のため、Firestore側も更新するロジックにするなら以下)
+            // const currentFirestoreName = userDoc.data().name;
+            // if (!currentFirestoreName || currentFirestoreName === oktaEmail) {
+            //     appUserName = oktaName;
+            //     await updateDoc(doc(db, "user_profiles", appUserId), { name: oktaName });
+            // } else {
+            //     appUserName = currentFirestoreName;
+            // }
+            
+            // ★シンプルに「登録済みならその名前を使う」場合:
             appUserName = userDoc.data().name || appUserName;
+
+            // Okta IDを紐付け
             await updateDoc(doc(db, "user_profiles", appUserId), { oktaUserId: oktaUserId });
+
         } else {
+            // 新規ユーザーの場合（自動登録する場合）
+            // 管理者のみが追加できる仕様であれば、ここでエラーにする
             console.error(`No Firestore user_profile found for ${oktaEmail}.`);
-            alert(`ログインエラー: ユーザーが見つかりません。`);
+            alert(`ログインエラー: ユーザー登録が見つかりません。管理者に連絡してください。`);
             await handleOktaLogout();
             return;
         }
