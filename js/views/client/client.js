@@ -1,14 +1,13 @@
 // js/views/client/client.js
 
-// ★修正: db を追加インポート (Firestore接続用)
 import { showView, VIEWS, db } from "../../main.js"; 
-// ★修正: Firestoreの関数を追加インポート
 import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 import { handleStartClick, handleStopClick, handleBreakClick, restoreClientState as restoreTimerState } from "./timer.js"; 
 import { listenForUserReservations, handleSaveBreakReservation, handleSetStopReservation, handleCancelStopReservation, deleteReservation } from "./reservations.js"; 
-// ★修正: renderTaskOptions を追加インポート (プルダウン描画用)
-import { handleTaskSelectionChange, handleGoalSelectionChange, handleDisplaySettingChange, renderTaskOptions } from "./clientUI.js"; 
+
+// ★修正: renderTaskDisplaySettings を追加インポート
+import { handleTaskSelectionChange, handleGoalSelectionChange, handleDisplaySettingChange, renderTaskOptions, renderTaskDisplaySettings } from "./clientUI.js"; 
 import { handleFixCheckout } from "./clientActions.js";
 
 // --- DOM Element references ---
@@ -40,7 +39,7 @@ const helpButton = document.querySelector('#client-view .help-btn');
 import { openBreakReservationModal, fixCheckoutModal, showHelpModal } from "../../components/modal.js";
 import { userName } from "../../main.js"; 
 
-// ★追加: 戸村さんステータス用リスナー解除関数とクラス定義
+// 戸村さんステータス用リスナー解除関数とクラス定義
 let tomuraStatusUnsubscribe = null;
 const STATUS_CLASSES = {
     "声掛けOK": ["bg-green-100", "text-green-800"],
@@ -56,8 +55,10 @@ export async function initializeClientView() {
     await restoreTimerState(); 
     listenForUserReservations(); 
     
-    // ★追加: 画面表示時に業務リストと戸村さんステータスを読み込む
+    // ★修正: 業務リスト(プルダウン)と、表示設定リスト(チェックボックス)の両方を描画
     renderTaskOptions();
+    renderTaskDisplaySettings(); 
+    
     listenForTomuraStatus();
 }
 
@@ -144,9 +145,8 @@ export function setupClientEventListeners() {
      console.log("Client View event listeners set up complete.");
 }
 
-// ★追加: 戸村さんの状況を監視して表示する関数
+// 戸村さんの状況を監視して表示する関数
 function listenForTomuraStatus() {
-    // 既存のリスナーがあれば解除
     if (tomuraStatusUnsubscribe) {
         tomuraStatusUnsubscribe();
         tomuraStatusUnsubscribe = null;
@@ -158,22 +158,18 @@ function listenForTomuraStatus() {
     tomuraStatusUnsubscribe = onSnapshot(statusRef, (docSnap) => {
         let status = "声掛けNG"; // デフォルト
         
-        // 今日の日付で設定が存在すればその値を使う
         if (docSnap.exists() && docSnap.data().date === todayStr) {
             status = docSnap.data().status;
         }
 
-        // UIを更新
         const displayDiv = document.getElementById("tomura-status-display");
         const textSpan = document.getElementById("tomura-status-text");
 
         if (displayDiv && textSpan) {
             textSpan.textContent = status;
             
-            // 既存の色クラスを削除
             Object.values(STATUS_CLASSES).flat().forEach(cls => displayDiv.classList.remove(cls));
             
-            // 新しい色クラスを追加
             if (STATUS_CLASSES[status]) {
                 displayDiv.classList.add(...STATUS_CLASSES[status]);
             }
