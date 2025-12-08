@@ -1,0 +1,14 @@
+name = "gyomu-timer-worker"
+main = "src/index.js"
+compatibility_date = "2023-10-30"
+
+# --- ここから追加・修正 ---
+
+# KVの設定
+[[kv_namespaces]]
+binding = "SCHEDULE"
+id = "edf508d4cc1647a887f12b9bdea4a4c5" 
+
+# 定期実行の設定（1分ごとに実行）
+[triggers]
+crons = ["* * * * *"]
