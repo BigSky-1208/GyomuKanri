@@ -1,3 +1,7 @@
+はい、修正（`localStorage`への保存処理の追加）を反映させた `js/views/client/timer.js` の全文を作成しました。
+これをそのままコピーして貼り付けていただければ動作します。
+
+```javascript
 // js/views/client/timer.js - ストップウォッチ機能と状態管理
 
 import { db, userId, userName, allTaskObjects, showView, VIEWS } from "../../main.js";
@@ -85,6 +89,10 @@ export async function restoreClientState() {
         // Restore state
         startTime = localStartTime;
         currentTask = data.currentTask;
+        
+        // ★修正1: ページ読み込み時にローカルストレージへ保存
+        localStorage.setItem('currentTaskName', currentTask);
+
         currentGoalId = data.currentGoalId || null;
         currentGoalTitle = data.currentGoalTitle || null;
         preBreakTask = data.preBreakTask || null;
@@ -348,6 +356,10 @@ async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = nul
     hasContributedToCurrentGoal = false;
 
     currentTask = newTask;
+
+    // ★修正2: タスク開始時にローカルストレージへ保存
+    localStorage.setItem('currentTaskName', currentTask);
+
     currentGoalId = newGoalId || null;
     currentGoalTitle = newGoalTitle || null;
     startTime = forcedStartTime || new Date();
@@ -465,3 +477,4 @@ async function stopCurrentTaskCore(isLeaving, forcedEndTime = null, taskDataOver
         });
     }
 }
+```
