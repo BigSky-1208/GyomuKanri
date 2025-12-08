@@ -75,19 +75,21 @@ async function initialize() {
 
     // --- Okta認証チェック ---
     try {
-        await checkOktaAuthentication();
+        // ★修正: ここで startAppAfterLogin をコールバックとして渡す
+        // これにより、ログイン成功後にこの関数が okta.js 側で実行されます
+        await checkOktaAuthentication(startAppAfterLogin);
     } catch(error) {
         console.error("Okta Authentication Check Failed:", error);
         displayInitializationError("認証処理中にエラーが発生しました。");
     }
 
-    // ★修正: ここでの listenForTasks() 呼び出しを削除し、認証成功後に実行するように変更
-    // await listenForTasks(); 
-
+    // ★修正: ここでの listenForTasks() 呼び出しは削除 (startAppAfterLoginに移動)
+    
     console.log("Initialization sequence potentially complete (waiting for Okta status).");
 }
 
 // ★追加: 認証成功後に呼び出すデータ同期開始関数
+// この関数を okta.js から呼び出してもらいます（コールバックとして渡されるため）
 export async function startAppAfterLogin() {
     console.log("Authentication successful. Starting data sync...");
     await listenForTasks(); // タスク情報を取得・監視開始
