@@ -1,4 +1,3 @@
-```javascript
 // js/views/client/timer.js - ストップウォッチ機能と状態管理
 
 import { db, userId, userName, allTaskObjects, showView, VIEWS } from "../../main.js";
@@ -474,4 +473,3 @@ async function stopCurrentTaskCore(isLeaving, forcedEndTime = null, taskDataOver
         });
     }
 }
-```
