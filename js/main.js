@@ -81,11 +81,16 @@ async function initialize() {
         displayInitializationError("認証処理中にエラーが発生しました。");
     }
 
-    // --- グローバルデータリスナー ---
-    await listenForTasks(); // タスク情報を取得・監視開始
-    // ★ fetchAllUserLogs の呼び出しを削除しました。
+    // ★修正: ここでの listenForTasks() 呼び出しを削除し、認証成功後に実行するように変更
+    // await listenForTasks(); 
 
     console.log("Initialization sequence potentially complete (waiting for Okta status).");
+}
+
+// ★追加: 認証成功後に呼び出すデータ同期開始関数
+export async function startAppAfterLogin() {
+    console.log("Authentication successful. Starting data sync...");
+    await listenForTasks(); // タスク情報を取得・監視開始
 }
 
 
