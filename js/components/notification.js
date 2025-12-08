@@ -1,93 +1,33 @@
 // js/components/notification.js
 
-import { groqConfig } from "../config.js";
-
-const GROQ_API_KEY = groqConfig.apiKey;
-
 /**
  * 経過時間に基づいて通知をトリガーします。
  * @param {number} elapsedSeconds - 経過秒数
  * @param {string} type - 通知タイプ ('encouragement' | 'breather')
+ * @param {string} taskName - 現在の業務名 (追加)
  */
-export async function triggerEncouragementNotification(elapsedSeconds, type = 'encouragement') {
-    if (window.isNotificationFetching) {
-        console.log("Notification fetch already in progress, skipping.");
-        return;
+export async function triggerEncouragementNotification(elapsedSeconds, type = 'encouragement', taskName = '業務') {
+    // 経過時間を「〇時間〇分」の形式に計算
+    const hours = Math.floor(elapsedSeconds / 3600);
+    const minutes = Math.floor((elapsedSeconds % 3600) / 60);
+
+    let timeString = "";
+    if (hours > 0) {
+        timeString += `${hours}時間`;
     }
-    window.isNotificationFetching = true;
+    timeString += `${minutes}分`;
 
-    const elapsedMinutes = Math.round(elapsedSeconds / 60);
-
-    try {
-        const message = await fetchMessageFromGroq(elapsedMinutes, type);
-        if (message) {
-            let title = "お疲れ様です！";
-            if (type === 'breather') {
-                title = "そろそろ一息つきませんか？";
-            }
-            await showBrowserNotification(title, message);
-        }
-    } catch (error) {
-        console.error("Failed to get notification message:", error);
-    } finally {
-        setTimeout(() => {
-            window.isNotificationFetching = false;
-        }, 10000); 
-    }
-}
-
-async function fetchMessageFromGroq(minutes, type) {
-    if (!GROQ_API_KEY) {
-        if (type === 'breather') {
-            return `業務を始めて${minutes}分が経過しました。少し休憩してリフレッシュしましょう！`;
-        }
-        return "お疲れ様です！順調ですね。"; 
-    }
-
-    let prompt = `同じ業務を${minutes}分続けている人を褒める言葉をください。簡潔に、労う内容でお願いします。`;
+    // メッセージの作成
+    const message = `【${taskName}】を${timeString}継続しています！`;
     
+    // タイトルの決定
+    let title = "お疲れ様です！";
     if (type === 'breather') {
-        prompt = `ユーザーが同じ業務を${minutes}分続けています。過集中を防ぐため、優しく休憩を促すメッセージをください。50文字以内で簡潔に。`;
+        title = "そろそろ一息つきませんか？";
     }
 
-    try {
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${GROQ_API_KEY}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                model: "llama-3.3-70b-versatile",
-                messages: [
-                    { 
-                        role: "system", 
-                        content: "あなたはユーザーを優しくサポートするアシスタントです。日本のビジネス文化に合った、丁寧かつ前向きなメッセージを生成してください。" 
-                    },
-                    { role: "user", content: prompt }
-                ],
-                temperature: 0.7,
-                max_tokens: 100,
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`Groq API Error: ${response.status}`);
-        }
-
-        const data = await response.json();
-        const message = data.choices[0]?.message?.content;
-        
-        if (message) {
-            return message.replace(/["「」]/g, ''); 
-        } else {
-            return type === 'breather' ? "少し休憩しませんか？" : "お疲れ様です！";
-        }
-
-    } catch (error) {
-        console.error("Error calling Groq API:", error);
-        return null;
-    }
+    // ブラウザ通知を表示
+    await showBrowserNotification(title, message);
 }
 
 async function showBrowserNotification(title, message) {
@@ -114,7 +54,7 @@ function createNotification(title, message) {
         const notification = new Notification(title, {
             body: message,
             tag: "gyomukanri-notification",
-            renotify: true, // Re-notify even if tag is same
+            renotify: true,
             silent: false,
         });
         
@@ -123,7 +63,7 @@ function createNotification(title, message) {
             notification.close();
         };
 
-        // Auto close after a while
+        // 15秒後に自動的に閉じる
         setTimeout(() => {
             notification.close();
         }, 15000);
