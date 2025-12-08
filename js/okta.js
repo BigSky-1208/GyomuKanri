@@ -1,6 +1,6 @@
 // js/okta.js
-// ★修正: checkForCheckoutCorrection を utils.js からインポート (main.jsからは削除)
-import { db, setUserId, setUserName, setAuthLevel, showView, VIEWS, listenForDisplayPreferences, updateGlobalTaskObjects } from './main.js'; 
+// ★修正: startAppAfterLogin を main.js からインポート
+import { db, setUserId, setUserName, setAuthLevel, showView, VIEWS, listenForDisplayPreferences, updateGlobalTaskObjects, startAppAfterLogin } from './main.js'; 
 import { checkForCheckoutCorrection } from './utils.js'; 
 import { collection, query, where, getDocs, doc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
@@ -195,6 +195,9 @@ async function handleOktaLoginSuccess() {
 
         const statusRef = doc(db, "work_status", appUserId);
         await setDoc(statusRef, { userName: appUserName, onlineStatus: true, userId: appUserId }, { merge: true });
+
+        // ★追加: ログイン完了後にデータ読み込みを開始
+        startAppAfterLogin();
 
         await checkForCheckoutCorrection(appUserId);
         listenForDisplayPreferences();
