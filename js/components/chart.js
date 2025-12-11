@@ -217,11 +217,7 @@ export function renderChart(canvas, labels, dataPoints, title) {
             maintainAspectRatio: false,
             plugins: {
                 legend: {
-                    position: 'right', 
-                    labels: {
-                        boxWidth: 10,
-                        font: { size: 11 }
-                    }
+                    display: false, // ★修正: ここを false にして凡例を消す
                 },
                 title: {
                     display: false, 
