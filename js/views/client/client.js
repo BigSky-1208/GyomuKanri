@@ -6,7 +6,6 @@ import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/fireb
 import { handleStartClick, handleStopClick, handleBreakClick, restoreClientState as restoreTimerState } from "./timer.js"; 
 import { listenForUserReservations, handleSaveBreakReservation, handleSetStopReservation, handleCancelStopReservation, deleteReservation } from "./reservations.js"; 
 
-// ★修正: renderTaskDisplaySettings を追加インポート
 import { handleTaskSelectionChange, handleGoalSelectionChange, handleDisplaySettingChange, renderTaskOptions, renderTaskDisplaySettings } from "./clientUI.js"; 
 import { handleFixCheckout } from "./clientActions.js";
 
@@ -55,7 +54,6 @@ export async function initializeClientView() {
     await restoreTimerState(); 
     listenForUserReservations(); 
     
-    // ★修正: 業務リスト(プルダウン)と、表示設定リスト(チェックボックス)の両方を描画
     renderTaskOptions();
     renderTaskDisplaySettings(); 
     
@@ -122,9 +120,17 @@ export function setupClientEventListeners() {
     fixCheckoutButton?.addEventListener("click", () => {
          if (fixCheckoutModal) {
              const dateInput = fixCheckoutModal.querySelector("#fix-checkout-date-input");
-             // 手動で開くときはキャンセルボタンを表示する
              const cancelBtn = fixCheckoutModal.querySelector("#fix-checkout-cancel-btn");
+             const descP = fixCheckoutModal.querySelector("p"); // 説明文の要素を取得
+
+             // ★追加: 手動で開くときはキャンセルボタンを再表示する
              if (cancelBtn) cancelBtn.style.display = "inline-block";
+
+             // ★追加: 説明文とスタイルをデフォルトに戻す
+             if (descP) {
+                 descP.textContent = "修正したい日付と、その日の正しい退勤時刻を入力してください。入力した時刻でその日の最後の業務が終了され、それ以降の記録は削除されます。";
+                 descP.classList.remove("text-red-600", "font-bold");
+             }
 
              if (dateInput) {
                  const yesterday = new Date();
