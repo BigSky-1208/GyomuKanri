@@ -4,7 +4,7 @@ import { collection, query, where, onSnapshot, doc, addDoc, updateDoc, deleteDoc
 import { handleBreakClick, handleStopClick } from "./timer.js";
 
 // Cloudflare WorkersのURL
-const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev/update-schedule";
+const WORKER_URL = "https://gyomu-timer.あなたのアカウント名.workers.dev/update-schedule";
 
 export let userReservations = []; 
 let reservationTimers = []; 
@@ -18,7 +18,7 @@ const getStopStatusText = () => document.getElementById("stop-reservation-status
 const getStopTimeInput = () => document.getElementById("stop-reservation-time-input");
 
 async function notifyWorker() {
-    if (WORKER_URL) {
+    if (WORKER_URL && WORKER_URL.startsWith("https") && !WORKER_URL.includes("あなたのアカウント名")) {
         try {
             await fetch(WORKER_URL);
             console.log("Cloudflare Workersにスケジュール更新を通知しました");
