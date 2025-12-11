@@ -3,7 +3,6 @@ import { db } from "../firebase.js";
 import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { handleGoBack } from "../main.js"; 
 import { renderUnifiedCalendar } from "../components/calendar.js";
-// ★修正: components/chart.js に追加した renderChart をインポート
 import { renderChart, destroyCharts } from "../components/chart.js";
 import { formatDuration, formatHoursMinutes, getMonthDateRange, escapeHtml } from "../utils.js";
 
@@ -20,7 +19,7 @@ const reportTitleEl = document.getElementById("report-title");
 const reportChartsContainer = document.getElementById("report-charts-container");
 const backButton = document.getElementById("back-to-host-from-report");
 
-// --- 初期化・クリーンアップ関数 (main.jsから呼ばれる) ---
+// --- 初期化・クリーンアップ関数 ---
 
 export async function initializeReportView() {
     console.log("Initializing Report View...");
@@ -121,15 +120,12 @@ function renderReportChartsForDay(dateStr) {
     renderReportCharts(logsForDay);
 }
 
-// ★修正: レイアウト変更を反映したチャート描画関数
 function renderReportCharts(logs) {
     if (!reportChartsContainer) return;
 
-    // 前のチャートを破棄
     destroyCharts(activeReportCharts);
     activeReportCharts = [];
     
-    // HTML側のグリッド設定をリセット（縦並びにする）
     reportChartsContainer.className = "space-y-12"; 
     reportChartsContainer.innerHTML = "";
 
@@ -142,9 +138,8 @@ function renderReportCharts(logs) {
         if (!log.userName || !log.task || log.task === "休憩" || log.type === "goal") return;
 
         const taskName = log.task.startsWith("その他_") ? log.task.substring(4) : log.task;
-        const userId = log.userId || log.userName; // userIdがない古いデータは名前で代用
+        const userId = log.userId || log.userName; 
 
-        // 個人集計
         if (!userStats.has(userId)) {
             userStats.set(userId, { name: log.userName, tasks: new Map() });
         }
@@ -152,7 +147,6 @@ function renderReportCharts(logs) {
         const currentDuration = user.tasks.get(taskName) || 0;
         user.tasks.set(taskName, currentDuration + (log.duration || 0));
 
-        // 全体集計
         const totalTaskDuration = grandTotalTasks.get(taskName) || 0;
         grandTotalTasks.set(taskName, totalTaskDuration + (log.duration || 0));
         grandTotalDuration += (log.duration || 0);
@@ -165,7 +159,7 @@ function renderReportCharts(logs) {
 
     // 2. レイアウトの作成
 
-    // A. 全体合計用コンテナ（上部・1カラム・中央寄せ）
+    // A. 全体合計用コンテナ
     const totalSectionTitle = document.createElement("h3");
     totalSectionTitle.className = "text-xl font-bold text-gray-700 mb-4 text-center border-b pb-2";
     totalSectionTitle.textContent = "全従業員 合計";
@@ -175,10 +169,10 @@ function renderReportCharts(logs) {
     totalWrapper.className = "w-full md:w-2/3 mx-auto mb-12 bg-white p-6 rounded-lg shadow-md border border-gray-100";
     reportChartsContainer.appendChild(totalWrapper);
 
-    // 全体チャートの描画
-    createChartCard(totalWrapper, "全従業員", grandTotalTasks, grandTotalDuration, true);
+    // ★修正: 全体合計のカード作成時に userStats (内訳用データ) を渡す
+    createChartCard(totalWrapper, "全従業員", grandTotalTasks, grandTotalDuration, true, userStats);
 
-    // B. 個別従業員用コンテナ（下部・2カラムグリッド）
+    // B. 個別従業員用コンテナ
     if (userStats.size > 0) {
         const employeeSectionTitle = document.createElement("h3");
         employeeSectionTitle.className = "text-xl font-bold text-gray-700 mb-4 border-b pb-2";
@@ -189,7 +183,6 @@ function renderReportCharts(logs) {
         gridContainer.className = "grid grid-cols-1 md:grid-cols-2 gap-8";
         reportChartsContainer.appendChild(gridContainer);
 
-        // 名前順にソートして描画
         const sortedUsers = Array.from(userStats.entries()).sort((a, b) => a[1].name.localeCompare(b[1].name, "ja"));
 
         sortedUsers.forEach(([userId, stats]) => {
@@ -200,7 +193,8 @@ function renderReportCharts(logs) {
             stats.tasks.forEach(d => totalUserDuration += d);
 
             if (totalUserDuration > 0) {
-                createChartCard(card, stats.name, stats.tasks, totalUserDuration, false);
+                // 個別カードには内訳データ(userStats)は渡さない(null)
+                createChartCard(card, stats.name, stats.tasks, totalUserDuration, false, null);
                 gridContainer.appendChild(card);
             }
         });
@@ -209,10 +203,14 @@ function renderReportCharts(logs) {
 
 /**
  * チャートと詳細リストを含むカードの中身を生成するヘルパー関数
+ * @param {HTMLElement} parentElement 追加先の要素
+ * @param {string} title タイトル
+ * @param {Map} tasksMap タスクデータ
+ * @param {number} totalDuration 合計時間
+ * @param {boolean} isLarge 全体表示かどうか
+ * @param {Map} allUserStats 内訳表示用の全ユーザーデータ (省略可)
  */
-// js/views/report.js の createChartCard 関数をすべてこれに置き換えてください
-
-function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge) {
+function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge, allUserStats = null) {
     // 1. ヘッダー
     const header = document.createElement("div");
     header.className = "flex justify-between items-center mb-4 border-b pb-2";
@@ -241,42 +239,91 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge)
     const labels = sortedTasks.map(t => t[0]);
     const dataPoints = sortedTasks.map(t => Math.round(t[1] / 3600 * 10) / 10); 
 
-    // チャートを描画
     const chartInstance = renderChart(canvas, labels, dataPoints, title);
     if (chartInstance) {
         activeReportCharts.push(chartInstance);
     }
 
-    // ★追加: チャートから生成された色情報を取得
     const backgroundColors = chartInstance?.data?.datasets[0]?.backgroundColor || [];
 
     // 3. 詳細リスト
     const listContainer = document.createElement("div");
-    listContainer.className = "mt-4 text-sm text-gray-600 max-h-40 overflow-y-auto custom-scrollbar";
+    // ★修正: リストの高さを拡大 (max-h-40 -> max-h-96)
+    listContainer.className = "mt-4 text-sm text-gray-600 max-h-96 overflow-y-auto custom-scrollbar";
     
     const ul = document.createElement("ul");
     ul.className = "space-y-1";
 
-    sortedTasks.forEach(([taskName, duration], index) => { // indexを受け取る
+    sortedTasks.forEach(([taskName, duration], index) => {
         const percentage = totalDuration > 0 ? Math.round((duration / totalDuration) * 100) : 0;
-        
-        // ★追加: そのタスクに対応する色を取得
         const color = backgroundColors[index] || '#cccccc';
 
         const li = document.createElement("li");
-        li.className = "flex justify-between items-center px-2 py-1 hover:bg-gray-50 rounded";
+        // ★修正: クリック可能な場合はカーソルを変更し、レイアウトを縦並び(flex-col)に変更
+        const cursorClass = allUserStats ? "cursor-pointer" : "";
+        li.className = `flex flex-col px-2 py-1 hover:bg-gray-50 rounded border-b border-gray-100 last:border-0 ${cursorClass}`;
         
-        // ★修正: 業務名の左に色丸(span)を追加
-        li.innerHTML = `
+        // 業務名の行
+        const rowDiv = document.createElement("div");
+        rowDiv.className = "flex justify-between items-center w-full";
+        rowDiv.innerHTML = `
             <div class="flex items-center truncate mr-2 flex-1" title="${escapeHtml(taskName)}">
                 <span class="w-3 h-3 rounded-full mr-2 flex-shrink-0" style="background-color: ${color};"></span>
-                <span class="truncate">${escapeHtml(taskName)}</span>
+                <span class="truncate font-medium">${escapeHtml(taskName)}</span>
+                ${allUserStats ? '<span class="text-xs text-gray-400 ml-2 toggle-icon">▼</span>' : ''}
             </div>
             <div class="flex items-center gap-2 whitespace-nowrap">
                 <span class="font-mono text-gray-800">${formatHoursMinutes(duration)}</span>
                 <span class="text-xs text-gray-400 w-8 text-right">(${percentage}%)</span>
             </div>
         `;
+        li.appendChild(rowDiv);
+
+        // ★修正: 内訳表示用のコンテナを追加
+        if (allUserStats) {
+            const breakdownDiv = document.createElement("div");
+            breakdownDiv.className = "hidden pl-6 mt-2 pb-2 text-xs text-gray-600 border-l-2 border-gray-200 ml-1.5 space-y-1 bg-gray-50 rounded-r";
+            
+            // クリックイベントの設定
+            li.addEventListener("click", (e) => {
+                e.stopPropagation();
+                
+                if (breakdownDiv.classList.contains("hidden")) {
+                    // 表示: データがまだなければ生成
+                    if (breakdownDiv.innerHTML === "") {
+                        const contributors = [];
+                        allUserStats.forEach((stats) => {
+                            const userTaskDuration = stats.tasks.get(taskName);
+                            if (userTaskDuration > 0) {
+                                contributors.push({ name: stats.name, duration: userTaskDuration });
+                            }
+                        });
+                        contributors.sort((a, b) => b.duration - a.duration);
+                        
+                        if (contributors.length === 0) {
+                            breakdownDiv.innerHTML = "<div class='p-2'>データなし</div>";
+                        } else {
+                            contributors.forEach(c => {
+                                const dEl = document.createElement("div");
+                                dEl.className = "flex justify-between hover:bg-gray-200 p-1 rounded px-2";
+                                dEl.innerHTML = `<span>${escapeHtml(c.name)}</span><span class="font-mono">${formatHoursMinutes(c.duration)}</span>`;
+                                breakdownDiv.appendChild(dEl);
+                            });
+                        }
+                    }
+                    breakdownDiv.classList.remove("hidden");
+                    const icon = rowDiv.querySelector(".toggle-icon");
+                    if(icon) icon.textContent = "▲";
+                } else {
+                    // 非表示
+                    breakdownDiv.classList.add("hidden");
+                    const icon = rowDiv.querySelector(".toggle-icon");
+                    if(icon) icon.textContent = "▼";
+                }
+            });
+            li.appendChild(breakdownDiv);
+        }
+
         ul.appendChild(li);
     });
 
