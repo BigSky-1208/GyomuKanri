@@ -1,234 +1,223 @@
 // js/views/report.js
-// ★修正: js/views/report.js から見て firebase.js は ../firebase.js
-import { db } from "../firebase.js"; 
-import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-// ★修正: js/views/report.js から見て main.js は ../main.js
-import { handleGoBack } from "../main.js"; 
-// ★修正: js/views/report.js から見て js/components/ は ../components/ (これは正しかった)
-import { renderUnifiedCalendar } from "../components/calendar.js";
-import { createPieChart, destroyCharts } from "../components/chart.js";
-import { formatDuration, formatHoursMinutes, getMonthDateRange } from "../utils.js"; // helperをimport
+import { db } from "../main.js";
+import { collection, query, where, getDocs, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { renderChart } from "../components/chart.js";
+import { formatDuration } from "../utils.js";
 
-let currentReportDate = new Date();
-let activeReportCharts = [];
-let selectedReportDateStr = null;
-let currentMonthLogs = []; // ★ 現在表示中の月のログを保持するローカル変数
+export async function renderMonthlyReport() {
+    const reportMonthInput = document.getElementById("report-month");
+    const generateBtn = document.getElementById("generate-report-btn");
+    const chartsContainer = document.getElementById("report-charts-container");
 
-const reportCalendarEl = document.getElementById("report-calendar");
-const reportMonthYearEl = document.getElementById("report-calendar-month-year");
-const reportPrevMonthBtn = document.getElementById("report-prev-month-btn");
-const reportNextMonthBtn = document.getElementById("report-next-month-btn");
-const reportTitleEl = document.getElementById("report-title");
-const reportChartsContainer = document.getElementById("report-charts-container");
-const backButton = document.getElementById("back-to-host-from-report");
-
-export async function initializeReportView() {
-    console.log("Initializing Report View...");
-    currentReportDate = new Date();
-    selectedReportDateStr = null;
-    
-    // 初期化時に今月のデータを取得して表示
-    await fetchAndRenderForCurrentMonth();
-}
-
-export function cleanupReportView() {
-    console.log("Cleaning up Report View...");
-    destroyCharts(activeReportCharts);
-    activeReportCharts = [];
-    selectedReportDateStr = null;
-    currentMonthLogs = []; // データをクリア
-}
-
-export function setupReportEventListeners() {
-    reportPrevMonthBtn?.addEventListener("click", () => moveReportMonth(-1));
-    reportNextMonthBtn?.addEventListener("click", () => moveReportMonth(1));
-    backButton?.addEventListener("click", handleGoBack);
-}
-
-// ★ 新規: 現在の月（currentReportDate）のデータを取得し、描画する関数
-async function fetchAndRenderForCurrentMonth() {
-    const { start, end } = getMonthDateRange(currentReportDate);
-    console.log(`Fetching report logs for ${start} to ${end}`);
-
-    // ローディング表示などを入れると親切
-    if(reportTitleEl) reportTitleEl.textContent = "データを読み込み中...";
-
-    try {
-        const q = query(
-            collection(db, "work_logs"),
-            where("date", ">=", start),
-            where("date", "<=", end)
-        );
-        const snapshot = await getDocs(q);
-        currentMonthLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        
-        renderReportCalendar();       
-        renderReportChartsForMonth(); 
-
-    } catch (error) {
-        console.error("Error fetching report logs:", error);
-        if(reportChartsContainer) reportChartsContainer.innerHTML = `<p class="text-red-500 text-center">データの取得中にエラーが発生しました。</p>`;
+    // Set default month to current month
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    if (reportMonthInput) {
+        reportMonthInput.value = `${year}-${month}`;
     }
-}
 
-function renderReportCalendar() {
-    if (!reportCalendarEl || !reportMonthYearEl) return;
-    
-    renderUnifiedCalendar({
-        calendarEl: reportCalendarEl,
-        monthYearEl: reportMonthYearEl,
-        dateToDisplay: currentReportDate,
-        logs: currentMonthLogs, // ★ ローカル変数を使用
-        onDayClick: (e) => {
-            const dateStr = e.currentTarget.dataset.date;
-            selectedReportDateStr = dateStr;
-            reportCalendarEl.querySelectorAll(".calendar-day.selected").forEach(el => el.classList.remove("selected"));
-            e.currentTarget.classList.add("selected");
-            renderReportChartsForDay(dateStr);
-        },
-        onMonthClick: () => {
-             selectedReportDateStr = null;
-             reportCalendarEl.querySelectorAll(".calendar-day.selected").forEach(el => el.classList.remove("selected"));
-             renderReportChartsForMonth();
-        },
-    });
-     if(selectedReportDateStr){
-        const dayElement = reportCalendarEl.querySelector(`.calendar-day[data-date="${selectedReportDateStr}"]`);
-        dayElement?.classList.add('selected');
-     }
-}
-
-async function moveReportMonth(direction) {
-    selectedReportDateStr = null;
-    currentReportDate.setMonth(currentReportDate.getMonth() + direction);
-    // 月移動時は必ずデータをフェッチし直す
-    await fetchAndRenderForCurrentMonth();
-}
-
-function renderReportChartsForMonth() {
-     if (!reportTitleEl) return;
-    const year = currentReportDate.getFullYear();
-    const month = currentReportDate.getMonth();
-    reportTitleEl.textContent = `${year}年 ${month + 1}月 月次レポート`;
-
-    // 既に今月分のみに絞り込まれているので、そのまま渡す
-    renderReportCharts(currentMonthLogs);
-}
-
-function renderReportChartsForDay(dateStr) {
-     if (!reportTitleEl || !dateStr) return;
-    reportTitleEl.textContent = `${dateStr} 日次レポート`;
-
-    // ローカルデータから該当日のみフィルタリング
-    const logsForDay = currentMonthLogs.filter((log) => log.date === dateStr);
-    renderReportCharts(logsForDay);
-}
-
-function renderReportCharts(logs) {
-    if (!reportChartsContainer) return;
-
-    destroyCharts(activeReportCharts);
-    activeReportCharts = [];
-    reportChartsContainer.innerHTML = "";
-
-    // --- 集計ロジック (変更なし) ---
-    const personalData = {};
-    const totalData = {};
-    const allTasksSet = new Set();
-
-    logs.forEach((log) => {
-        if (!log.userName || !log.task || log.task === "休憩" || log.type === "goal") return;
-
-        const taskName = log.task.startsWith("その他_") ? log.task.substring(4) : log.task;
-        allTasksSet.add(taskName);
-
-        if (!totalData[taskName]) totalData[taskName] = 0;
-        totalData[taskName] += (log.duration || 0);
-
-        if (!personalData[log.userName]) personalData[log.userName] = {};
-        if (!personalData[log.userName][taskName]) personalData[log.userName][taskName] = 0;
-        personalData[log.userName][taskName] += (log.duration || 0);
-    });
-
-    const taskColorMap = {};
-    const uniqueTasks = Array.from(allTasksSet).sort((a, b) => a.localeCompare(b, "ja"));
-    uniqueTasks.forEach((task, index) => {
-        const hue = (index * 137.508) % 360;
-        taskColorMap[task] = `hsl(${hue}, 70%, 60%)`;
-    });
-
-    if (Object.keys(totalData).length > 0) {
-        // 全体チャート描画
-        const totalDuration = Object.values(totalData).reduce((sum, duration) => sum + duration, 0);
-        const totalChartWrapper = document.createElement("div");
-        totalChartWrapper.className = "p-4 border rounded-lg bg-white shadow";
-        totalChartWrapper.innerHTML = `
-            <div class="text-center mb-4">
-                <h3 class="text-xl font-semibold">全従業員 合計</h3>
-                <p class="text-gray-600 font-mono text-lg">${formatHoursMinutes(totalDuration)}</p>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-                <div class="relative w-full min-h-[250px] md:min-h-[300px]">
-                    <canvas id="total-report-chart-canvas"></canvas>
-                </div>
-                <div id="total-report-list" class="text-sm"></div>
-            </div>
-        `;
-        reportChartsContainer.appendChild(totalChartWrapper);
-
-        const totalListContainer = totalChartWrapper.querySelector("#total-report-list");
-        const sortedTotalTasks = Object.entries(totalData).sort(([, a], [, b]) => b - a);
-        let totalListHtml = '<ul class="space-y-1">';
-        sortedTotalTasks.forEach(([task, duration]) => {
-            const color = taskColorMap[task] || "#CCCCCC";
-             totalListHtml += `
-                 <li class="flex items-center justify-between p-1.5 rounded-md hover:bg-gray-50">
-                     <span class="flex items-center"><span class="w-3 h-3 rounded-full mr-2 flex-shrink-0" style="background-color: ${color};"></span>${escapeHtml(task)}</span>
-                     <span class="font-mono ml-2 flex-shrink-0">${formatHoursMinutes(duration)}</span>
-                 </li>`;
-        });
-        totalListHtml += "</ul>";
-        if(totalListContainer) totalListContainer.innerHTML = totalListHtml;
-
-        const totalCtx = totalChartWrapper.querySelector("#total-report-chart-canvas")?.getContext("2d");
-        if (totalCtx) {
-            const totalChart = createPieChart(totalCtx, totalData, taskColorMap, false);
-            if (totalChart) activeReportCharts.push(totalChart);
+    generateBtn?.addEventListener("click", async () => {
+        const selectedMonth = reportMonthInput.value;
+        if (!selectedMonth) {
+            alert("月を選択してください。");
+            return;
         }
 
-        // 個人チャート描画
-        const sortedUserNames = Object.keys(personalData).sort((a, b) => a.localeCompare(b, "ja"));
-        sortedUserNames.forEach((name) => {
-            const userData = personalData[name];
-            const userDuration = Object.values(userData).reduce((sum, duration) => sum + duration, 0);
-            if (userDuration <= 0) return;
-
-            const userChartWrapper = document.createElement("div");
-            userChartWrapper.className = "p-4 border rounded-lg bg-white shadow flex flex-col";
-            userChartWrapper.innerHTML = `
-                <div class="text-center mb-2">
-                    <h3 class="text-lg font-semibold">${escapeHtml(name)}</h3>
-                    <p class="text-gray-600 font-mono">${formatHoursMinutes(userDuration)}</p>
-                </div>
-                <div class="relative flex-grow min-h-[200px] w-full">
-                    <canvas></canvas>
-                </div>
-            `;
-            reportChartsContainer.appendChild(userChartWrapper);
-
-            const userCtx = userChartWrapper.querySelector("canvas")?.getContext("2d");
-            if (userCtx) {
-                const userChart = createPieChart(userCtx, userData, taskColorMap, false);
-                 if (userChart) activeReportCharts.push(userChart);
+        if (chartsContainer) {
+            chartsContainer.innerHTML = '<p class="text-center text-gray-500">データを読み込み中...</p>';
+        }
+        
+        try {
+            const data = await fetchMonthlyData(selectedMonth);
+            
+            // データが存在しない場合
+            if (data.userStats.size === 0) {
+                if (chartsContainer) {
+                    chartsContainer.innerHTML = '<p class="text-center text-gray-500">選択された月のデータはありません。</p>';
+                }
+                return;
             }
-        });
 
-    } else {
-        reportChartsContainer.innerHTML = `<p class="text-gray-500 text-center col-span-full py-10">この期間の業務記録はありません。</p>`;
-    }
+            if (chartsContainer) {
+                renderReports(data, chartsContainer);
+            }
+        } catch (error) {
+            console.error("Error generating report:", error);
+            if (chartsContainer) {
+                chartsContainer.innerHTML = '<p class="text-center text-red-500">レポートの生成中にエラーが発生しました。</p>';
+            }
+        }
+    });
 }
 
-function escapeHtml(unsafe) {
-    if (typeof unsafe !== 'string') return '';
-    return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+async function fetchMonthlyData(monthStr) {
+    const [year, month] = monthStr.split("-");
+    
+    // Correct string range for the month
+    // Assuming date format "YYYY-MM-DD"
+    const startStr = `${year}-${month}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endStr = `${year}-${month}-${lastDay}`;
+
+    const q = query(
+        collection(db, "work_logs"),
+        where("date", ">=", startStr),
+        where("date", "<=", endStr)
+    );
+
+    const snapshot = await getDocs(q);
+    return aggregateData(snapshot);
+}
+
+function aggregateData(snapshot) {
+    const userStats = new Map(); // userId -> { name, tasks: Map<taskName, duration> }
+
+    snapshot.forEach(doc => {
+        const data = doc.data();
+        const { userId, userName, task, duration } = data;
+
+        if (!userStats.has(userId)) {
+            userStats.set(userId, { name: userName, tasks: new Map() });
+        }
+
+        const user = userStats.get(userId);
+        const currentDuration = user.tasks.get(task) || 0;
+        user.tasks.set(task, currentDuration + duration);
+    });
+
+    return { userStats };
+}
+
+function renderReports(data, container) {
+    // HTML側で設定されている "grid grid-cols-2" などのクラスを強制的に上書きしてリセット
+    container.className = "space-y-12"; 
+    
+    container.innerHTML = '';
+    const { userStats } = data;
+
+    // --- 1. 全従業員の合計データを計算 ---
+    const grandTotalTasks = new Map();
+    let grandTotalDuration = 0;
+
+    userStats.forEach(user => {
+        user.tasks.forEach((duration, taskName) => {
+            const currentTotal = grandTotalTasks.get(taskName) || 0;
+            grandTotalTasks.set(taskName, currentTotal + duration);
+            grandTotalDuration += duration;
+        });
+    });
+
+    // --- 2. レイアウトの作成 ---
+
+    // A. 全体合計用コンテナ（上部・1カラム・中央寄せ）
+    const totalSectionTitle = document.createElement("h3");
+    totalSectionTitle.className = "text-xl font-bold text-gray-700 mb-4 text-center border-b pb-2";
+    totalSectionTitle.textContent = "全従業員 合計";
+    container.appendChild(totalSectionTitle);
+
+    const totalWrapper = document.createElement("div");
+    // 幅を制限して中央に配置 (md:w-2/3 mx-auto)
+    totalWrapper.className = "w-full md:w-2/3 mx-auto mb-12 bg-white p-6 rounded-lg shadow-md border border-gray-100";
+    container.appendChild(totalWrapper);
+
+    // 全体チャートの描画
+    createChartCard(totalWrapper, "全従業員", grandTotalTasks, grandTotalDuration, true);
+
+
+    // B. 個別従業員用コンテナ（下部・2カラムグリッド）
+    const employeeSectionTitle = document.createElement("h3");
+    employeeSectionTitle.className = "text-xl font-bold text-gray-700 mb-4 border-b pb-2";
+    employeeSectionTitle.textContent = "従業員別 詳細";
+    container.appendChild(employeeSectionTitle);
+
+    const gridContainer = document.createElement("div");
+    // グリッドレイアウト: PCで2列 (md:grid-cols-2), スマホで1列, ギャップ広め
+    gridContainer.className = "grid grid-cols-1 md:grid-cols-2 gap-8";
+    container.appendChild(gridContainer);
+
+    // 各従業員のチャートを描画してグリッドに追加
+    // 名前順などでソートしたい場合はここで userStats を配列にしてソートしてください
+    userStats.forEach((stats, userId) => {
+        const card = document.createElement("div");
+        card.className = "bg-white p-4 rounded shadow border border-gray-200 flex flex-col";
+        
+        let totalUserDuration = 0;
+        stats.tasks.forEach(d => totalUserDuration += d);
+
+        // カードの中身を作成
+        createChartCard(card, stats.name, stats.tasks, totalUserDuration, false);
+        
+        gridContainer.appendChild(card);
+    });
+}
+
+/**
+ * チャートと詳細リストを含むカードの中身を生成するヘルパー関数
+ * @param {HTMLElement} parentElement - 追加先の要素
+ * @param {string} title - チャートのタイトル（名前）
+ * @param {Map} tasksMap - タスクデータのMap
+ * @param {number} totalDuration - 合計時間（秒）
+ * @param {boolean} isLarge - 全体用（大きく表示）かどうか
+ */
+function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge) {
+    // 1. ヘッダー（名前と合計時間）
+    const header = document.createElement("div");
+    header.className = "flex justify-between items-center mb-4 border-b pb-2";
+    
+    const nameEl = document.createElement("h3");
+    nameEl.className = isLarge ? "text-xl font-bold text-indigo-700" : "text-lg font-semibold text-gray-700";
+    nameEl.textContent = title;
+    
+    const timeEl = document.createElement("span");
+    timeEl.className = "text-sm font-medium text-gray-500";
+    timeEl.textContent = `合計: ${formatDuration(totalDuration)}`;
+
+    header.appendChild(nameEl);
+    header.appendChild(timeEl);
+    parentElement.appendChild(header);
+
+    // 2. チャート描画エリア
+    const canvasContainer = document.createElement("div");
+    // 全体用なら少し高さを大きくする
+    canvasContainer.className = isLarge ? "relative h-80 w-full" : "relative h-64 w-full";
+    const canvas = document.createElement("canvas");
+    canvasContainer.appendChild(canvas);
+    parentElement.appendChild(canvasContainer);
+
+    // データを整形でソート（降順）
+    const sortedTasks = Array.from(tasksMap.entries())
+        .sort((a, b) => b[1] - a[1]);
+    
+    const labels = sortedTasks.map(t => t[0]);
+    // 秒を時間に変換（小数点第1位まで）
+    const dataPoints = sortedTasks.map(t => Math.round(t[1] / 3600 * 10) / 10); 
+
+    // components/chart.js の renderChart を呼び出し
+    renderChart(canvas, labels, dataPoints, title);
+
+    // 3. 詳細リスト（アコーディオンなどはせずシンプルに表示）
+    const listContainer = document.createElement("div");
+    listContainer.className = "mt-4 text-sm text-gray-600 max-h-40 overflow-y-auto"; // スクロール可能に
+    
+    const ul = document.createElement("ul");
+    ul.className = "space-y-1";
+
+    sortedTasks.forEach(([taskName, duration]) => {
+        const percentage = totalDuration > 0 ? Math.round((duration / totalDuration) * 100) : 0;
+        
+        const li = document.createElement("li");
+        li.className = "flex justify-between items-center px-2 py-1 hover:bg-gray-50 rounded";
+        li.innerHTML = `
+            <span class="truncate mr-2 flex-1" title="${taskName}">${taskName}</span>
+            <div class="flex items-center gap-2 whitespace-nowrap">
+                <span class="font-mono text-gray-800">${formatDuration(duration)}</span>
+                <span class="text-xs text-gray-400 w-8 text-right">(${percentage}%)</span>
+            </div>
+        `;
+        ul.appendChild(li);
+    });
+
+    listContainer.appendChild(ul);
+    parentElement.appendChild(listContainer);
 }
