@@ -5,7 +5,7 @@ import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/fireb
 
 import { handleStartClick, handleStopClick, handleBreakClick, restoreClientState as restoreTimerState } from "./timer.js"; 
 import { listenForUserReservations, handleSaveBreakReservation, handleSetStopReservation, handleCancelStopReservation, deleteReservation } from "./reservations.js"; 
-
+import { toggleMiniDisplay } from "./miniDisplay.js";
 import { handleTaskSelectionChange, handleGoalSelectionChange, handleDisplaySettingChange, renderTaskOptions, renderTaskDisplaySettings } from "./clientUI.js"; 
 import { handleFixCheckout } from "./clientActions.js";
 
@@ -81,6 +81,13 @@ export function setupClientEventListeners() {
 
     // Task display preferences
     taskDisplaySettingsList?.addEventListener("change", handleDisplaySettingChange); 
+    
+    // ★追加: ミニ表示ボタンのイベントリスナー (イベント委譲を使うと安全です)
+    taskDisplaySettingsList?.addEventListener("click", (e) => {
+        if (e.target.id === "toggle-mini-display-btn") {
+            toggleMiniDisplay();
+        }
+    });
 
     // --- Reservation UI Listeners ---
     addBreakReservationBtn?.addEventListener("click", () => openBreakReservationModal()); 
