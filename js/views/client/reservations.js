@@ -3,7 +3,7 @@ import { db, userId, userName } from "../../main.js";
 import { collection, query, where, onSnapshot, doc, addDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { handleBreakClick, handleStopClick } from "./timer.js";
 
-// ★修正: 指定されたCloudflare WorkersのURLを設定
+// Cloudflare WorkersのURL
 const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev/update-schedule";
 
 export let userReservations = []; 
@@ -30,7 +30,15 @@ async function notifyWorker() {
 
 export function listenForUserReservations() {
     if (reservationsUnsubscribe) reservationsUnsubscribe();
-    if (!userId) return;
+    
+    // userIdがまだロードされていない場合のガード
+    if (!userId) {
+        console.warn("listenForUserReservations: userId is missing. Retrying in 1s...");
+        setTimeout(listenForUserReservations, 1000);
+        return;
+    }
+
+    console.log(`予約情報の監視を開始します。User: ${userId}`);
 
     // "reserved" ステータスのものを取得
     const q = query(
@@ -40,11 +48,13 @@ export function listenForUserReservations() {
     );
 
     reservationsUnsubscribe = onSnapshot(q, (snapshot) => {
+        console.log(`予約データを取得しました: ${snapshot.size}件`);
+        
         userReservations = snapshot.docs.map((d) => {
             const data = d.data();
             let timeDisplay = "??:??";
             
-            // 読み取りロジックの強化: scheduledTimeがない場合でも time (旧形式) から復元を試みる
+            // 読み取りロジック
             if (data.scheduledTime) {
                 const date = new Date(data.scheduledTime);
                 if (!isNaN(date)) {
@@ -53,7 +63,7 @@ export function listenForUserReservations() {
                     timeDisplay = `${hours}:${minutes}`;
                 }
             } else if (data.time) {
-                // 旧データ(time: "HH:MM")がある場合はそれを表示に使う
+                // 旧データ対応
                 timeDisplay = data.time;
             }
 
@@ -77,37 +87,32 @@ export function processReservations() {
         if (res.scheduledTime) {
             targetTime = new Date(res.scheduledTime);
         } else if (res.time) {
-            // 旧データ対応: "HH:MM" 文字列から今日の日付のDateオブジェクトを作る
             targetTime = calculateScheduledTime(res.time);
         } else {
-            return; // 時間情報がない場合はスキップ
+            return; 
         }
 
-        // ★追加機能: もし予約時間が「過去」になっていたら、自動的に「明日」等の未来に更新する
-        // (Workerが動かなかった場合や、ブラウザを久しぶりに開いた場合のリカバリー)
+        // 過去の予約を明日に更新する処理
         if (targetTime <= now) {
             console.log(`予約 ${res.time} は過去の時間です。次回（明日以降）に更新します。`);
-            
-            // 現在時刻より未来になるまで1日ずつ足す
             const nextTarget = new Date(targetTime);
             while (nextTarget <= now) {
                 nextTarget.setDate(nextTarget.getDate() + 1);
             }
 
-            // DB更新 (scheduledTimeを書き換え)
             try {
+                // ここでDB更新を行うと onSnapshot が反応して再描画されます
                 await updateDoc(doc(db, "work_logs", res.id), {
                     scheduledTime: nextTarget.toISOString()
                 });
-                // Workerにも通知して次回実行を予約
                 notifyWorker();
             } catch (e) {
                 console.error("予約の自動更新に失敗:", e);
             }
-            return; // 今回はタイマーセットせず、更新後のスナップショットを待つ
+            return; 
         }
 
-        // 未来の予約ならタイマーセット (24時間以内)
+        // タイマーセット
         const diff = targetTime.getTime() - now.getTime();
         if (diff > 0 && diff < 24 * 60 * 60 * 1000) {
             const timerId = setTimeout(() => {
@@ -121,24 +126,22 @@ export function processReservations() {
 async function executeAction(action, id, prevDate) {
     console.log(`Executing reservation action: ${action}`);
     
-    // 1. アクション実行
     if (action === "break") {
         handleBreakClick(true);
     } else if (action === "stop") {
         handleStopClick(true);
     }
 
-    // 2. 翌日の同じ時間に更新する (毎日繰り返し)
     try {
         const nextDate = new Date(prevDate);
-        nextDate.setDate(nextDate.getDate() + 1); // 1日進める
+        nextDate.setDate(nextDate.getDate() + 1); 
 
         await updateDoc(doc(db, "work_logs", id), {
             scheduledTime: nextDate.toISOString()
         });
         
         console.log(`予約を翌日(${nextDate.toISOString()})に更新しました`);
-        notifyWorker(); // スケジュール再計算を依頼
+        notifyWorker(); 
     } catch (e) {
         console.error("予約更新エラー:", e);
     }
@@ -149,39 +152,45 @@ export function updateReservationDisplay() {
     const stopSetter = getStopSetter();
     const stopStatus = getStopStatus();
     const stopStatusText = getStopStatusText();
-    const getStopTimeInput = () => document.getElementById("stop-reservation-time-input"); // 再取得
+    const getStopTimeInput = () => document.getElementById("stop-reservation-time-input"); 
 
-    if (!breakList || !stopSetter) return;
-
-    // 休憩予約リスト
-    breakList.innerHTML = "";
-    const breakReservations = userReservations.filter(r => r.action === "break");
-    
-    if (breakReservations.length > 0) {
-        breakReservations.forEach(res => {
-            const div = document.createElement("div");
-            div.className = "flex justify-between items-center p-2 bg-gray-100 rounded-lg mb-2";
-            div.innerHTML = `
-                <span class="font-mono text-lg">${res.time} <span class="text-xs text-gray-500">(毎日)</span></span>
-                <button class="delete-break-reservation-btn text-xs bg-red-500 text-white font-bold py-1 px-2 rounded hover:bg-red-600" data-id="${res.id}">削除</button>
-            `;
-            breakList.appendChild(div);
-        });
+    // --- 休憩予約リストの表示 ---
+    if (breakList) {
+        breakList.innerHTML = "";
+        const breakReservations = userReservations.filter(r => r.action === "break");
+        
+        if (breakReservations.length > 0) {
+            breakReservations.forEach(res => {
+                const div = document.createElement("div");
+                div.className = "flex justify-between items-center p-2 bg-gray-100 rounded-lg mb-2";
+                div.innerHTML = `
+                    <span class="font-mono text-lg">${res.time} <span class="text-xs text-gray-500">(毎日)</span></span>
+                    <button class="delete-break-reservation-btn text-xs bg-red-500 text-white font-bold py-1 px-2 rounded hover:bg-red-600" data-id="${res.id}">削除</button>
+                `;
+                breakList.appendChild(div);
+            });
+        } else {
+            breakList.innerHTML = '<p class="text-center text-sm text-gray-500">休憩予約はありません</p>';
+        }
     } else {
-        breakList.innerHTML = '<p class="text-center text-sm text-gray-500">休憩予約はありません</p>';
+        console.warn("DOM要素 'break-reservation-list' が見つかりません。");
     }
 
-    // 帰宅予約表示
-    const stopReservation = userReservations.find(r => r.action === "stop");
-    if (stopReservation) {
-        if(stopStatusText) stopStatusText.textContent = `予約時刻: ${stopReservation.time} (毎日)`;
-        stopSetter.classList.add("hidden");
-        stopStatus.classList.remove("hidden");
+    // --- 帰宅予約の表示 ---
+    if (stopSetter && stopStatus) {
+        const stopReservation = userReservations.find(r => r.action === "stop");
+        if (stopReservation) {
+            if(stopStatusText) stopStatusText.textContent = `予約時刻: ${stopReservation.time} (毎日)`;
+            stopSetter.classList.add("hidden");
+            stopStatus.classList.remove("hidden");
+        } else {
+            stopSetter.classList.remove("hidden");
+            stopStatus.classList.add("hidden");
+            const input = getStopTimeInput();
+            if(input) input.value = "";
+        }
     } else {
-        stopSetter.classList.remove("hidden");
-        stopStatus.classList.add("hidden");
-        const input = getStopTimeInput();
-        if(input) input.value = "";
+        console.warn("DOM要素 'stop-reservation-setter' または 'stop-reservation-status' が見つかりません。");
     }
 }
 
@@ -192,7 +201,6 @@ function calculateScheduledTime(timeStr) {
     const [hours, minutes] = timeStr.split(":");
     const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(hours), parseInt(minutes), 0, 0);
     
-    // 過去の時間なら明日に設定
     if (target <= now) {
         target.setDate(target.getDate() + 1);
     }
