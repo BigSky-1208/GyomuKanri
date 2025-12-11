@@ -13,7 +13,6 @@ const taskDescriptionDisplay = document.getElementById("task-description-display
 const startBtn = document.getElementById("start-btn");
 const warningMessage = document.getElementById("change-warning-message");
 const taskDisplaySettingsList = document.getElementById("task-display-settings-list");
-// ★追加: 通知間隔設定インプット
 const notificationIntervalInput = document.getElementById("notification-interval-input");
 
 /**
@@ -30,7 +29,7 @@ export function renderTaskOptions() {
         (task) => task.name !== "休憩" && !hiddenTasks.includes(task.name)
     );
 
-    // ソート（名前順、ただし「その他」は最後にしたい等の要件があればここで調整）
+    // ソート（名前順）
     dropdownTasks.sort((a, b) => a.name.localeCompare(b.name, "ja"));
 
     dropdownTasks.forEach(
@@ -38,66 +37,67 @@ export function renderTaskOptions() {
         (taskSelect.innerHTML += `<option value="${escapeHtml(task.name)}">${escapeHtml(task.name)}</option>`)
     );
 
-    // "その他" タスクが存在し、hiddenでないなら追加 (allTaskObjectsに含まれている前提だが、念のため)
-    // ここでは allTaskObjects に "その他" が含まれていない場合でも手動で追加するロジックは入れず、
-    // allTaskObjects に依存させる。
-
     taskSelect.value = currentValue;
     updateTaskDisplaysForSelection();
 }
 
 /**
- * Renders the checkboxes for task display settings.
+ * Renders the checkboxes for task display settings and the Mini Display button.
  */
-// ★追加: ミニ表示ボタンのロジック
 export function renderTaskDisplaySettings() {
-    const container = document.getElementById("task-display-settings-list");
-    if (!container) return;
+    if (!taskDisplaySettingsList) return;
 
-    // 既存の設定項目（チェックボックスなど）があればそれを維持しつつ、ボタンを追加する形にします
-    // もし既存の中身をクリアしているなら以下のままでOK
-    
-    container.innerHTML = "";
+    taskDisplaySettingsList.innerHTML = "";
 
-    // 1. ミニ表示ボタンの追加
-    const miniDisplayLi = document.createElement("li");
-    miniDisplayLi.className = "mb-4 border-b pb-4";
-    miniDisplayLi.innerHTML = `
+    // 1. ミニ表示ボタンの追加 (★ここに追加)
+    const miniDisplayDiv = document.createElement("div");
+    miniDisplayDiv.className = "mb-4 border-b pb-4";
+    miniDisplayDiv.innerHTML = `
         <div class="flex items-center justify-between">
             <div>
-                <span class="font-bold text-gray-700 block">ミニ表示モード</span>
+                <span class="font-bold text-gray-700 block text-sm">ミニ表示モード</span>
                 <span class="text-xs text-gray-500">常に最前面に小さなタイマーを表示します</span>
             </div>
-            <button id="toggle-mini-display-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded shadow text-sm transition">
+            <button id="toggle-mini-display-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-3 rounded shadow text-xs transition">
                 起動
             </button>
         </div>
     `;
-    container.appendChild(miniDisplayLi);
+    taskDisplaySettingsList.appendChild(miniDisplayDiv);
 
-    // ... (以下、既存の表示設定：息抜き通知設定などが続く場合はここに追加)
-    // 既存コードにある notificationIntervalMinutes の設定UIなどは消さないように注意してください。
-    // もし既存コードが `innerHTML = ""` していたなら、そのロジックをここに統合する必要があります。
-    
-    // ↓ 既存の「息抜き通知設定」などの再描画コードをここに続けて記述してください
-    // （前回のコード内容に基づくと以下のような設定項目がありました）
-    import("../../main.js").then(module => {
-        const prefs = module.userDisplayPreferences || {};
-        
-        const settingsLi = document.createElement("li");
-        settingsLi.innerHTML = `
-             <div class="flex flex-col gap-2">
-                <label class="font-bold text-gray-700">息抜き通知の間隔 (分)</label>
-                <input type="number" id="notification-interval-input" 
-                    class="border rounded p-2 w-full" 
-                    min="0" step="10" 
-                    placeholder="0で無効 (例: 60)"
-                    value="${prefs.notificationIntervalMinutes || 0}">
-                <p class="text-xs text-gray-500">※0に設定すると通知しません</p>
-             </div>
-        `;
-        container.appendChild(settingsLi);
-    });
+    // 2. 業務の表示/非表示設定 (既存ロジック)
+    const configurableTasks = allTaskObjects.filter(
+        (task) => task.name !== "休憩"
+    );
+
+    if (configurableTasks.length === 0) {
+        const p = document.createElement("p");
+        p.className = "text-sm text-gray-500";
+        p.textContent = "設定可能な業務がありません。";
+        taskDisplaySettingsList.appendChild(p);
+    } else {
+        configurableTasks.forEach((task) => {
+            const isHidden =
+                userDisplayPreferences.hiddenTasks?.includes(task.name) || false;
+            const isChecked = !isHidden;
+
+            const label = document.createElement("label");
+            label.className =
+                "flex items-center p-2 rounded-md hover:bg-gray-100 cursor-pointer";
+            label.innerHTML = `
+                <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 mr-3" data-task-name="${escapeHtml(task.name)}" ${isChecked ? "checked" : ""}>
+                <span class="text-gray-700 text-sm">${escapeHtml(task.name)}</span>
+            `;
+
+            taskDisplaySettingsList.appendChild(label);
+        });
+    }
+
+    // 3. 通知間隔設定の初期値を反映
+    if (notificationIntervalInput) {
+        notificationIntervalInput.value = userDisplayPreferences.notificationIntervalMinutes || 0;
+        notificationIntervalInput.onchange = handleNotificationIntervalChange;
+    }
 }
 
 /**
@@ -161,7 +161,7 @@ export async function handleDisplaySettingChange(event) {
     renderTaskOptions(); // Refresh dropdown
 }
 
-// ★追加: 通知間隔設定の変更ハンドラ
+// 通知間隔設定の変更ハンドラ
 async function handleNotificationIntervalChange(event) {
     const minutes = parseInt(event.target.value, 10);
     if (isNaN(minutes) || minutes < 0) return;
@@ -173,7 +173,7 @@ async function handleNotificationIntervalChange(event) {
 async function updateDisplayPreferences(newPrefs) {
     if (!userId) return;
     const prefRef = doc(db, `user_profiles/${userId}/preferences/display`);
-    // userDisplayPreferences ローカル変数も更新しておく（リスナーが来るまでのラグ対策）
+    // userDisplayPreferences ローカル変数も更新しておく
     Object.assign(userDisplayPreferences, newPrefs);
     await setDoc(prefRef, newPrefs, { merge: true });
 }
@@ -250,9 +250,7 @@ export function checkIfWarningIsNeeded() {
 
     // Handle "Other" task comparison
     let comparableCurrentTask = currentTask;
-    // Assuming "その他_XXX" format for custom tasks, but UI selects "その他"
-    // Logic depends on how custom tasks are stored.
-    // If simple string match:
+    
     if (currentTask && currentTask.startsWith("その他") && selectedTask === "その他") {
          comparableCurrentTask = "その他"; 
     }
