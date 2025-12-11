@@ -147,9 +147,13 @@ function _renderProgressLineChart(chartContainer, weekDates, data, goal, progres
     `;
     chartContainer.appendChild(buttonsDiv);
 
+    // ★修正: Chart.jsの高さ暴走を防ぐため、固定高さの親divで囲む
+    const canvasWrapper = document.createElement("div");
+    canvasWrapper.className = "relative w-full h-96"; // h-96はTailwindで384px。高さをここで制限します。
+    
     const canvas = document.createElement("canvas");
-    canvas.style.minHeight = '250px';
-    chartContainer.appendChild(canvas);
+    canvasWrapper.appendChild(canvas);
+    chartContainer.appendChild(canvasWrapper);
 
     const datasets = data.map((userData, index) => {
         const hue = (index * 137.508) % 360;
