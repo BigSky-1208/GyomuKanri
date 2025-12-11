@@ -7,10 +7,7 @@
  * @param {string} type - 通知タイプ ('encouragement' | 'breather')
  */
 export async function triggerEncouragementNotification(elapsedSeconds, type = 'encouragement') {
-    // 1. ローカルストレージから業務名を取得 (保存されていない場合は '業務' とする)
     const taskName = localStorage.getItem('currentTaskName') || '業務';
-
-    // 2. 時間の計算
     const hours = Math.floor(elapsedSeconds / 3600);
     const minutes = Math.floor((elapsedSeconds % 3600) / 60);
 
@@ -20,17 +17,28 @@ export async function triggerEncouragementNotification(elapsedSeconds, type = 'e
     }
     timeString += `${minutes}分`;
 
-    // 3. メッセージ作成
-    // 「【業務名】を〇時間〇分継続しています！」
     const message = `【${taskName}】を${timeString}継続しています！`;
     
-    // 4. タイトル決定
     let title = "お疲れ様です！";
     if (type === 'breather') {
         title = "そろそろ一息つきませんか？";
     }
 
-    // 5. 通知を表示
+    await showBrowserNotification(title, message);
+}
+
+// ★追加: 予約実行時の通知
+export async function triggerReservationNotification(actionName) {
+    const title = "自動実行";
+    const message = `予約設定で${actionName}しました`;
+    await showBrowserNotification(title, message);
+}
+
+// ★追加: 休憩経過時間の通知
+export async function triggerBreakNotification(elapsedSeconds) {
+    const minutes = Math.floor(elapsedSeconds / 60);
+    const title = "休憩中";
+    const message = `休憩中…${minutes}分`;
     await showBrowserNotification(title, message);
 }
 
@@ -58,7 +66,7 @@ function createNotification(title, message) {
     try {
         const notification = new Notification(title, {
             body: message,
-            tag: "gyomukanri-notification", // タグを指定して通知の重複を防ぐ
+            tag: "gyomukanri-notification",
             renotify: true,
             silent: false,
         });
@@ -68,7 +76,6 @@ function createNotification(title, message) {
             notification.close();
         };
 
-        // 15秒後に自動的に閉じる
         setTimeout(() => {
             notification.close();
         }, 15000);
