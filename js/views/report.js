@@ -210,8 +210,10 @@ function renderReportCharts(logs) {
 /**
  * チャートと詳細リストを含むカードの中身を生成するヘルパー関数
  */
+// js/views/report.js の createChartCard 関数をすべてこれに置き換えてください
+
 function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge) {
-    // ヘッダー
+    // 1. ヘッダー
     const header = document.createElement("div");
     header.className = "flex justify-between items-center mb-4 border-b pb-2";
     
@@ -227,7 +229,7 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge)
     header.appendChild(timeEl);
     parentElement.appendChild(header);
 
-    // チャート描画エリア
+    // 2. チャート描画エリア
     const canvasContainer = document.createElement("div");
     canvasContainer.className = isLarge ? "relative h-80 w-full" : "relative h-64 w-full";
     const canvas = document.createElement("canvas");
@@ -237,28 +239,39 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge)
     // データを整形でソート（降順）
     const sortedTasks = Array.from(tasksMap.entries()).sort((a, b) => b[1] - a[1]);
     const labels = sortedTasks.map(t => t[0]);
-    // 秒を時間に変換（小数点第1位まで）
     const dataPoints = sortedTasks.map(t => Math.round(t[1] / 3600 * 10) / 10); 
 
-    // components/chart.js の renderChart を呼び出し
+    // チャートを描画
     const chartInstance = renderChart(canvas, labels, dataPoints, title);
     if (chartInstance) {
         activeReportCharts.push(chartInstance);
     }
 
-    // 詳細リスト
+    // ★追加: チャートから生成された色情報を取得
+    const backgroundColors = chartInstance?.data?.datasets[0]?.backgroundColor || [];
+
+    // 3. 詳細リスト
     const listContainer = document.createElement("div");
     listContainer.className = "mt-4 text-sm text-gray-600 max-h-40 overflow-y-auto custom-scrollbar";
     
     const ul = document.createElement("ul");
     ul.className = "space-y-1";
 
-    sortedTasks.forEach(([taskName, duration]) => {
+    sortedTasks.forEach(([taskName, duration], index) => { // indexを受け取る
         const percentage = totalDuration > 0 ? Math.round((duration / totalDuration) * 100) : 0;
+        
+        // ★追加: そのタスクに対応する色を取得
+        const color = backgroundColors[index] || '#cccccc';
+
         const li = document.createElement("li");
         li.className = "flex justify-between items-center px-2 py-1 hover:bg-gray-50 rounded";
+        
+        // ★修正: 業務名の左に色丸(span)を追加
         li.innerHTML = `
-            <span class="truncate mr-2 flex-1" title="${escapeHtml(taskName)}">${escapeHtml(taskName)}</span>
+            <div class="flex items-center truncate mr-2 flex-1" title="${escapeHtml(taskName)}">
+                <span class="w-3 h-3 rounded-full mr-2 flex-shrink-0" style="background-color: ${color};"></span>
+                <span class="truncate">${escapeHtml(taskName)}</span>
+            </div>
             <div class="flex items-center gap-2 whitespace-nowrap">
                 <span class="font-mono text-gray-800">${formatHoursMinutes(duration)}</span>
                 <span class="text-xs text-gray-400 w-8 text-right">(${percentage}%)</span>
