@@ -1,10 +1,10 @@
 // js/views/client/reservations.js
 import { db, userId, userName } from "../../main.js";
-import { collection, query, where, onSnapshot, doc, addDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, query, where, onSnapshot, doc, addDoc, updateDoc, deleteDoc, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { handleBreakClick, handleStopClick } from "./timer.js";
 
 // Cloudflare WorkersのURL
-const WORKER_URL = "https://gyomu-timer.あなたのアカウント名.workers.dev/update-schedule";
+const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev/update-schedule";
 
 export let userReservations = []; 
 let reservationTimers = []; 
@@ -18,7 +18,7 @@ const getStopStatusText = () => document.getElementById("stop-reservation-status
 const getStopTimeInput = () => document.getElementById("stop-reservation-time-input");
 
 async function notifyWorker() {
-    if (WORKER_URL && WORKER_URL.startsWith("https") && !WORKER_URL.includes("あなたのアカウント名")) {
+    if (WORKER_URL) {
         try {
             await fetch(WORKER_URL);
             console.log("Cloudflare Workersにスケジュール更新を通知しました");
@@ -28,19 +28,80 @@ async function notifyWorker() {
     }
 }
 
+/**
+ * 古い予約データ(user_profiles)を新しい場所(work_logs)に移行する関数
+ */
+async function migrateOldReservations() {
+    if (!userId) return;
+    
+    // 古いコレクションを参照
+    const oldCollectionRef = collection(db, `user_profiles/${userId}/reservations`);
+    
+    try {
+        const snapshot = await getDocs(oldCollectionRef);
+        if (snapshot.empty) return; // 古いデータがなければ何もしない
+
+        console.log(`古い予約データ(${snapshot.size}件)を検知しました。移行を開始します...`);
+        const batch = writeBatch(db);
+        let hasData = false;
+
+        snapshot.docs.forEach(oldDoc => {
+            const data = oldDoc.data();
+            
+            // 新しいデータ形式を作成
+            // (古いデータには scheduledTime がない場合があるので現在時刻から計算)
+            let scheduledTimeIso = null;
+            if (data.time) {
+                const target = calculateScheduledTime(data.time);
+                scheduledTimeIso = target.toISOString();
+            } else {
+                return; // 時間がないデータはスキップ
+            }
+
+            // work_logs に追加するための参照
+            const newDocRef = doc(collection(db, "work_logs"));
+            batch.set(newDocRef, {
+                userId,
+                userName: userName || "不明",
+                status: "reserved",
+                action: data.action || "break",
+                time: data.time, // 表示用（旧形式互換）
+                scheduledTime: scheduledTimeIso,
+                createdAt: new Date().toISOString(),
+                memo: "旧データからの移行"
+            });
+
+            // 古いデータを削除
+            batch.delete(oldDoc.ref);
+            hasData = true;
+        });
+
+        if (hasData) {
+            await batch.commit();
+            console.log("予約データの移行が完了しました。");
+            notifyWorker(); // Workerに通知してスケジュール登録
+        }
+
+    } catch (error) {
+        console.error("予約データの移行中にエラーが発生しました:", error);
+    }
+}
+
 export function listenForUserReservations() {
     if (reservationsUnsubscribe) reservationsUnsubscribe();
     
     // userIdがまだロードされていない場合のガード
     if (!userId) {
-        console.warn("listenForUserReservations: userId is missing. Retrying in 1s...");
         setTimeout(listenForUserReservations, 1000);
         return;
     }
 
+    // ★追加: 監視開始時に古いデータの移行チェックを行う
+    migrateOldReservations();
+
     console.log(`予約情報の監視を開始します。User: ${userId}`);
 
-    // "reserved" ステータスのものを取得
+    // "reserved" ステータスのものを取得 (新しい場所)
     const q = query(
         collection(db, "work_logs"),
         where("userId", "==", userId),
@@ -101,7 +162,6 @@ export function processReservations() {
             }
 
             try {
-                // ここでDB更新を行うと onSnapshot が反応して再描画されます
                 await updateDoc(doc(db, "work_logs", res.id), {
                     scheduledTime: nextTarget.toISOString()
                 });
