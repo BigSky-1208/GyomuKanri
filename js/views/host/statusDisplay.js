@@ -3,6 +3,8 @@ import { db } from "../../firebase.js";
 import { collection, query, onSnapshot, getDoc, doc, writeBatch, Timestamp, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
 import { formatDuration, getJSTDateString } from "../../utils.js"; 
 import { showConfirmationModal, hideConfirmationModal } from "../../components/modal.js"; 
+// ★追加: ユーザー管理モジュールへデータを渡すためにインポート
+import { updateStatusesCache } from "./userManagement.js";
 
 // --- Module State ---
 let statusListenerUnsubscribe = null; 
@@ -32,6 +34,9 @@ export function startListeningForStatusUpdates() {
         taskSummaryContainer.innerHTML = "";
 
         currentAllStatuses = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+        // ★追加: 取得した最新のステータス情報をユーザー管理モジュールへ渡す
+        updateStatusesCache(currentAllStatuses);
 
         const workingClientsData = currentAllStatuses.filter(
             (data) => data.isWorking && data.userName 
@@ -145,7 +150,6 @@ function renderWorkingClientList(workingClientsData) {
         const timerElement = document.getElementById(`timer-${userId}`);
         const startTime = data.startTime?.toDate(); 
 
-        // ★修正: intervalIdの定義と即時実行を正しく分離
         if (startTime && timerElement) {
             const updateTimer = () => {
                 const now = new Date();
@@ -155,10 +159,6 @@ function renderWorkingClientList(workingClientsData) {
                     const currentTimerElement = document.getElementById(`timer-${userId}`);
                     if (currentTimerElement) {
                        currentTimerElement.textContent = formatDuration(elapsed);
-                    } else {
-                         // If element is gone (removed from DOM), we can't clear using `intervalId` 
-                         // here easily because of scope. We rely on `hostViewIntervals` cleanup 
-                         // on snapshot update or view cleanup.
                     }
                 } else {
                      timerElement.textContent = "--:--:--"; 
@@ -177,7 +177,6 @@ function renderWorkingClientList(workingClientsData) {
 function setupForceStopListeners() {
      if (!statusListContainer) return;
      // Remove previous listener (optional, as we clear innerHTML)
-     // statusListContainer.removeEventListener('click', handleForceStopClick); 
      statusListContainer.addEventListener('click', handleForceStopClick);
  }
 
