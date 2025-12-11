@@ -2,10 +2,8 @@
 
 import { db } from "./firebase.js"; 
 import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-// ★修正: 確認モーダルではなく、退勤修正モーダルを操作するためにインポート
 import { fixCheckoutModal } from "./components/modal.js"; 
 
-// ... (formatDuration, formatHoursMinutes, formatHoursAndMinutesSimple, formatTime, getJSTDateString, getMonthDateRange は変更なし)
 export function formatDuration(seconds) {
     if (isNaN(seconds) || seconds < 0) return "00:00:00";
     const h = Math.floor(seconds / 3600);
@@ -79,8 +77,7 @@ export function getMonthDateRange(dateObj) {
 
 /**
  * Firestoreのユーザーステータスを確認し、退勤忘れ修正が必要な場合に修正モーダルを表示します。
- * ★修正: 確認モーダルではなく、修正モーダルを直接開き、ここでのフラグ解除は行わない。
- * (フラグ解除は修正完了時に clientActions.js で行う)
+ * 修正が必要な場合はキャンセルボタンを隠し、警告メッセージを表示して修正を強制します。
  * @param {string} uid - 確認対象のユーザーID。
  */
 export async function checkForCheckoutCorrection(uid) {
@@ -97,6 +94,7 @@ export async function checkForCheckoutCorrection(uid) {
             if (fixCheckoutModal) {
                 const dateInput = fixCheckoutModal.querySelector("#fix-checkout-date-input");
                 const cancelBtn = fixCheckoutModal.querySelector("#fix-checkout-cancel-btn");
+                const descP = fixCheckoutModal.querySelector("p"); // 説明文の要素を取得
                 
                 // 昨日をデフォルト設定
                 if (dateInput) {
@@ -105,14 +103,17 @@ export async function checkForCheckoutCorrection(uid) {
                     dateInput.value = getJSTDateString(yesterday);
                 }
 
-                // ★修正: 「必ず修正させる」ため、キャンセルボタンを一時的に非表示にする
+                // ★修正: 後回し不可にするため、キャンセルボタンを非表示にする
                 if (cancelBtn) cancelBtn.style.display = "none";
+
+                // ★追加: 説明文を警告メッセージに書き換え、赤字で強調する
+                if (descP) {
+                    descP.textContent = "【重要】前回の退勤処理が完了していません。正しい退勤時刻を入力して修正してください。この操作は完了するまでスキップできません。";
+                    descP.classList.add("text-red-600", "font-bold");
+                }
 
                 // モーダルを表示
                 fixCheckoutModal.classList.remove("hidden");
-                
-                // ユーザーへの案内（アラート等）を出す場合
-                alert("前回の退勤処理が完了していません。\n正しい退勤時刻を入力して修正してください。");
             }
         }
     } catch (error) {
