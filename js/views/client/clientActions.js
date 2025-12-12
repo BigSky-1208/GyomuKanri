@@ -1,17 +1,20 @@
-// js/views/client/clientActions.js - クライアント側のその他のアクション
+// js/views/client/clientActions.js
 
-import { db, userId, showView, VIEWS } from "../../main.js";
-import { collection, query, where, getDocs, doc, updateDoc, writeBatch, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { db, userId } from "../../main.js";
+import { collection, query, where, getDocs, doc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { showConfirmationModal, hideConfirmationModal, fixCheckoutModal } from "../../components/modal.js";
 
 /**
- * Handles the logic for fixing a forgotten checkout.
- * Updates the end time of the last log on the specified date and removes subsequent logs.
+ * 退勤忘れを修正するロジック
+ * 指定された日付のログを検索し、指定時刻で終了させ、それ以降のログを削除する
  */
 export async function handleFixCheckout() {
     const dateInput = document.getElementById("fix-checkout-date-input");
     const timeInput = document.getElementById("fix-checkout-time-input");
     const errorEl = document.getElementById("fix-checkout-error");
+    
+    if (!dateInput || !timeInput || !errorEl) return;
+
     const dateValue = dateInput.value;
     const timeValue = timeInput.value;
 
@@ -24,7 +27,7 @@ export async function handleFixCheckout() {
     const newEndTime = new Date(dateValue);
     newEndTime.setHours(hours, minutes, 0, 0);
 
-    // Find logs for the target date
+    // 指定日のログを検索
     const q = query(
         collection(db, "work_logs"),
         where("userId", "==", userId),
@@ -39,11 +42,12 @@ export async function handleFixCheckout() {
             return;
         }
 
+        // 開始時間でソート (降順)
         const logsForDay = snapshot.docs
             .map((d) => ({ id: d.id, ...d.data() }))
             .sort((a, b) => b.startTime.toMillis() - a.startTime.toMillis());
 
-        // 1. Find the last log that started BEFORE the new end time
+        // 1. 指定時刻より「前」に開始した最後のログを見つける
         const lastLogToUpdate = logsForDay.find(
             (log) => log.startTime.toDate() < newEndTime
         );
@@ -55,29 +59,33 @@ export async function handleFixCheckout() {
 
         const batch = writeBatch(db);
 
-        // 2. Update the last log's end time and duration
+        // 2. そのログの終了時刻と経過時間を更新
         const newDuration = Math.max(
             0,
             Math.floor((newEndTime - lastLogToUpdate.startTime.toDate()) / 1000)
         );
         const logRef = doc(db, "work_logs", lastLogToUpdate.id);
-        batch.update(logRef, { endTime: newEndTime, duration: newDuration });
+        batch.update(logRef, { 
+            endTime: newEndTime, 
+            duration: newDuration,
+            memo: (lastLogToUpdate.memo || "") + " [退勤修正済]"
+        });
 
-        // 3. Delete logs that started AFTER the last log (effectively truncating the day)
+        // 3. そのログより「後」に開始したログを全て削除
         logsForDay.forEach((log) => {
             if (log.startTime.toMillis() > lastLogToUpdate.startTime.toMillis()) {
                 batch.delete(doc(db, "work_logs", log.id));
             }
         });
 
-        // ★追加: ユーザーのステータスにある「退勤忘れフラグ」を解消する
+        // 4. ユーザーのステータスにある「退勤忘れフラグ」を解消する
         const statusRef = doc(db, "work_status", userId);
         batch.update(statusRef, { needsCheckoutCorrection: false });
 
         await batch.commit();
 
-        // Close modal and reset form
-        fixCheckoutModal.classList.add("hidden");
+        // モーダルを閉じてリセット
+        if (fixCheckoutModal) fixCheckoutModal.classList.add("hidden");
         timeInput.value = "";
         dateInput.value = "";
         errorEl.textContent = "";
@@ -86,6 +94,9 @@ export async function handleFixCheckout() {
             `${dateValue} の退勤時刻を修正しました。`,
             hideConfirmationModal
         );
+        
+        // 念のためリロード
+        setTimeout(() => location.reload(), 1000);
 
     } catch (error) {
         console.error("Error fixing checkout:", error);
