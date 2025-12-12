@@ -4,8 +4,7 @@ import { db, userId, userName, allTaskObjects, showView, VIEWS } from "../../mai
 import { doc, updateDoc, getDoc, setDoc, Timestamp, addDoc, collection, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { formatDuration, getJSTDateString } from "../../utils.js";
 import { listenForColleagues, stopColleaguesListener } from "./colleagues.js";
-import { triggerEncouragementNotification } from "../../components/notification.js";
-// ★追加: 通知設定（息抜きタイマー間隔）を参照するためにインポート
+import { triggerEncouragementNotification, triggerReservationNotification, triggerBreakNotification } from "../../components/notification.js";
 import { userDisplayPreferences } from "../../main.js";
 
 // --- Module State ---
@@ -14,10 +13,9 @@ let startTime = null;
 let currentTask = null;
 let currentGoalId = null;
 let currentGoalTitle = null;
-let preBreakTask = null; // 休憩前のタスク情報
-let midnightStopTimer = null; // 深夜0時の自動停止タイマー
+let preBreakTask = null; 
+let midnightStopTimer = null; 
 
-// ★追加: 現在のセッションで工数入力を行ったかどうかのフラグ
 let hasContributedToCurrentGoal = false;
 
 // --- DOM Elements ---
@@ -33,7 +31,6 @@ export const getCurrentGoalId = () => currentGoalId;
 export const getIsWorking = () => !!currentTask && !!startTime;
 export const getStartTime = () => startTime;
 
-// ★追加: 工数入力フラグを更新する関数 (goalProgress.jsから呼ぶ)
 export function setHasContributed(value) {
     hasContributedToCurrentGoal = value;
 }
@@ -63,8 +60,6 @@ export async function restoreClientState() {
             const endOfStartTimeDay = new Date(localStartTime);
             endOfStartTimeDay.setHours(23, 59, 59, 999);
             
-            // We need to define stopCurrentTask logic here or import it. 
-            // To avoid circular deps, we implement the core logic here.
             await stopCurrentTaskCore(true, endOfStartTimeDay, {
                 task: data.currentTask,
                 goalId: data.currentGoalId,
@@ -74,7 +69,6 @@ export async function restoreClientState() {
             });
             await updateDoc(statusRef, { needsCheckoutCorrection: true });
             
-            // Alert user (handled by main.js/utils.js check, but we can trigger it)
             const { checkForCheckoutCorrection } = await import("../../utils.js");
             checkForCheckoutCorrection(userId);
             
@@ -86,13 +80,11 @@ export async function restoreClientState() {
         startTime = localStartTime;
         currentTask = data.currentTask;
         
-        // ★修正1: ページ読み込み時にローカルストレージへ保存
         localStorage.setItem('currentTaskName', currentTask);
 
         currentGoalId = data.currentGoalId || null;
         currentGoalTitle = data.currentGoalTitle || null;
         preBreakTask = data.preBreakTask || null;
-        // ★復元時はフラグをfalseにしておく（厳密にはDBに保存すべきだが、簡易実装としてリセット）
         hasContributedToCurrentGoal = false; 
 
         updateUIForActiveTask();
@@ -127,18 +119,12 @@ function updateUIForActiveTask() {
     const taskSelect = document.getElementById("task-select");
     const goalSelect = document.getElementById("goal-select");
     
-    // Import UI update helper dynamically to avoid circular dep during top-level execution? 
-    // It's safe if clientUI functions are just helpers.
     import("./clientUI.js").then(({ updateTaskDisplaysForSelection }) => {
         if (taskSelect) {
             taskSelect.value = currentTask;
-            updateTaskDisplaysForSelection(); // Update goal dropdown options
+            updateTaskDisplaysForSelection(); 
             if (currentGoalId && goalSelect) {
                 goalSelect.value = currentGoalId;
-                // Trigger goal detail rendering? 
-                // handleGoalSelectionChange is an event handler, we might need to call render logic directly.
-                // For now, just setting value is enough for visual consistency.
-                // To render details:
                 import("./clientUI.js").then(({ handleGoalSelectionChange }) => handleGoalSelectionChange());
             }
         }
@@ -152,7 +138,7 @@ function resetClientState() {
     currentGoalTitle = null;
     startTime = null;
     preBreakTask = null;
-    hasContributedToCurrentGoal = false; // Reset flag
+    hasContributedToCurrentGoal = false; 
 
     if (timerDisplay) timerDisplay.textContent = "00:00:00";
     if (currentTaskDisplay) currentTaskDisplay.textContent = "未開始";
@@ -165,7 +151,7 @@ function resetClientState() {
     
     if (breakBtn) {
         breakBtn.textContent = "休憩開始";
-        breakBtn.disabled = true; // Disable break when not working
+        breakBtn.disabled = true; 
         breakBtn.classList.remove("bg-cyan-600", "hover:bg-cyan-700");
         breakBtn.classList.add("bg-yellow-500", "hover:bg-yellow-600");
     }
@@ -182,16 +168,16 @@ function startTimerLoop() {
         const elapsed = Math.floor((now - startTime) / 1000);
         if (timerDisplay) timerDisplay.textContent = formatDuration(elapsed);
 
-        // Check for notification settings
-        // ★修正: 息抜きタイマー（過集中防止）のロジック
-        // userDisplayPreferences.notificationIntervalMinutes に設定がある場合
+        // 休憩中の定期通知 (30分 = 1800秒 ごと)
+        if (currentTask === "休憩" && elapsed > 0 && elapsed % 1800 === 0) {
+            triggerBreakNotification(elapsed);
+        }
+
+        // 通常業務のお褒め・息抜き通知
         if (userDisplayPreferences && userDisplayPreferences.notificationIntervalMinutes > 0) {
             const intervalSeconds = userDisplayPreferences.notificationIntervalMinutes * 60;
-            // ちょうど設定時間の間隔になったら通知 (例: 60分, 120分, 180分...)
-            // 1秒ごとのループなので、余りが0になるタイミングで判定
             if (elapsed > 0 && elapsed % intervalSeconds === 0) {
-                // "breather" タイプで通知をトリガー
-                triggerEncouragementNotification(elapsed, "breather");
+                triggerEncouragementNotification(elapsed, "breather", currentTask);
             }
         }
 
@@ -211,7 +197,6 @@ export async function handleStartClick() {
     
     const newTask = taskSelect.value;
     if (!newTask) {
-        // Confirm modal isn't appropriate here, just alert or toast
         alert("業務を選択してください。");
         return;
     }
@@ -224,8 +209,6 @@ export async function handleStartClick() {
     const newGoalId = goalSelect.value || null;
     const newGoalTitle = newGoalId ? goalSelect.options[goalSelect.selectedIndex].text : null;
 
-    // Check for goal contribution warning if changing task
-    // ★追加: 業務変更時の工数未入力チェック
     if (currentGoalId && !hasContributedToCurrentGoal && currentTask !== newTask) {
         const { showConfirmationModal, hideConfirmationModal } = await import("../../components/modal.js");
         showConfirmationModal(
@@ -243,13 +226,10 @@ export async function handleStartClick() {
 }
 
 export async function handleStopClick(isAuto = false) {
-    if (!isAuto) {
-        const { cancelAllReservations } = await import("./reservations.js");
-        await cancelAllReservations();
-    }
+    // ★削除: ブラウザ側の予約キャンセル処理は不要になりました
+    
     if (!currentTask) return;
 
-    // ★追加: 帰宅時の工数未入力チェック
     if (currentGoalId && !hasContributedToCurrentGoal) {
         const { showConfirmationModal, hideConfirmationModal } = await import("../../components/modal.js");
         showConfirmationModal(
@@ -264,13 +244,15 @@ export async function handleStopClick(isAuto = false) {
     }
 
     await stopCurrentTask(true);
+    
+    // 予約実行時の通知
+    if (isAuto) {
+        triggerReservationNotification("帰宅");
+    }
 }
 
 export async function handleBreakClick(isAuto = false) {
-    if (!isAuto) {
-        const { cancelAllReservations } = await import("./reservations.js");
-        await cancelAllReservations();
-    }
+    // ★削除: ブラウザ側の予約キャンセル処理は不要になりました
 
     const statusRef = doc(db, "work_status", userId);
     const docSnap = await getDoc(statusRef);
@@ -288,25 +270,23 @@ export async function handleBreakClick(isAuto = false) {
         if (taskToReturnTo) {
             await startTask(taskToReturnTo.task, taskToReturnTo.goalId, taskToReturnTo.goalTitle);
         } else {
-            // Should not happen usually, but just in case
             await updateDoc(statusRef, { isWorking: false, currentTask: null });
         }
     } else {
         // Start Break
-        // ★追加: 休憩開始時の工数未入力チェック
         if (currentGoalId && !hasContributedToCurrentGoal) {
             const { showConfirmationModal, hideConfirmationModal } = await import("../../components/modal.js");
             showConfirmationModal(
                 `「${currentGoalTitle}」の進捗(件数)が入力されていません。\n休憩に入りますか？`,
                 async () => {
                     hideConfirmationModal();
-                    // Save current state as pre-break
                     preBreakTask = {
                         task: currentTask,
                         goalId: currentGoalId,
                         goalTitle: currentGoalTitle
                     };
                     await startTask("休憩", null, null);
+                    if (isAuto) triggerReservationNotification("休憩");
                 },
                 hideConfirmationModal
             );
@@ -319,6 +299,7 @@ export async function handleBreakClick(isAuto = false) {
             goalTitle: currentGoalTitle
         };
         await startTask("休憩", null, null);
+        if (isAuto) triggerReservationNotification("休憩");
     }
 }
 
@@ -326,9 +307,7 @@ export async function handleBreakClick(isAuto = false) {
 // --- Core Logic ---
 
 async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = null) {
-    // Import dynamically to handle dependencies if needed
-    const { processReservations } = await import("./reservations.js");
-    processReservations();
+    // ★削除: processReservations() の呼び出しは不要になりました
     
     if (!userId) return;
 
@@ -337,30 +316,23 @@ async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = nul
         midnightStopTimer = null;
     }
 
-    // If same task/goal, do nothing
     if (currentTask && newTask === currentTask && newGoalId === currentGoalId) {
         return;
     }
 
-    // Stop previous task if running
     if (currentTask && startTime) {
         await stopCurrentTaskCore(false);
     }
 
-    // Reset Contribution Flag for new task
-    // ★追加: 新しいタスクを開始したらフラグをリセット
     hasContributedToCurrentGoal = false;
 
     currentTask = newTask;
-
-    // ★修正2: タスク開始時にローカルストレージへ保存
     localStorage.setItem('currentTaskName', currentTask);
 
     currentGoalId = newGoalId || null;
     currentGoalTitle = newGoalTitle || null;
     startTime = forcedStartTime || new Date();
 
-    // Set midnight stop timer
     const now = new Date();
     const endOfDay = new Date(now);
     endOfDay.setHours(23, 59, 59, 999);
@@ -384,7 +356,6 @@ async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = nul
         }, timeUntilMidnight);
     }
 
-    // Update Firestore
     const statusRef = doc(db, "work_status", userId);
     await setDoc(statusRef, {
         userId,
@@ -398,13 +369,11 @@ async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = nul
         preBreakTask: preBreakTask || null
     }, { merge: true });
 
-    // Update UI
     updateUIForActiveTask();
     startTimerLoop();
     listenForColleagues(newTask);
 }
 
-// Wrapper for stopping task that resets UI
 async function stopCurrentTask(isLeaving) {
     await stopCurrentTaskCore(isLeaving);
     if (isLeaving) {
@@ -412,7 +381,6 @@ async function stopCurrentTask(isLeaving) {
     }
 }
 
-// Core stop logic (database updates)
 async function stopCurrentTaskCore(isLeaving, forcedEndTime = null, taskDataOverride = null) {
     if (midnightStopTimer) {
         clearTimeout(midnightStopTimer);
@@ -420,7 +388,6 @@ async function stopCurrentTaskCore(isLeaving, forcedEndTime = null, taskDataOver
     }
     stopTimerLoop();
 
-    // Use override data if provided (for auto-stop logic), else use current state
     const taskToLog = taskDataOverride?.task || currentTask;
     const goalIdToLog = taskDataOverride?.goalId || currentGoalId;
     const goalTitleToLog = taskDataOverride?.goalTitle || currentGoalTitle;
@@ -441,7 +408,7 @@ async function stopCurrentTaskCore(isLeaving, forcedEndTime = null, taskDataOver
         const memoInput = document.getElementById("task-memo-input");
         if (memoInput) {
             memo = memoInput.value.trim();
-            if (!isLeaving) memoInput.value = ""; // Clear if just changing task
+            if (!isLeaving) memoInput.value = ""; 
         } else {
             memo = "";
         }
