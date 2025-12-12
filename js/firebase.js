@@ -1,6 +1,7 @@
 // js/firebase.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+// ★修正: enableIndexedDbPersistence を追加インポート
+import { getFirestore, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 // ローカル設定の読み込み（フォールバック用）
 import { firebaseConfig as localConfig } from "./config.js";
@@ -35,7 +36,19 @@ try {
     app = initializeApp(firebaseConfig);
     db = getFirestore(app);
     auth = getAuth(app);
-    console.log("Firebase initialized successfully.");
+
+    // ★追加: Firestoreのオフライン永続化（キャッシュ）を有効にする
+    enableIndexedDbPersistence(db).catch((err) => {
+        if (err.code == 'failed-precondition') {
+            // 複数のタブでアプリを開いている場合など、1つのタブでしか有効にならない場合があります
+            console.log("Persistence failed: Multiple tabs open, persistence can only be enabled in one tab at a a time.");
+        } else if (err.code == 'unimplemented') {
+            // ブラウザがサポートしていない場合
+            console.log("Persistence failed: The current browser does not support all of the features required to enable persistence");
+        }
+    });
+
+    console.log("Firebase initialized successfully (with persistence enabled).");
 } catch (error) {
     console.error("Firebase Initialization Error in firebase.js:", error);
     initializationError = error;
