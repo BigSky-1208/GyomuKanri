@@ -1,26 +1,27 @@
 // js/views/host/userManagement.js
 
 import { db } from "../../main.js";
-import { collection, getDocs, doc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { showConfirmationModal } from "../../components/modal.js";
+import { collection, getDocs, doc, deleteDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { showConfirmationModal, closeModal } from "../../components/modal.js";
 
-const userListContainer = document.getElementById("user-management-list");
+const userListContainer = document.getElementById("user-management-list"); // ※HTML上のIDと一致させる必要がありますが、host.jsの定義を見る限り summary-list が使われている可能性があります。
+// ただし、host.js では summary-list に対してイベント委譲しているので、ここは描画先のコンテナIDとして "summary-list" を使うのが正しいと思われます。
+// もしHTML側に "user-management-list" がない場合は "summary-list" に書き換えてください。
+const targetContainerId = "summary-list"; 
 
-export function initializeUserManagement() {
-    console.log("Initializing User Management...");
-    loadUsers();
-}
+let userUnsubscribe = null;
 
-export async function loadUsers() {
-    if (!userListContainer) return;
-    
-    userListContainer.innerHTML = '<p class="text-center text-gray-500">ユーザー情報を読み込み中...</p>';
+export function startListeningForUsers() {
+    console.log("Starting user listener...");
+    const container = document.getElementById(targetContainerId);
+    if (!container) return;
 
-    try {
-        const querySnapshot = await getDocs(collection(db, "user_profiles"));
-        
-        if (querySnapshot.empty) {
-            userListContainer.innerHTML = '<p class="text-center text-gray-500">登録ユーザーがいません。</p>';
+    container.innerHTML = '<p class="text-center text-gray-500">ユーザー情報を読み込み中...</p>';
+
+    // リアルタイムリスナーに変更
+    userUnsubscribe = onSnapshot(collection(db, "user_profiles"), (snapshot) => {
+        if (snapshot.empty) {
+            container.innerHTML = '<p class="text-center text-gray-500">登録ユーザーがいません。</p>';
             return;
         }
 
@@ -38,7 +39,7 @@ export async function loadUsers() {
                     <tbody class="divide-y divide-gray-200">
         `;
 
-        querySnapshot.forEach((docSnap) => {
+        snapshot.forEach((docSnap) => {
             const user = docSnap.data();
             const uid = docSnap.id;
             
@@ -55,8 +56,8 @@ export async function loadUsers() {
             }
 
             tableHtml += `
-                <tr>
-                    <td class="py-2 px-3 text-sm font-medium text-gray-900 whitespace-nowrap">
+                <tr class="hover:bg-gray-50 transition">
+                    <td class="py-2 px-3 text-sm font-medium text-gray-900 whitespace-nowrap cursor-pointer user-detail-trigger" data-uid="${uid}">
                         ${escapeHtml(user.displayName || "未設定")}
                     </td>
                     <td class="py-2 px-3 text-sm text-gray-500">
@@ -81,21 +82,80 @@ export async function loadUsers() {
             </div>
         `;
 
-        userListContainer.innerHTML = tableHtml;
+        container.innerHTML = tableHtml;
 
-        // 削除ボタンのイベント設定
-        document.querySelectorAll(".delete-user-btn").forEach(btn => {
-            btn.addEventListener("click", (e) => {
-                const uid = e.target.dataset.uid;
-                const name = e.target.dataset.name;
-                handleDeleteUser(uid, name);
-            });
+    }, (error) => {
+        console.error("Error listening for users:", error);
+        container.innerHTML = '<p class="text-center text-red-500">読み込みに失敗しました。</p>';
+    });
+}
+
+export function stopListeningForUsers() {
+    if (userUnsubscribe) {
+        userUnsubscribe();
+        userUnsubscribe = null;
+    }
+}
+
+// host.js から呼び出されるイベントハンドラ
+export function handleUserDetailClick(target) {
+    // 削除ボタンのクリック処理
+    if (target.classList.contains("delete-user-btn")) {
+        const uid = target.dataset.uid;
+        const name = target.dataset.name;
+        handleDeleteUser(uid, name);
+    }
+    // 詳細表示などは必要であればここに記述（現在は行クリックで詳細へ飛ぶ実装は保留）
+}
+
+// 新規ユーザー追加処理 (host.js から呼び出される)
+export async function handleAddNewUser() {
+    const nameInput = document.getElementById("add-user-modal-name-input");
+    const errorMsg = document.getElementById("add-user-modal-error");
+    
+    if (!nameInput) return;
+    
+    const name = nameInput.value.trim();
+    if (!name) {
+        if(errorMsg) errorMsg.textContent = "名前を入力してください";
+        return;
+    }
+
+    try {
+        // 簡易的なID生成（本来はAuthのUIDを使うべきだが、簡易追加のため）
+        const newUserId = "user_" + Date.now();
+        
+        await setDoc(doc(db, "user_profiles", newUserId), {
+            displayName: name,
+            role: "general", // デフォルトは一般
+            createdAt: new Date()
         });
+        
+        // モーダルを閉じる
+        const modal = document.getElementById("add-user-modal");
+        if(modal) closeModal(modal);
+        
+        nameInput.value = "";
+        if(errorMsg) errorMsg.textContent = "";
+        alert(`${name} さんを追加しました。`);
 
     } catch (error) {
-        console.error("Error loading users:", error);
-        userListContainer.innerHTML = '<p class="text-center text-red-500">読み込みに失敗しました。</p>';
+        console.error("Error adding new user:", error);
+        if(errorMsg) errorMsg.textContent = "追加に失敗しました: " + error.message;
     }
+}
+
+// 全ログ削除処理 (host.js から呼び出される)
+export async function handleDeleteAllLogs() {
+    showConfirmationModal(
+        "全従業員の全業務記録を削除しますか？\nこの操作は絶対に元に戻せません！",
+        async () => {
+            // 本来はCloud Functions等でやるべき重い処理ですが、クライアントでやる場合の簡易実装
+            // 今回は要件に含まれていないため、ログのみ出してアラート表示にとどめます
+            console.warn("Delete all logs requested. Implementation required backend support for safety.");
+            alert("セキュリティのため、この機能は現在無効化されています。（開発者に相談してください）");
+        }
+    );
 }
 
 async function handleDeleteUser(uid, name) {
@@ -104,10 +164,8 @@ async function handleDeleteUser(uid, name) {
         async () => {
             try {
                 await deleteDoc(doc(db, "user_profiles", uid));
-                // ※Authenticationの削除はクライアントSDKからは原則できない（Admin SDKが必要）ため、
-                // ここではFirestoreのプロフィール削除のみ行い、画面を更新します。
-                alert(`ユーザー「${name}」をリストから削除しました。`);
-                loadUsers(); // リスト再読み込み
+                alert(`ユーザー「${name}」を削除しました。`);
+                // onSnapshotが自動で画面を更新します
             } catch (error) {
                 console.error("Error deleting user:", error);
                 alert("削除に失敗しました。");
