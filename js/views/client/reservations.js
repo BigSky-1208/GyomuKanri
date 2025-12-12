@@ -1,13 +1,11 @@
 // js/views/client/reservations.js
 import { db, userId, userName } from "../../main.js";
 import { collection, query, where, onSnapshot, doc, addDoc, updateDoc, deleteDoc, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { handleBreakClick, handleStopClick } from "./timer.js";
 
 // Cloudflare WorkersのURL
 const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev/update-schedule";
 
 export let userReservations = []; 
-let reservationTimers = []; 
 let reservationsUnsubscribe = null;
 
 // --- DOM参照 ---
@@ -20,10 +18,12 @@ const getStopTimeInput = () => document.getElementById("stop-reservation-time-in
 async function notifyWorker() {
     if (WORKER_URL) {
         try {
-            await fetch(WORKER_URL);
+            console.log("Cloudflare Workersへ通知を送信中...");
+            // CORSモードでのリクエスト
+            await fetch(WORKER_URL, { mode: 'cors' });
             console.log("Cloudflare Workersにスケジュール更新を通知しました");
         } catch (e) {
-            console.error("Cloudflareへの通知に失敗:", e);
+            console.error("Cloudflareへの通知に失敗 (予約自体はDBに保存されています):", e.message);
         }
     }
 }
@@ -34,12 +34,11 @@ async function notifyWorker() {
 async function migrateOldReservations() {
     if (!userId) return;
     
-    // 古いコレクションを参照
     const oldCollectionRef = collection(db, `user_profiles/${userId}/reservations`);
     
     try {
         const snapshot = await getDocs(oldCollectionRef);
-        if (snapshot.empty) return; // 古いデータがなければ何もしない
+        if (snapshot.empty) return; 
 
         console.log(`古い予約データ(${snapshot.size}件)を検知しました。移行を開始します...`);
         const batch = writeBatch(db);
@@ -48,30 +47,26 @@ async function migrateOldReservations() {
         snapshot.docs.forEach(oldDoc => {
             const data = oldDoc.data();
             
-            // 新しいデータ形式を作成
-            // (古いデータには scheduledTime がない場合があるので現在時刻から計算)
             let scheduledTimeIso = null;
             if (data.time) {
                 const target = calculateScheduledTime(data.time);
                 scheduledTimeIso = target.toISOString();
             } else {
-                return; // 時間がないデータはスキップ
+                return; 
             }
 
-            // work_logs に追加するための参照
             const newDocRef = doc(collection(db, "work_logs"));
             batch.set(newDocRef, {
                 userId,
                 userName: userName || "不明",
                 status: "reserved",
                 action: data.action || "break",
-                time: data.time, // 表示用（旧形式互換）
+                time: data.time, 
                 scheduledTime: scheduledTimeIso,
                 createdAt: new Date().toISOString(),
                 memo: "旧データからの移行"
             });
 
-            // 古いデータを削除
             batch.delete(oldDoc.ref);
             hasData = true;
         });
@@ -79,7 +74,7 @@ async function migrateOldReservations() {
         if (hasData) {
             await batch.commit();
             console.log("予約データの移行が完了しました。");
-            notifyWorker(); // Workerに通知してスケジュール登録
+            notifyWorker(); 
         }
 
     } catch (error) {
@@ -90,18 +85,15 @@ async function migrateOldReservations() {
 export function listenForUserReservations() {
     if (reservationsUnsubscribe) reservationsUnsubscribe();
     
-    // userIdがまだロードされていない場合のガード
     if (!userId) {
         setTimeout(listenForUserReservations, 1000);
         return;
     }
 
-    // ★追加: 監視開始時に古いデータの移行チェックを行う
     migrateOldReservations();
 
     console.log(`予約情報の監視を開始します。User: ${userId}`);
 
-    // "reserved" ステータスのものを取得 (新しい場所)
     const q = query(
         collection(db, "work_logs"),
         where("userId", "==", userId),
@@ -109,13 +101,13 @@ export function listenForUserReservations() {
     );
 
     reservationsUnsubscribe = onSnapshot(q, (snapshot) => {
-        console.log(`予約データを取得しました: ${snapshot.size}件`);
+        // ここでは「リストの表示更新」だけを行う
+        // 自動実行のロジック(processReservations)はすべて削除しました
         
         userReservations = snapshot.docs.map((d) => {
             const data = d.data();
             let timeDisplay = "??:??";
             
-            // 読み取りロジック
             if (data.scheduledTime) {
                 const date = new Date(data.scheduledTime);
                 if (!isNaN(date)) {
@@ -124,88 +116,17 @@ export function listenForUserReservations() {
                     timeDisplay = `${hours}:${minutes}`;
                 }
             } else if (data.time) {
-                // 旧データ対応
                 timeDisplay = data.time;
             }
 
             return { id: d.id, time: timeDisplay, ...data };
         });
         
-        processReservations(); 
         updateReservationDisplay(); 
     });
 }
 
-export function processReservations() {
-    reservationTimers.forEach(clearTimeout);
-    reservationTimers = [];
-
-    const now = new Date();
-
-    userReservations.forEach(async (res) => {
-        let targetTime;
-
-        if (res.scheduledTime) {
-            targetTime = new Date(res.scheduledTime);
-        } else if (res.time) {
-            targetTime = calculateScheduledTime(res.time);
-        } else {
-            return; 
-        }
-
-        // 過去の予約を明日に更新する処理
-        if (targetTime <= now) {
-            console.log(`予約 ${res.time} は過去の時間です。次回（明日以降）に更新します。`);
-            const nextTarget = new Date(targetTime);
-            while (nextTarget <= now) {
-                nextTarget.setDate(nextTarget.getDate() + 1);
-            }
-
-            try {
-                await updateDoc(doc(db, "work_logs", res.id), {
-                    scheduledTime: nextTarget.toISOString()
-                });
-                notifyWorker();
-            } catch (e) {
-                console.error("予約の自動更新に失敗:", e);
-            }
-            return; 
-        }
-
-        // タイマーセット
-        const diff = targetTime.getTime() - now.getTime();
-        if (diff > 0 && diff < 24 * 60 * 60 * 1000) {
-            const timerId = setTimeout(() => {
-                executeAction(res.action, res.id, targetTime);
-            }, diff);
-            reservationTimers.push(timerId);
-        }
-    });
-}
-
-async function executeAction(action, id, prevDate) {
-    console.log(`Executing reservation action: ${action}`);
-    
-    if (action === "break") {
-        handleBreakClick(true);
-    } else if (action === "stop") {
-        handleStopClick(true);
-    }
-
-    try {
-        const nextDate = new Date(prevDate);
-        nextDate.setDate(nextDate.getDate() + 1); 
-
-        await updateDoc(doc(db, "work_logs", id), {
-            scheduledTime: nextDate.toISOString()
-        });
-        
-        console.log(`予約を翌日(${nextDate.toISOString()})に更新しました`);
-        notifyWorker(); 
-    } catch (e) {
-        console.error("予約更新エラー:", e);
-    }
-}
+// processReservations, executeAction は削除しました（サーバー側に委譲）
 
 export function updateReservationDisplay() {
     const breakList = getBreakList();
@@ -214,7 +135,6 @@ export function updateReservationDisplay() {
     const stopStatusText = getStopStatusText();
     const getStopTimeInput = () => document.getElementById("stop-reservation-time-input"); 
 
-    // --- 休憩予約リストの表示 ---
     if (breakList) {
         breakList.innerHTML = "";
         const breakReservations = userReservations.filter(r => r.action === "break");
@@ -232,11 +152,8 @@ export function updateReservationDisplay() {
         } else {
             breakList.innerHTML = '<p class="text-center text-sm text-gray-500">休憩予約はありません</p>';
         }
-    } else {
-        console.warn("DOM要素 'break-reservation-list' が見つかりません。");
     }
 
-    // --- 帰宅予約の表示 ---
     if (stopSetter && stopStatus) {
         const stopReservation = userReservations.find(r => r.action === "stop");
         if (stopReservation) {
@@ -249,8 +166,6 @@ export function updateReservationDisplay() {
             const input = getStopTimeInput();
             if(input) input.value = "";
         }
-    } else {
-        console.warn("DOM要素 'stop-reservation-setter' または 'stop-reservation-status' が見つかりません。");
     }
 }
 
@@ -261,6 +176,7 @@ function calculateScheduledTime(timeStr) {
     const [hours, minutes] = timeStr.split(":");
     const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(hours), parseInt(minutes), 0, 0);
     
+    // 過去の時間なら明日に設定
     if (target <= now) {
         target.setDate(target.getDate() + 1);
     }
@@ -347,6 +263,5 @@ export async function deleteReservation(id) {
 }
 
 export async function cancelAllReservations() {
-    reservationTimers.forEach(clearTimeout);
-    reservationTimers = [];
+    // もうタイマーはないので何もしない
 }
