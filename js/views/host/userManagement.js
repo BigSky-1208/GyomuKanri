@@ -1,5 +1,5 @@
 // js/views/host/userManagement.js
-import { db } from "../../firebase.js";
+import { db, showView, VIEWS } from "../../main.js";
 import { collection, onSnapshot, doc, deleteDoc, updateDoc, addDoc, getDocs, writeBatch, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { showConfirmationModal, hideConfirmationModal } from "../../components/modal.js";
 
@@ -36,6 +36,12 @@ export function initializeUserManagement() {
     });
 }
 
+// ★追加: ユーザー詳細画面へ移動する関数 (host.jsからの呼び出しに対応)
+export function handleUserDetailClick(userId, userName) {
+    console.log(`Navigating to details for ${userName} (${userId})`);
+    showView(VIEWS.PERSONAL_DETAIL, { userId: userId, userName: userName });
+}
+
 // 新規ユーザー追加処理
 export async function handleAddNewUser() {
     const nameInput = document.getElementById("new-user-name");
@@ -67,7 +73,7 @@ export async function handleAddNewUser() {
     }
 }
 
-// ★復元: 全ログ削除処理
+// 全ログ削除処理
 export async function handleDeleteAllLogs() {
     showConfirmationModal(
         "全ての業務ログを削除しますか？\nこの操作は取り消せません。\n（ユーザーデータは削除されません）",
@@ -127,7 +133,11 @@ function renderUserList(users, container) {
         const currentRole = user.role || 'client'; 
         
         tr.innerHTML = `
-            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${escapeHtml(user.name)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                <a href="#" class="text-indigo-600 hover:text-indigo-900 hover:underline view-detail-link" data-id="${user.id}" data-name="${escapeHtml(user.name)}">
+                    ${escapeHtml(user.name)}
+                </a>
+            </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${user.email || "-"}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${statusText}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -147,7 +157,17 @@ function renderUserList(users, container) {
 
     // イベントリスナー設定
     
-    // 1. 権限変更の監視
+    // 1. ユーザー詳細への移動（名前クリック）
+    container.querySelectorAll(".view-detail-link").forEach(link => {
+        link.addEventListener("click", (e) => {
+            e.preventDefault();
+            const userId = e.target.dataset.id;
+            const userName = e.target.dataset.name;
+            handleUserDetailClick(userId, userName);
+        });
+    });
+
+    // 2. 権限変更の監視
     container.querySelectorAll(".role-select").forEach(select => {
         select.addEventListener("change", async (e) => {
             const userId = e.target.dataset.id;
@@ -156,7 +176,7 @@ function renderUserList(users, container) {
         });
     });
 
-    // 2. 削除ボタンの監視
+    // 3. 削除ボタンの監視
     container.querySelectorAll(".delete-user-btn").forEach(btn => {
         btn.addEventListener("click", (e) => {
             const userId = e.target.dataset.id;
