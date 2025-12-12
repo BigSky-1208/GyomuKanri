@@ -27,14 +27,14 @@ export async function triggerEncouragementNotification(elapsedSeconds, type = 'e
     await showBrowserNotification(title, message);
 }
 
-// ★追加: 予約実行時の通知
+// 予約実行時の通知
 export async function triggerReservationNotification(actionName) {
     const title = "自動実行";
     const message = `予約設定で${actionName}しました`;
     await showBrowserNotification(title, message);
 }
 
-// ★追加: 休憩経過時間の通知
+// 休憩経過時間の通知
 export async function triggerBreakNotification(elapsedSeconds) {
     const minutes = Math.floor(elapsedSeconds / 60);
     const title = "休憩中";
@@ -66,8 +66,8 @@ function createNotification(title, message) {
     try {
         const notification = new Notification(title, {
             body: message,
-            tag: "gyomukanri-notification",
-            renotify: true,
+            // tag: "gyomukanri-notification", // ★削除: 上書きを防ぐため削除
+            renotify: false, // tagがない場合はfalse推奨（またはtrueでも可）
             silent: false,
         });
         
@@ -76,6 +76,7 @@ function createNotification(title, message) {
             notification.close();
         };
 
+        // 自動で閉じる（15秒）
         setTimeout(() => {
             notification.close();
         }, 15000);
