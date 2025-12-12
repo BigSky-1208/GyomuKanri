@@ -1,4 +1,4 @@
-// js/views/client/clientUI.js - 従業員画面のUI操作
+// js/views/client/clientUI.js
 
 import { allTaskObjects, userDisplayPreferences, userId, db, escapeHtml } from "../../main.js";
 import { doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -9,6 +9,7 @@ const taskSelect = document.getElementById("task-select");
 const goalSelect = document.getElementById("goal-select");
 const goalSelectContainer = document.getElementById("goal-select-container");
 const otherTaskContainer = document.getElementById("other-task-container");
+const otherTaskInput = document.getElementById("other-task-input");
 const taskDescriptionDisplay = document.getElementById("task-description-display");
 const startBtn = document.getElementById("start-btn");
 const warningMessage = document.getElementById("change-warning-message");
@@ -16,7 +17,7 @@ const taskDisplaySettingsList = document.getElementById("task-display-settings-l
 const notificationIntervalInput = document.getElementById("notification-interval-input");
 
 /**
- * Renders the task options in the dropdown, filtering based on preferences.
+ * 業務プルダウンの選択肢を描画
  */
 export function renderTaskOptions() {
     if (!taskSelect) return;
@@ -29,7 +30,6 @@ export function renderTaskOptions() {
         (task) => task.name !== "休憩" && !hiddenTasks.includes(task.name)
     );
 
-    // ソート（名前順）
     dropdownTasks.sort((a, b) => a.name.localeCompare(b.name, "ja"));
 
     dropdownTasks.forEach(
@@ -37,19 +37,22 @@ export function renderTaskOptions() {
         (taskSelect.innerHTML += `<option value="${escapeHtml(task.name)}">${escapeHtml(task.name)}</option>`)
     );
 
+    // その他タスク（固定）があれば追加、なければリストに含まれているか確認
+    // ここではallTaskObjectsに含まれている前提で処理
+
     taskSelect.value = currentValue;
     updateTaskDisplaysForSelection();
 }
 
 /**
- * Renders the checkboxes for task display settings and the Mini Display button.
+ * 表示設定（チェックボックス、ミニ表示ボタンなど）を描画
  */
 export function renderTaskDisplaySettings() {
     if (!taskDisplaySettingsList) return;
 
     taskDisplaySettingsList.innerHTML = "";
 
-    // 1. ミニ表示ボタンの追加 (★ここに追加)
+    // 1. ミニ表示ボタンの追加
     const miniDisplayDiv = document.createElement("div");
     miniDisplayDiv.className = "mb-4 border-b pb-4";
     miniDisplayDiv.innerHTML = `
@@ -65,7 +68,7 @@ export function renderTaskDisplaySettings() {
     `;
     taskDisplaySettingsList.appendChild(miniDisplayDiv);
 
-    // 2. 業務の表示/非表示設定 (既存ロジック)
+    // 2. 業務の表示/非表示設定
     const configurableTasks = allTaskObjects.filter(
         (task) => task.name !== "休憩"
     );
@@ -101,7 +104,7 @@ export function renderTaskDisplaySettings() {
 }
 
 /**
- * Handles task selection change. Updates goal dropdown and other UI elements.
+ * 業務選択変更時の処理
  */
 export function handleTaskSelectionChange() {
     updateTaskDisplaysForSelection();
@@ -109,7 +112,7 @@ export function handleTaskSelectionChange() {
 }
 
 /**
- * Handles goal selection change. Updates goal details (if any) and warnings.
+ * 工数選択変更時の処理
  */
 export function handleGoalSelectionChange() {
     const selectedTaskName = taskSelect.value;
@@ -119,9 +122,8 @@ export function handleGoalSelectionChange() {
         (t) => t.name === selectedTaskName
     );
 
-    // Import dynamically to avoid circular dependency with goalProgress.js
     import("./goalProgress.js").then(({ renderSingleGoalDisplay }) => {
-         if (selectedTask && selectedGoalId) {
+        if (selectedTask && selectedGoalId) {
             renderSingleGoalDisplay(selectedTask, selectedGoalId);
         } else {
             const goalProgressContainer = document.getElementById("goal-progress-container");
@@ -136,7 +138,7 @@ export function handleGoalSelectionChange() {
 }
 
 /**
- * Handles changes in display setting checkboxes.
+ * 表示設定変更時の処理
  */
 export async function handleDisplaySettingChange(event) {
     if (event.target.type !== "checkbox") return;
@@ -147,18 +149,15 @@ export async function handleDisplaySettingChange(event) {
     let hiddenTasks = userDisplayPreferences.hiddenTasks || [];
 
     if (isChecked) {
-        // Show task (remove from hidden list)
         hiddenTasks = hiddenTasks.filter((name) => name !== taskName);
     } else {
-        // Hide task (add to hidden list)
         if (!hiddenTasks.includes(taskName)) {
             hiddenTasks.push(taskName);
         }
     }
 
-    // Update Firestore
     await updateDisplayPreferences({ hiddenTasks });
-    renderTaskOptions(); // Refresh dropdown
+    renderTaskOptions(); 
 }
 
 // 通知間隔設定の変更ハンドラ
@@ -173,22 +172,19 @@ async function handleNotificationIntervalChange(event) {
 async function updateDisplayPreferences(newPrefs) {
     if (!userId) return;
     const prefRef = doc(db, `user_profiles/${userId}/preferences/display`);
-    // userDisplayPreferences ローカル変数も更新しておく
     Object.assign(userDisplayPreferences, newPrefs);
     await setDoc(prefRef, newPrefs, { merge: true });
 }
 
-
 /**
- * Updates the UI based on the currently selected task.
- * Shows/hides goal dropdown, memo, "other" input, etc.
+ * 選択中の業務に合わせてUI（工数、メモ等）を更新
  */
 export function updateTaskDisplaysForSelection() {
     if (!taskSelect || !goalSelect) return;
     
     const selectedTaskName = taskSelect.value;
     
-    // Reset UI
+    // UIリセット
     if(otherTaskContainer) otherTaskContainer.classList.add("hidden");
     if(taskDescriptionDisplay) {
         taskDescriptionDisplay.classList.add("hidden");
@@ -198,7 +194,6 @@ export function updateTaskDisplaysForSelection() {
     
     goalSelect.innerHTML = '<option value="">工数を選択 (任意)</option>';
 
-    // Hide goal progress container when task changes
     const goalProgressContainer = document.getElementById("goal-progress-container");
     if (goalProgressContainer) {
         goalProgressContainer.innerHTML = "";
@@ -207,8 +202,17 @@ export function updateTaskDisplaysForSelection() {
 
     if (!selectedTaskName) return;
 
+    // 「その他」の処理
     if (selectedTaskName === "その他") {
         if(otherTaskContainer) otherTaskContainer.classList.remove("hidden");
+        return;
+    } else if (selectedTaskName.startsWith("その他")) {
+        // DBから復元された値が "その他_XXX" の場合
+        if(otherTaskContainer) {
+             otherTaskContainer.classList.remove("hidden");
+             if(otherTaskInput) otherTaskInput.value = selectedTaskName.replace("その他_", "");
+        }
+        // ドロップダウン上の表示を合わせる等の処理が必要なら追加
         return;
     }
 
@@ -218,51 +222,73 @@ export function updateTaskDisplaysForSelection() {
 
     if (!selectedTask) return;
 
-    // Show Memo
+    // メモ表示
     if (selectedTask.memo && taskDescriptionDisplay) {
         taskDescriptionDisplay.innerHTML = `<p class="text-sm p-3 bg-gray-100 rounded-lg whitespace-pre-wrap text-gray-600">${escapeHtml(selectedTask.memo)}</p>`;
         taskDescriptionDisplay.classList.remove("hidden");
     }
 
-    // Show Goals
+    // 工数（ゴール）表示
     const activeGoals = (selectedTask.goals || []).filter((g) => !g.isComplete);
     if (activeGoals.length > 0) {
-        activeGoals.forEach((goal) => {
-            const option = document.createElement("option");
-            option.value = goal.id;
-            option.textContent = escapeHtml(goal.title);
-            goalSelect.appendChild(option);
+        // インデックスをvalueとして設定する（timer.jsとの整合性）
+        selectedTask.goals.forEach((goal, index) => {
+            if (!goal.isComplete) {
+                const option = document.createElement("option");
+                option.value = index; // インデックスを使用
+                option.textContent = `${escapeHtml(goal.title)} (目標: ${goal.target})`;
+                goalSelect.appendChild(option);
+            }
         });
         if(goalSelectContainer) goalSelectContainer.classList.remove("hidden");
     }
 }
 
+/**
+ * 変更警告の表示・非表示を切り替える
+ * ★修正: アニメーション制御と、厳密な比較ロジックを追加
+ */
 export function checkIfWarningIsNeeded() {
     if (!startBtn || !warningMessage) return;
 
-    const currentTask = getCurrentTask(); // Import getters
-    const currentGoalId = getCurrentGoalId();
-
-    if (!currentTask) return;
-
-    const selectedTask = taskSelect.value;
-    const selectedGoalId = goalSelect.value === "" ? null : goalSelect.value;
-
-    // Handle "Other" task comparison
-    let comparableCurrentTask = currentTask;
+    const currentTask = getCurrentTask();
     
-    if (currentTask && currentTask.startsWith("その他") && selectedTask === "その他") {
-         comparableCurrentTask = "その他"; 
-    }
-
-    const isDifferent =
-        comparableCurrentTask !== selectedTask || currentGoalId !== selectedGoalId;
-
-    if (isDifferent) {
-        startBtn.classList.add("animate-pulse-scale");
-        warningMessage.classList.remove("hidden");
-    } else {
+    // 未稼働または休憩中は警告なし
+    if (!currentTask || currentTask === "休憩") {
         startBtn.classList.remove("animate-pulse-scale");
         warningMessage.classList.add("hidden");
+        return;
+    }
+
+    const selectedTask = taskSelect.value;
+    const selectedGoal = goalSelect.value;
+    
+    // currentGoalId は timer.js では数値(index)またはnullとして管理されている可能性がある
+    // goalSelect.value は文字列なので比較時に注意
+    let currentGoalId = getCurrentGoalId();
+    if (currentGoalId === null) currentGoalId = "";
+    
+    // 文字列として比較
+    const isTaskMatch = selectedTask === currentTask;
+    const isGoalMatch = String(selectedGoal) === String(currentGoalId);
+
+    // 「その他」の比較ロジック
+    let isOtherMatch = false;
+    if (currentTask.startsWith("その他") && selectedTask === "その他") {
+         // 入力値まで比較
+         const inputVal = otherTaskInput ? otherTaskInput.value : "";
+         if (currentTask === `その他_${inputVal}`) {
+             isOtherMatch = true;
+         }
+    }
+
+    if ((isTaskMatch && isGoalMatch) || isOtherMatch) {
+        // 一致する場合（変更なし）
+        startBtn.classList.remove("animate-pulse-scale");
+        warningMessage.classList.add("hidden");
+    } else {
+        // 変更がある場合
+        startBtn.classList.add("animate-pulse-scale");
+        warningMessage.classList.remove("hidden");
     }
 }
