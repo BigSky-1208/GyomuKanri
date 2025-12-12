@@ -84,12 +84,23 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
                  </li>`;
 
             } else if (log.task === "休憩") {
+                 // ★修正: 休憩ログにも編集ボタンを追加
+                 const canEdit = authLevel === 'admin' || currentUserForDetailView === currentUserName;
+                 const editButtons = canEdit ? `
+                     <div class="flex gap-2 mt-1">
+                         <button class="edit-log-btn text-xs bg-blue-500 text-white font-bold py-1 px-2 rounded hover:bg-blue-600" data-log-id="${log.id}" data-duration="${log.duration || 0}" data-task-name="${escapeHtml(log.task)}">時間修正</button>
+                     </div>
+                 ` : "";
+
                  timelineHtml += `<li class="p-3 bg-yellow-50 rounded-lg">
                      <div class="flex justify-between items-center">
                          <span class="font-semibold text-yellow-800">${escapeHtml(log.task)}</span>
                          <span class="font-mono text-sm bg-gray-200 px-2 py-1 rounded">${startTimeStr} - ${endTimeStr}</span>
                      </div>
-                      <div class="text-gray-500 text-sm mt-1">合計: ${formatDuration(log.duration || 0)}</div>
+                      <div class="flex justify-between items-center mt-1">
+                          <div class="text-gray-500 text-sm">合計: ${formatDuration(log.duration || 0)}</div>
+                          ${editButtons}
+                      </div>
                  </li>`;
             }
         });
