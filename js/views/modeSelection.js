@@ -4,17 +4,16 @@ import { showView, VIEWS, userId, db } from "../main.js";
 import { showPasswordModal } from "../components/modal.js";
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// DOM要素
-const clientBtn = document.getElementById("client-mode-btn");
-const managerBtn = document.getElementById("manager-mode-btn");
-const hostBtn = document.getElementById("host-mode-btn");
+// DOM要素 (HTMLのIDに合わせて修正)
+const clientBtn = document.getElementById("select-client-btn");
+const hostBtn = document.getElementById("select-host-btn");
+const settingsBtn = document.getElementById("task-settings-btn"); // 追加
 
 /**
  * モード選択画面の初期化
  */
 export function initializeModeSelectionView() {
     console.log("Initializing Mode Selection View...");
-    // 必要に応じてボタンの有効化/無効化などをここで行う
 }
 
 /**
@@ -23,9 +22,16 @@ export function initializeModeSelectionView() {
 export function setupModeSelectionEventListeners() {
     console.log("Setting up Mode Selection event listeners...");
 
+    // 従業員モード
     clientBtn?.addEventListener("click", () => handleModeSelect(VIEWS.CLIENT));
-    managerBtn?.addEventListener("click", () => handleModeSelect(VIEWS.MANAGER));
+    
+    // 管理者モード
     hostBtn?.addEventListener("click", () => handleModeSelect(VIEWS.HOST));
+
+    // 業務内容設定 (追加)
+    settingsBtn?.addEventListener("click", () => {
+        showView(VIEWS.TASK_SETTINGS);
+    });
 }
 
 /**
@@ -48,17 +54,16 @@ async function handleModeSelect(mode) {
         return;
     }
 
-    // 3. 権限がない場合はパスワード入力を求める (従来通り)
+    // 3. 権限がない場合はパスワード入力を求める
     if (mode === VIEWS.HOST) {
+        // "host" という文字列は modal.js の showPasswordModal 内で判定に使われます
         showPasswordModal("host", () => showView(VIEWS.HOST));
-    } else if (mode === VIEWS.MANAGER) {
-        showPasswordModal("manager", () => showView(VIEWS.MANAGER));
-    }
+    } 
 }
 
 /**
  * ユーザーの権限を確認する関数
- * @param {string} targetView - 移動先のビュー (VIEWS.HOST or VIEWS.MANAGER)
+ * @param {string} targetView - 移動先のビュー
  * @returns {Promise<boolean>} - 権限があれば true
  */
 async function checkUserPermission(targetView) {
@@ -74,13 +79,8 @@ async function checkUserPermission(targetView) {
 
         // 管理者画面へ行く場合
         if (targetView === VIEWS.HOST) {
-            return role === "host";
-        }
-
-        // 業務管理者画面へ行く場合
-        if (targetView === VIEWS.MANAGER) {
-            // "host"(管理者) は "manager"(業務管理者) の画面も入れるようにする
-            return role === "manager" || role === "host";
+            // roleが host または manager ならアクセス許可（要件に合わせて調整してください）
+            return role === "host" || role === "manager";
         }
 
         return false;
