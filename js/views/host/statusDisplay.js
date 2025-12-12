@@ -9,6 +9,7 @@ import { updateStatusesCache } from "./userManagement.js";
 
 // --- Module State ---
 let statusListenerUnsubscribe = null; 
+let wordListenerUnsubscribe = null; // 復活: 今日の一言監視用
 let hostViewIntervals = []; 
 let currentAllStatuses = []; 
 
@@ -29,7 +30,10 @@ export function startListeningForStatusUpdates() {
 
     console.log("Starting listener for work status updates...");
 
-    // 1. 稼働状況の監視
+    // 1. UIの準備: 今日の一言エリアがない場合は作成して追加 (復活)
+    setupDailyWordUI();
+
+    // 2. 稼働状況の監視
     const q = query(collection(db, `work_status`));
 
     statusListenerUnsubscribe = onSnapshot(q, (snapshot) => {
@@ -74,6 +78,9 @@ export function startListeningForStatusUpdates() {
         console.error("Error listening for status updates:", error);
         statusListContainer.innerHTML = '<p class="text-red-500">ステータスの読み込み中にエラーが発生しました。</p>';
     });
+
+    // 3. 今日の一言の監視 (復活)
+    setupDailyWordMonitoring();
 }
 
 /**
@@ -84,6 +91,11 @@ export function stopListeningForStatusUpdates() {
         console.log("Stopping listener for work status updates.");
         statusListenerUnsubscribe();
         statusListenerUnsubscribe = null;
+    }
+    // 復活: 今日の一言監視停止
+    if (wordListenerUnsubscribe) {
+        wordListenerUnsubscribe();
+        wordListenerUnsubscribe = null;
     }
     hostViewIntervals.forEach(clearInterval);
     hostViewIntervals = [];
@@ -142,9 +154,8 @@ function renderWorkingClientList(workingClientsData) {
            displayKeyClean = displayKeyClean.substring(4); 
         }
 
-        // ★修正: 従業員画面と同じデータ（memo）を取得して表示します
-        // もし "dailyWord" や "comment" という別の名前で保存している場合はここを変更します
-        const userDailyWord = data.memo ? escapeHtml(data.memo) : "";
+        // 個人のメモも取得（一応表示しておきます）
+        const userMemo = data.memo ? escapeHtml(data.memo) : "";
 
         const card = document.createElement("div");
         // 休憩中は色を変える
@@ -160,7 +171,7 @@ function renderWorkingClientList(workingClientsData) {
                 <div>
                     <p class="font-semibold ${taskColor}">${escapeHtml(displayKeyClean)}</p>
                     <p class="text-sm text-gray-800 font-bold mt-1">${escapeHtml(userName)}</p>
-                    ${userDailyWord ? `<p class="text-xs text-gray-600 mt-2 bg-yellow-50 p-2 rounded border border-yellow-100 inline-block max-w-full break-words">💬 ${userDailyWord}</p>` : ''}
+                    ${userMemo ? `<p class="text-xs text-gray-600 mt-2 bg-white p-1 rounded border border-gray-200 inline-block">💬 ${userMemo}</p>` : ''}
                 </div>
                 <div class="text-right flex flex-col items-end">
                     <p id="timer-${userId}" class="font-mono text-lg text-gray-700 mb-1">--:--:--</p>
@@ -197,6 +208,58 @@ function renderWorkingClientList(workingClientsData) {
         } else if (timerElement) {
              timerElement.textContent = "--:--:--"; 
         }
+    });
+}
+
+// --- 今日の一言 機能 (復活) ---
+
+function setupDailyWordUI() {
+    // 既存のコンテナを探す
+    let wordContainer = document.getElementById("host-daily-word-display");
+    
+    // statusListContainer (activeUsersContainer) の親要素に追加
+    if (!wordContainer && statusListContainer && statusListContainer.parentNode) {
+        wordContainer = document.createElement("div");
+        wordContainer.id = "host-daily-word-display";
+        wordContainer.className = "mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg shadow-sm";
+        wordContainer.innerHTML = `
+            <h3 class="font-bold text-gray-700 mb-2 flex items-center">
+                <span class="text-xl mr-2">📢</span> 今日の一言
+            </h3>
+            <p id="host-daily-word-text" class="text-gray-600 whitespace-pre-wrap">読み込み中...</p>
+            <p id="host-daily-word-info" class="text-xs text-gray-400 mt-2 text-right"></p>
+        `;
+        
+        statusListContainer.parentNode.appendChild(wordContainer);
+    }
+}
+
+function setupDailyWordMonitoring() {
+    const wordRef = doc(db, "settings", "daily_word");
+    
+    wordListenerUnsubscribe = onSnapshot(wordRef, (docSnap) => {
+        const textElem = document.getElementById("host-daily-word-text");
+        const infoElem = document.getElementById("host-daily-word-info");
+        
+        if (docSnap.exists() && textElem) {
+            const data = docSnap.data();
+            textElem.textContent = data.text || "（設定されていません）";
+            
+            if (data.updatedBy) {
+                let timeStr = "";
+                if (data.updatedAt && data.updatedAt.toDate) {
+                    const d = data.updatedAt.toDate();
+                    timeStr = `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+                }
+                infoElem.textContent = `Updated by ${data.updatedBy} (${timeStr})`;
+            } else {
+                infoElem.textContent = "";
+            }
+        } else if (textElem) {
+            textElem.textContent = "（未設定）";
+        }
+    }, (error) => {
+        console.error("Error listening to daily word:", error);
     });
 }
 
@@ -279,6 +342,7 @@ export async function forceStopUser(userIdToStop, userNameToStop) {
             currentGoalTitle: null,
             startTime: null, 
             preBreakTask: null, 
+            // dailyWordは消さないでおく
         });
 
         console.log(`Status updated to not working for ${userNameToStop}.`);
