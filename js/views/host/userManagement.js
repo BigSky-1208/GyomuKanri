@@ -11,11 +11,16 @@ export function updateStatusesCache(newStatuses) {
     currentStatuses = newStatuses;
 }
 
-// 初期化関数
-export function initializeUserManagement() {
-    console.log("Initializing User Management...");
-    const userListContainer = document.getElementById("user-list-tbody");
-    if (!userListContainer) {
+// ★修正: host.js の名前に合わせて変更 (ユーザー監視開始)
+export function startListeningForUsers() {
+    console.log("Starting user list listener...");
+    const userListContainer = document.getElementById("summary-list"); // host.jsのIDに合わせる(またはtbody)
+    // ※host.jsでは "summary-list" (tbody) を想定していると思われるため取得
+    // もしHTML側で tbody の ID が "user-list-tbody" なら適宜読み替えてください。
+    // ここでは安全のため両方探します。
+    const container = document.getElementById("summary-list") || document.getElementById("user-list-tbody");
+    
+    if (!container) {
         console.error("User list container not found.");
         return;
     }
@@ -29,23 +34,45 @@ export function initializeUserManagement() {
     const q = collection(db, "user_profiles");
     userListUnsubscribe = onSnapshot(q, (snapshot) => {
         const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        renderUserList(users, userListContainer);
+        renderUserList(users, container);
     }, (error) => {
         console.error("Error fetching user list:", error);
-        userListContainer.innerHTML = '<tr><td colspan="5" class="text-center text-red-500 py-4">ユーザーリストの読み込みに失敗しました。</td></tr>';
+        container.innerHTML = '<tr><td colspan="5" class="text-center text-red-500 py-4">ユーザーリストの読み込みに失敗しました。</td></tr>';
     });
 }
 
-// ★追加: ユーザー詳細画面へ移動する関数 (host.jsからの呼び出しに対応)
-export function handleUserDetailClick(userId, userName) {
-    console.log(`Navigating to details for ${userName} (${userId})`);
-    showView(VIEWS.PERSONAL_DETAIL, { userId: userId, userName: userName });
+// ★追加: host.js から呼ばれる (ユーザー監視停止)
+export function stopListeningForUsers() {
+    if (userListUnsubscribe) {
+        console.log("Stopping user list listener...");
+        userListUnsubscribe();
+        userListUnsubscribe = null;
+    }
+}
+
+// ★修正: host.js のイベント委譲に対応 (クリックされた要素を受け取る)
+export function handleUserDetailClick(target) {
+    // クリックされた要素が .view-detail-link を持っているか、その内側かを確認
+    const link = target.closest(".view-detail-link");
+    if (link) {
+        // リンククリック時のデフォルト動作（#への移動など）を防ぐ必要がある場合は
+        // host.js側で preventDefault() するか、ここで何もしない
+        // ここでは画面遷移を実行
+        const userId = link.dataset.id;
+        const userName = link.dataset.name;
+        if (userId && userName) {
+            console.log(`Navigating to details for ${userName} (${userId})`);
+            showView(VIEWS.PERSONAL_DETAIL, { userId: userId, userName: userName });
+        }
+    }
 }
 
 // 新規ユーザー追加処理
 export async function handleAddNewUser() {
     const nameInput = document.getElementById("new-user-name");
     const emailInput = document.getElementById("new-user-email");
+    // モーダルを閉じるためのボタン（あれば）
+    // const closeBtn = ...
 
     if (!nameInput || !nameInput.value.trim()) {
         alert("ユーザー名を入力してください。");
@@ -59,13 +86,20 @@ export async function handleAddNewUser() {
         await addDoc(collection(db, "user_profiles"), {
             name: name,
             email: email,
-            role: "client", // デフォルトは一般権限
+            role: "client",
             createdAt: new Date().toISOString()
         });
         
         nameInput.value = "";
         if (emailInput) emailInput.value = "";
-        console.log(`User ${name} added.`);
+        
+        // モーダルを閉じる処理（modal.jsの関数を使うか、host.js側で制御するかによるが、
+        // ここでは簡易的にDOM操作で隠すか、alertで通知）
+        alert(`${name} さんを追加しました。`);
+        
+        // モーダルを閉じる (modal.jsのID依存)
+        const modal = document.getElementById("add-user-modal");
+        if(modal) modal.classList.add("hidden");
         
     } catch (error) {
         console.error("Error adding new user:", error);
@@ -81,7 +115,6 @@ export async function handleDeleteAllLogs() {
             hideConfirmationModal();
             try {
                 console.log("Deleting all work logs...");
-                // 全件取得してバッチ削除
                 const q = query(collection(db, "work_logs"));
                 const snapshot = await getDocs(q);
                 
@@ -115,21 +148,18 @@ function renderUserList(users, container) {
         return;
     }
 
-    // 名前順にソート
     users.sort((a, b) => a.name.localeCompare(b.name, "ja"));
 
     users.forEach(user => {
         const tr = document.createElement("tr");
         tr.className = "hover:bg-gray-50 border-b";
 
-        // 現在の稼働ステータスを確認
         const status = currentStatuses.find(s => s.id === user.id);
         const isWorking = status ? status.isWorking : false;
         const statusText = isWorking ? 
             `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">稼働中</span>` : 
             `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">未稼働</span>`;
 
-        // 権限設定 (デフォルトは client)
         const currentRole = user.role || 'client'; 
         
         tr.innerHTML = `
@@ -156,18 +186,9 @@ function renderUserList(users, container) {
     });
 
     // イベントリスナー設定
+    // ※ 詳細リンクへのリスナーは host.js で一括管理するため削除しました
     
-    // 1. ユーザー詳細への移動（名前クリック）
-    container.querySelectorAll(".view-detail-link").forEach(link => {
-        link.addEventListener("click", (e) => {
-            e.preventDefault();
-            const userId = e.target.dataset.id;
-            const userName = e.target.dataset.name;
-            handleUserDetailClick(userId, userName);
-        });
-    });
-
-    // 2. 権限変更の監視
+    // 1. 権限変更の監視
     container.querySelectorAll(".role-select").forEach(select => {
         select.addEventListener("change", async (e) => {
             const userId = e.target.dataset.id;
@@ -176,7 +197,7 @@ function renderUserList(users, container) {
         });
     });
 
-    // 3. 削除ボタンの監視
+    // 2. 削除ボタンの監視
     container.querySelectorAll(".delete-user-btn").forEach(btn => {
         btn.addEventListener("click", (e) => {
             const userId = e.target.dataset.id;
