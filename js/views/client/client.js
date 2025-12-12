@@ -1,163 +1,198 @@
 // js/views/client/client.js
 
-import { handleClockIn, handleClockOut, handleTaskChange, handleBreakStart, handleBreakEnd } from "./clientActions.js";
-import { updateTimerDisplay } from "./timer.js";
-import { updateGoalOptions, toggleTaskChangeAlert } from "./clientUI.js";
+import { showView, VIEWS, db, userName } from "../../main.js";
+import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// 状態管理
-let currentStatus = null;
-let timerInterval = null;
+// ★修正: timer.js から操作関数をインポート
+import { handleStartClick, handleStopClick, handleBreakClick, restoreClientState as restoreTimerState } from "./timer.js";
+import { listenForUserReservations, handleSaveBreakReservation, handleSetStopReservation, handleCancelStopReservation, deleteReservation } from "./reservations.js";
+import { handleTaskSelectionChange, handleGoalSelectionChange, handleDisplaySettingChange, renderTaskOptions, renderTaskDisplaySettings } from "./clientUI.js";
 
-// DOM要素
+// ★修正: clientActions.js からは handleFixCheckout のみをインポート
+import { handleFixCheckout } from "./clientActions.js";
+
+import { toggleMiniDisplay } from "./miniDisplay.js";
+import { openBreakReservationModal, fixCheckoutModal, showHelpModal } from "../../components/modal.js";
+import { stopColleaguesListener } from "./colleagues.js";
+
+// --- DOM Element references ---
+const startBtn = document.getElementById("start-btn");
+const stopBtn = document.getElementById("stop-btn");
+const breakBtn = document.getElementById("break-btn");
 const taskSelect = document.getElementById("task-select");
 const goalSelect = document.getElementById("goal-select");
-const clockInBtn = document.getElementById("clock-in-btn");
-const clockOutBtn = document.getElementById("clock-out-btn");
-const taskChangeBtn = document.getElementById("task-change-btn");
-const breakStartBtn = document.getElementById("break-start-btn");
-const breakEndBtn = document.getElementById("break-end-btn");
-const taskChangeAlert = document.getElementById("task-change-alert");
+const otherTaskInput = document.getElementById("other-task-input");
+const taskDisplaySettingsList = document.getElementById("task-display-settings-list");
+
+// Reservation UI elements
+const addBreakReservationBtn = document.getElementById("add-break-reservation-btn");
+const breakReservationList = document.getElementById("break-reservation-list");
+const breakReservationSaveBtn = document.getElementById("break-reservation-save-btn");
+const setStopReservationBtn = document.getElementById("set-stop-reservation-btn");
+const cancelStopReservationBtn = document.getElementById("cancel-stop-reservation-btn");
+
+// Navigation/Other buttons
+const backButton = document.getElementById("back-to-selection-client");
+const myRecordsButton = document.getElementById("my-records-btn");
+const viewMyProgressButton = document.getElementById("view-my-progress-btn");
+const fixCheckoutButton = document.getElementById("fix-yesterday-checkout-btn");
+const fixCheckoutSaveBtn = document.getElementById("fix-checkout-save-btn");
+
+// Help Button
+const helpButton = document.querySelector('#client-view .help-btn');
+
+// 戸村さんステータス用リスナー解除関数とクラス定義
+let tomuraStatusUnsubscribe = null;
+const STATUS_CLASSES = {
+    "声掛けOK": ["bg-green-100", "text-green-800"],
+    "急用ならOK": ["bg-yellow-100", "text-yellow-800"],
+    "声掛けNG": ["bg-red-100", "text-red-800"],
+};
 
 /**
  * クライアント画面の初期化
  */
-export function initializeClientView(status) {
-    console.log("Initializing Client View...", status);
-    currentStatus = status;
+export async function initializeClientView() {
+    console.log("Initializing Client View...");
+    await restoreTimerState();
+    listenForUserReservations();
     
-    // UIの初期更新（ボタン状態など）
-    updateClientUI(status);
+    renderTaskOptions();
+    renderTaskDisplaySettings(); 
     
-    // タイマー開始
-    startTimer();
-}
-
-/**
- * クライアント画面の終了処理
- */
-export function cleanupClientView() {
-    if (timerInterval) {
-        clearInterval(timerInterval);
-        timerInterval = null;
-    }
-}
-
-/**
- * ステータス更新時の処理 (main.jsから呼ばれる)
- */
-export function updateClientStatus(newStatus) {
-    currentStatus = newStatus;
-    updateClientUI(newStatus);
-}
-
-/**
- * UIの更新
- */
-function updateClientUI(status) {
-    if (!status) return;
-
-    const isWorking = status.isWorking;
-    const isBreak = status.currentTask === "休憩";
-
-    // 1. ボタンの表示制御
-    if (clockInBtn) clockInBtn.disabled = isWorking;
-    if (clockOutBtn) clockOutBtn.disabled = !isWorking || isBreak; // 休憩中は退勤できない
-    if (taskChangeBtn) taskChangeBtn.disabled = !isWorking || isBreak;
-    if (breakStartBtn) breakStartBtn.disabled = !isWorking || isBreak;
-    if (breakEndBtn) breakEndBtn.disabled = !isBreak; // 休憩中のみ有効
-
-    // ボタンのスタイル（無効時は薄くする等）はCSSまたはTailwindクラスで制御
-    // ここではdisabled属性のみ操作
-
-    // 2. プルダウンの同期（現在のタスクを選択状態にする）
-    if (taskSelect && status.currentTask && status.currentTask !== "休憩") {
-        taskSelect.value = status.currentTask;
-        // ゴール選択肢も更新
-        updateGoalOptions(status.currentTask);
-        
-        // ゴールの選択
-        if (goalSelect) {
-             // currentGoalId は index ではなく ID string の可能性があるため、
-             // valueのマッチングを行う
-             goalSelect.value = status.currentGoalId || "";
-        }
-    }
+    listenForTomuraStatus();
     
-    // アラートは初期状態では隠す
-    if (taskChangeAlert) taskChangeAlert.classList.add("hidden");
+    // 前の画面のリスナーを停止
+    stopColleaguesListener();
 }
 
 /**
  * イベントリスナーの設定
  */
 export function setupClientEventListeners() {
-    console.log("Setting up Client event listeners...");
+    console.log("Setting up Client View event listeners...");
 
-    // 打刻系
-    clockInBtn?.addEventListener("click", handleClockIn);
-    clockOutBtn?.addEventListener("click", handleClockOut);
-    breakStartBtn?.addEventListener("click", handleBreakStart);
-    breakEndBtn?.addEventListener("click", handleBreakEnd);
+    // Timer control buttons (timer.jsの関数を使用)
+    startBtn?.addEventListener("click", handleStartClick);
+    stopBtn?.addEventListener("click", () => handleStopClick(false));
+    breakBtn?.addEventListener("click", () => handleBreakClick(false));
 
-    // 業務変更ボタン
-    taskChangeBtn?.addEventListener("click", () => {
-        const taskName = taskSelect.value;
-        const goalId = goalSelect.value;
-        handleTaskChange(taskName, goalId);
-    });
+    // Task and Goal selection
+    taskSelect?.addEventListener("change", handleTaskSelectionChange);
+    goalSelect?.addEventListener("change", handleGoalSelectionChange);
 
-    // タスクプルダウン変更時
-    taskSelect?.addEventListener("change", () => {
-        const selectedTask = taskSelect.value;
-        updateGoalOptions(selectedTask);
+    // Other task input
+    otherTaskInput?.addEventListener("change", handleTaskSelectionChange);
+    otherTaskInput?.addEventListener("blur", handleTaskSelectionChange);
 
-        // ★修正: 現在の業務と同じなら警告を出さない
-        checkSelectionChanged();
-    });
-
-    // ゴールプルダウン変更時
-    goalSelect?.addEventListener("change", () => {
-        // ★修正: ゴールが変わった場合もチェック
-        checkSelectionChanged();
-    });
-}
-
-/**
- * 現在の選択状態が、稼働中のステータスと異なるかチェックし、
- * 警告の表示/非表示を切り替える関数
- */
-function checkSelectionChanged() {
-    if (!currentStatus || !currentStatus.isWorking) return;
-    if (!taskChangeAlert) return;
-
-    const selectedTask = taskSelect.value;
-    const selectedGoal = goalSelect.value;
-
-    const currentTask = currentStatus.currentTask;
-    // currentGoalIdは文字列、selectedGoalも文字列として比較
-    // (null/undefined対策で空文字にして比較)
-    const currentGoal = currentStatus.currentGoalId || ""; 
-    const targetGoal = selectedGoal || "";
-
-    // タスクが一致し、かつ ゴールも一致する場合は「変更なし」とみなす
-    // ※ゴールがない業務の場合は targetGoal, currentGoal 共に "" になるはず
-    if (selectedTask === currentTask && targetGoal === currentGoal) {
-        taskChangeAlert.classList.add("hidden");
-    } else {
-        taskChangeAlert.classList.remove("hidden");
-    }
-}
-
-/**
- * タイマー処理
- */
-function startTimer() {
-    if (timerInterval) clearInterval(timerInterval);
+    // Task display preferences
+    taskDisplaySettingsList?.addEventListener("change", handleDisplaySettingChange);
     
-    // 即時実行
-    updateTimerDisplay(currentStatus);
+    // ミニ表示ボタン
+    taskDisplaySettingsList?.addEventListener("click", (e) => {
+        if (e.target.id === "toggle-mini-display-btn") {
+            toggleMiniDisplay();
+        }
+    });
 
-    timerInterval = setInterval(() => {
-        updateTimerDisplay(currentStatus);
-    }, 1000);
+    // --- Reservation UI Listeners ---
+    addBreakReservationBtn?.addEventListener("click", () => openBreakReservationModal());
+    
+    breakReservationList?.addEventListener("click", (event) => {
+        const target = event.target;
+        const id = target.dataset.id;
+        if (!id) return;
+
+        if (target.classList.contains("edit-break-reservation-btn")) {
+            openBreakReservationModal(id);
+        } else if (target.classList.contains("delete-break-reservation-btn")) {
+            deleteReservation(id);
+        }
+    });
+
+    breakReservationSaveBtn?.addEventListener("click", handleSaveBreakReservation);
+    setStopReservationBtn?.addEventListener("click", handleSetStopReservation);
+    cancelStopReservationBtn?.addEventListener("click", handleCancelStopReservation);
+
+    // --- Navigation and Other Buttons ---
+    backButton?.addEventListener("click", () => showView(VIEWS.MODE_SELECTION));
+
+    myRecordsButton?.addEventListener("click", () => {
+        if (userName) {
+            showView(VIEWS.PERSONAL_DETAIL, { userName: userName });
+        } else {
+            console.error("Cannot show personal records: userName is not defined.");
+        }
+    });
+
+    viewMyProgressButton?.addEventListener("click", () => {
+        window.isProgressViewReadOnly = true;
+        showView(VIEWS.PROGRESS);
+    });
+
+    fixCheckoutButton?.addEventListener("click", () => {
+        if (fixCheckoutModal) {
+            const dateInput = fixCheckoutModal.querySelector("#fix-checkout-date-input");
+            const cancelBtn = fixCheckoutModal.querySelector("#fix-checkout-cancel-btn");
+            const descP = fixCheckoutModal.querySelector("p");
+
+            // 手動オープンのためキャンセルボタンを表示
+            if (cancelBtn) cancelBtn.style.display = "inline-block";
+
+            if (descP) {
+                descP.textContent = "修正したい日付と、その日の正しい退勤時刻を入力してください。入力した時刻でその日の最後の業務が終了され、それ以降の記録は削除されます。";
+                descP.classList.remove("text-red-600", "font-bold");
+            }
+
+            if (dateInput) {
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                dateInput.value = yesterday.toISOString().split("T")[0];
+            }
+            fixCheckoutModal.classList.remove("hidden");
+        } else {
+            console.error("Fix checkout modal not found.");
+        }
+    });
+
+    fixCheckoutSaveBtn?.addEventListener("click", handleFixCheckout);
+
+    // Help Button
+    helpButton?.addEventListener('click', () => showHelpModal('client'));
+
+    console.log("Client View event listeners set up complete.");
+}
+
+// 戸村さんの状況を監視して表示する関数
+function listenForTomuraStatus() {
+    if (tomuraStatusUnsubscribe) {
+        tomuraStatusUnsubscribe();
+        tomuraStatusUnsubscribe = null;
+    }
+
+    const statusRef = doc(db, "settings", "tomura_status");
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    tomuraStatusUnsubscribe = onSnapshot(statusRef, (docSnap) => {
+        let status = "声掛けNG"; // デフォルト
+        
+        if (docSnap.exists() && docSnap.data().date === todayStr) {
+            status = docSnap.data().status;
+        }
+
+        const displayDiv = document.getElementById("tomura-status-display");
+        const textSpan = document.getElementById("tomura-status-text");
+
+        if (displayDiv && textSpan) {
+            textSpan.textContent = status;
+            
+            Object.values(STATUS_CLASSES).flat().forEach(cls => displayDiv.classList.remove(cls));
+            
+            if (STATUS_CLASSES[status]) {
+                displayDiv.classList.add(...STATUS_CLASSES[status]);
+            }
+        }
+    }, (error) => {
+        console.error("Error listening for Tomura's status:", error);
+    });
 }
