@@ -16,9 +16,9 @@ let preBreakTask = null;
 let midnightStopTimer = null; 
 let hasContributedToCurrentGoal = false;
 
-// ★追加: 通知の重複・漏れを防ぐための状態管理
-let lastBreakNotificationTime = 0; // 最後に休憩通知を出した経過時間(秒)
-let lastEncouragementTime = 0; // 最後にお褒め通知を出した経過時間(秒)
+// 通知カウンター
+let lastBreakNotificationTime = 0; 
+let lastEncouragementTime = 0; 
 
 // --- DOM Elements ---
 const timerDisplay = document.getElementById("timer-display");
@@ -85,7 +85,6 @@ export async function restoreClientState() {
         preBreakTask = data.preBreakTask || null;
         hasContributedToCurrentGoal = false; 
 
-        // ★追加: 復元時は前回の通知時間を現在の経過時間で初期化（いきなり通知が出るのを防ぐ）
         const elapsed = Math.floor((now - startTime) / 1000);
         lastBreakNotificationTime = elapsed;
         lastEncouragementTime = elapsed;
@@ -99,6 +98,9 @@ export async function restoreClientState() {
     }
 }
 
+/**
+ * アクティブなタスクに合わせてUIを更新
+ */
 export function updateUIForActiveTask() {
     if (startBtn) startBtn.textContent = "業務変更";
     if (currentTaskDisplay) {
@@ -119,6 +121,9 @@ export function updateUIForActiveTask() {
         }
     }
     
+    if (changeWarningMessage) changeWarningMessage.classList.add("hidden");
+
+    // プルダウンの同期
     const taskSelect = document.getElementById("task-select");
     const goalSelect = document.getElementById("goal-select");
     
@@ -143,7 +148,6 @@ function resetClientState() {
     preBreakTask = null;
     hasContributedToCurrentGoal = false; 
     
-    // 通知カウンターリセット
     lastBreakNotificationTime = 0;
     lastEncouragementTime = 0;
 
@@ -180,16 +184,13 @@ function startTimerLoop() {
         const elapsed = Math.floor((now - startTime) / 1000);
         if (timerDisplay) timerDisplay.textContent = formatDuration(elapsed);
 
-        // ★修正: 休憩中の定期通知 (30分 = 1800秒 ごと)
-        // ブラウザのタイマー遅延対策: 差分で判定する
         if (currentTask === "休憩" && elapsed > 0) {
             if (elapsed - lastBreakNotificationTime >= 1800) {
                 triggerBreakNotification(elapsed);
-                lastBreakNotificationTime = elapsed; // 次回基準を更新
+                lastBreakNotificationTime = elapsed;
             }
         }
 
-        // ★修正: お褒め・息抜き通知
         if (userDisplayPreferences && userDisplayPreferences.notificationIntervalMinutes > 0) {
             const intervalSeconds = userDisplayPreferences.notificationIntervalMinutes * 60;
             if (elapsed > 0) {
@@ -327,8 +328,7 @@ export async function handleBreakClick(isAuto = false) {
 // --- Core Logic ---
 
 async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = null) {
-    const { processReservations } = await import("./reservations.js");
-    processReservations();
+    // ★削除: processReservations の呼び出しを削除しました
     
     if (!userId) return;
 
@@ -352,7 +352,6 @@ async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = nul
     currentGoalTitle = newGoalTitle || null;
     startTime = forcedStartTime || new Date();
     
-    // 通知カウンター初期化
     lastBreakNotificationTime = 0;
     lastEncouragementTime = 0;
 
@@ -376,7 +375,6 @@ async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = nul
                 const statusRef = doc(db, "work_status", userId);
                 await updateDoc(statusRef, { needsCheckoutCorrection: true });
                 
-                // ★追加: 自動退勤時の通知漏れ修正
                 triggerReservationNotification("帰宅（深夜自動停止）");
             }
         }, timeUntilMidnight);
