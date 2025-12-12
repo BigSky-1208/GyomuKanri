@@ -12,7 +12,6 @@ export function showConfirmationModal(message, onConfirm, onCancel) {
     msgEl.textContent = message;
     modal.classList.remove("hidden");
 
-    // イベントリスナーの重複を防ぐため、onclickプロパティを使用
     confirmBtn.onclick = () => {
         modal.classList.add("hidden");
         if (onConfirm) onConfirm();
@@ -33,7 +32,7 @@ export function hideConfirmationModal() {
     if (modal) modal.classList.add("hidden");
 }
 
-// --- ★追加: パスワード入力モーダル ---
+// --- パスワード入力モーダル ---
 export function showPasswordModal(role, onSuccess) {
     const modal = document.getElementById("password-modal");
     const input = document.getElementById("password-input");
@@ -41,8 +40,8 @@ export function showPasswordModal(role, onSuccess) {
     const cancelBtn = document.getElementById("password-cancel-btn");
     const errorMsg = document.getElementById("password-error-msg");
 
-    // モーダルHTMLが存在しない場合のフォールバック（念のため）
     if (!modal) {
+        // HTMLがない場合のフォールバック
         const password = prompt(role === "host" ? "管理者パスワードを入力:" : "業務管理者パスワードを入力:");
         const isValid = (role === "host" && password === "9999") || (role === "manager" && password === "0000");
         if (isValid) onSuccess();
@@ -57,7 +56,6 @@ export function showPasswordModal(role, onSuccess) {
     modal.classList.remove("hidden");
     input.focus();
 
-    // クリーンアップ関数
     const cleanup = () => {
         submitBtn.onclick = null;
         if(cancelBtn) cancelBtn.onclick = null;
@@ -65,12 +63,9 @@ export function showPasswordModal(role, onSuccess) {
         modal.classList.add("hidden");
     };
 
-    // パスワードチェック処理
     const checkPassword = () => {
         const val = input.value;
         let isValid = false;
-
-        // ハードコーディングされたパスワード設定
         if (role === "host" && val === "9999") isValid = true;
         if (role === "manager" && val === "0000") isValid = true;
 
@@ -80,21 +75,99 @@ export function showPasswordModal(role, onSuccess) {
         } else {
             errorMsg.classList.remove("hidden");
             input.classList.add("border-red-500");
-            input.value = ""; // 入力をクリア
+            input.value = "";
         }
     };
 
-    // イベント設定
     submitBtn.onclick = checkPassword;
-    
-    if (cancelBtn) {
-        cancelBtn.onclick = cleanup;
-    }
-
+    if (cancelBtn) cancelBtn.onclick = cleanup;
     input.onkeydown = (e) => {
         if (e.key === "Enter") checkPassword();
         if (e.key === "Escape") cleanup();
     };
+}
+
+// --- ★復元: 業務編集モーダル ---
+export function openTaskModal(task = null) {
+    const modal = document.getElementById("task-modal");
+    const nameInput = document.getElementById("task-name-input");
+    const categorySelect = document.getElementById("task-category-select");
+    const memoInput = document.getElementById("task-memo-input"); // 存在する場合
+    const modalTitle = document.getElementById("task-modal-title");
+    const cancelBtn = document.getElementById("task-cancel-btn");
+
+    if (!modal) return;
+
+    // 入力リセット
+    if (nameInput) nameInput.value = "";
+    if (categorySelect) categorySelect.value = "A"; // デフォルト
+    if (memoInput) memoInput.value = "";
+
+    if (task) {
+        // 編集モード
+        if (modalTitle) modalTitle.textContent = "業務を編集";
+        if (nameInput) nameInput.value = task.name;
+        if (categorySelect) categorySelect.value = task.category || "A";
+        if (memoInput) memoInput.value = task.memo || "";
+        
+        // 編集中のIDをデータ属性として保存しておく（保存処理で使用）
+        modal.dataset.editingName = task.name; 
+    } else {
+        // 新規モード
+        if (modalTitle) modalTitle.textContent = "新しい業務を追加";
+        delete modal.dataset.editingName;
+    }
+
+    modal.classList.remove("hidden");
+    if (nameInput) nameInput.focus();
+
+    if (cancelBtn) {
+        cancelBtn.onclick = () => {
+            modal.classList.add("hidden");
+            cancelBtn.onclick = null;
+        };
+    }
+}
+
+// --- ★復元: 目標(Goal)編集モーダル ---
+export function openGoalModal(goal = null) {
+    const modal = document.getElementById("goal-modal");
+    const titleInput = document.getElementById("goal-title-input");
+    const targetInput = document.getElementById("goal-target-input");
+    const unitInput = document.getElementById("goal-unit-input"); // 単位(件, 円 etc)
+    const modalTitle = document.getElementById("goal-modal-title");
+    const cancelBtn = document.getElementById("goal-cancel-btn");
+
+    if (!modal) return;
+
+    // リセット
+    if (titleInput) titleInput.value = "";
+    if (targetInput) targetInput.value = "";
+    if (unitInput) unitInput.value = "件";
+
+    if (goal) {
+        // 編集モード
+        if (modalTitle) modalTitle.textContent = "目標を編集";
+        if (titleInput) titleInput.value = goal.title;
+        if (targetInput) targetInput.value = goal.target;
+        if (unitInput) unitInput.value = goal.unit || "件";
+        
+        modal.dataset.editingId = goal.id;
+    } else {
+        // 新規モード
+        if (modalTitle) modalTitle.textContent = "新しい目標を追加";
+        delete modal.dataset.editingId;
+    }
+
+    modal.classList.remove("hidden");
+    if (titleInput) titleInput.focus();
+
+    if (cancelBtn) {
+        cancelBtn.onclick = () => {
+            modal.classList.add("hidden");
+            cancelBtn.onclick = null;
+        };
+    }
 }
 
 // --- ユーザー追加モーダル ---
@@ -102,8 +175,6 @@ export function openAddUserModal() {
     const modal = document.getElementById("add-user-modal");
     if (modal) {
         modal.classList.remove("hidden");
-        // 閉じるボタンの挙動はHTML側のonclick属性やmain.js等で制御されている前提
-        // 必要ならここでリスナーを追加
         const cancelBtn = document.getElementById("add-user-modal-cancel-btn");
         if(cancelBtn) {
             cancelBtn.onclick = () => modal.classList.add("hidden");
@@ -118,7 +189,7 @@ export function openBreakReservationModal(editId = null) {
     const cancelBtn = document.getElementById("break-reservation-cancel-btn");
     
     if (modal) {
-        timeInput.value = ""; // リセット
+        timeInput.value = ""; 
         modal.classList.remove("hidden");
         timeInput.focus();
 
@@ -146,26 +217,24 @@ export function showHelpModal(mode) {
             <ul class="list-disc pl-5 space-y-2 text-sm text-gray-700">
                 <li><b>業務開始:</b> リストから業務を選んで「業務開始」を押します。</li>
                 <li><b>休憩:</b> 「休憩開始」ボタンで休憩に入ります。戻るときは再度押します。</li>
-                <li><b>退勤:</b> 「業務終了」ボタンで退勤します。日報が送信されます。</li>
-                <li><b>予約機能:</b> 「予約設定」から休憩や帰宅時間を予約できます。ブラウザを閉じていても、時間になると自動で切り替わります。</li>
-                <li><b>ミニ表示:</b> 「ミニ表示モード」で小さなタイマーを最前面に表示できます。</li>
+                <li><b>退勤:</b> 「業務終了」ボタンで退勤します。</li>
+                <li><b>予約機能:</b> 休憩や帰宅時間を予約できます。</li>
             </ul>
         `;
     } else if (mode === 'manager') {
         html = `
             <h3 class="font-bold text-lg mb-2 text-indigo-600">業務管理者画面の使い方</h3>
             <ul class="list-disc pl-5 space-y-2 text-sm text-gray-700">
-                <li><b>リアルタイム状況:</b> 現在稼働中のメンバーと業務内容が表示されます。</li>
-                <li><b>詳細確認:</b> 「詳細」ボタンでその人の本日の記録を確認できます。</li>
+                <li><b>業務設定:</b> 業務の種類や目標値を追加・編集できます。</li>
+                <li><b>リアルタイム状況:</b> メンバーの稼働状況を確認できます。</li>
             </ul>
         `;
     } else if (mode === 'host') {
          html = `
             <h3 class="font-bold text-lg mb-2 text-indigo-600">管理者画面の使い方</h3>
             <ul class="list-disc pl-5 space-y-2 text-sm text-gray-700">
-                <li><b>ユーザー管理:</b> ユーザーの追加・削除・権限変更ができます。</li>
-                <li><b>Excel出力:</b> 「Excel出力」ボタンから期間指定でデータをダウンロードできます。</li>
-                <li><b>戸村さんステータス:</b> 従業員画面に表示される戸村さんの状況を変更できます。</li>
+                <li><b>ユーザー管理:</b> ユーザー追加・削除・権限変更ができます。</li>
+                <li><b>データ出力:</b> ログをExcel形式でダウンロードできます。</li>
             </ul>
         `;
     }
