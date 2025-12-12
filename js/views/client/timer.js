@@ -1,7 +1,6 @@
 // js/views/client/timer.js - ストップウォッチ機能と状態管理
 
 import { db, userId, userName, showView, VIEWS, userDisplayPreferences } from "../../main.js";
-// ★修正: onSnapshot を追加インポート
 import { doc, updateDoc, getDoc, setDoc, Timestamp, addDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { formatDuration, getJSTDateString } from "../../utils.js";
 import { listenForColleagues, stopColleaguesListener } from "./colleagues.js";
@@ -17,7 +16,7 @@ let preBreakTask = null;
 let midnightStopTimer = null; 
 let hasContributedToCurrentGoal = false;
 
-// ★追加: ステータス監視用のリスナー解除関数
+// リスナー解除関数
 let statusUnsubscribe = null;
 
 // 通知カウンター
@@ -45,12 +44,11 @@ export function getHasContributed() {
 }
 
 /**
- * ★修正: Firestoreの状態をリアルタイムで監視・復元する
+ * Firestoreの状態をリアルタイムで監視・復元する
  */
 export async function restoreClientState() {
     if (!userId) return;
 
-    // 既存のリスナーがあれば解除
     if (statusUnsubscribe) {
         statusUnsubscribe();
         statusUnsubscribe = null;
@@ -58,10 +56,30 @@ export async function restoreClientState() {
 
     const statusRef = doc(db, "work_status", userId);
 
-    // ★修正: getDoc ではなく onSnapshot を使用して常に同期する
     statusUnsubscribe = onSnapshot(statusRef, async (docSnap) => {
-        if (docSnap.exists() && docSnap.data().isWorking) {
-            const data = docSnap.data();
+        // データが存在するか確認
+        const data = docSnap.exists() ? docSnap.data() : null;
+        const newIsWorking = data ? data.isWorking : false;
+        const newTask = data ? data.currentTask : null;
+
+        // ★追加: 外部（Worker予約）による変更を検知して通知を出す
+        // ポイント: 手動操作(Optimistic UI)の場合は既に currentTask が書き換わっているため、
+        // ここでの比較は false になり通知は重複しない。
+        // Workerによる変更の場合のみ、 currentTask(古い) !== newTask(新しい) となる。
+        
+        if (currentTask && startTime) { // 現在稼働中の場合のみチェック
+            if (newIsWorking) {
+                // 稼働継続中だが、タスクが「休憩」に変わった場合
+                if (currentTask !== "休憩" && newTask === "休憩") {
+                    triggerReservationNotification("休憩");
+                }
+            } else {
+                // 稼働中だったのに、未稼働（帰宅）になった場合
+                triggerReservationNotification("帰宅");
+            }
+        }
+
+        if (newIsWorking) {
             const localStartTime = data.startTime ? data.startTime.toDate() : new Date();
             const now = new Date();
 
@@ -73,7 +91,6 @@ export async function restoreClientState() {
                 const endOfStartTimeDay = new Date(localStartTime);
                 endOfStartTimeDay.setHours(23, 59, 59, 999);
                 
-                // 自動退勤処理
                 await stopCurrentTaskCore(true, endOfStartTimeDay, {
                     task: data.currentTask,
                     goalId: data.currentGoalId,
@@ -86,14 +103,11 @@ export async function restoreClientState() {
                 const { checkForCheckoutCorrection } = await import("../../utils.js");
                 checkForCheckoutCorrection(userId);
                 
-                // 処理後はresetClientStateが呼ばれるはずだが、
-                // onSnapshotが再度呼ばれるまではここでもリセットしておく
                 resetClientState();
                 return;
             }
 
-            // 状態更新（DBの値を正とする）
-            // ※ボタン操作によるOptimistic UIと競合しても、最終的にここが上書きして整合性を保つ
+            // 状態同期
             startTime = localStartTime;
             currentTask = data.currentTask;
             localStorage.setItem('currentTaskName', currentTask);
@@ -102,22 +116,17 @@ export async function restoreClientState() {
             currentGoalTitle = data.currentGoalTitle || null;
             preBreakTask = data.preBreakTask || null;
             
-            // 通知用カウンターの初期化（初回読み込みやタスク変更時）
-            // 既存の経過時間からスタートさせることで、リロード直後の通知爆撃を防ぐ
+            // 初回読み込み時の通知抑制＆カウンター初期化
             const elapsed = Math.floor((now - startTime) / 1000);
             if (lastBreakNotificationTime === 0) lastBreakNotificationTime = elapsed;
             if (lastEncouragementTime === 0) lastEncouragementTime = elapsed;
 
-            // UI更新とタイマーループ再開
             updateUIForActiveTask();
             startTimerLoop();
             listenForColleagues(currentTask);
-
-            // 深夜自動停止タイマーの再設定
             setupMidnightTimer();
 
         } else {
-            // 稼働中でなければリセット
             resetClientState();
         }
     }, (error) => {
@@ -126,7 +135,7 @@ export async function restoreClientState() {
 }
 
 /**
- * リスナー停止用（ログアウト時などに使用可能）
+ * リスナー停止用
  */
 export function stopStatusListener() {
     if (statusUnsubscribe) {
@@ -357,13 +366,9 @@ export async function handleBreakClick(isAuto = false) {
         // 休憩終了
         await stopCurrentTask(false);
         const taskToReturnTo = statusData.preBreakTask;
-        // resetClientState は onSnapshot がやるのでここでは呼ばない方がスムーズだが
-        // UI即時反映のため呼んでも良い。ただしリスナーとの競合に注意。
-        // ここでは updateUIForActiveTask がリスナーから呼ばれるのを待つ設計にするか、
-        // あるいは Optimistic UI を維持するか。
-        // 今回は onSnapshot があるので、Optimistic UI は startTask 内のみとし、
-        // 休憩戻りはリスナー任せにするか、startTaskを呼ぶことで解決する。
-        
+        // resetClientState は onSnapshot がやるが、UI即時反映のためここで呼ぶ
+        resetClientState(); 
+
         if (taskToReturnTo) {
             await startTask(taskToReturnTo.task, taskToReturnTo.goalId, taskToReturnTo.goalTitle);
         } else {
@@ -406,7 +411,6 @@ async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = nul
     if (!userId) return;
 
     // UIを即時更新 (Optimistic UI)
-    // これによりボタンを押した瞬間に画面が変わる
     currentTask = newTask;
     currentGoalId = newGoalId || null;
     currentGoalTitle = newGoalTitle || null;
@@ -430,10 +434,7 @@ async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = nul
         preBreakTask: preBreakTask || null
     }, { merge: true });
 
-    // 同僚リスナー更新
     listenForColleagues(newTask);
-    
-    // 深夜タイマー設定
     setupMidnightTimer();
 }
 
@@ -441,7 +442,6 @@ async function stopCurrentTask(isLeaving) {
     if (isLeaving) {
         resetClientState();
         if (userId) {
-             // UIリセット後にDB更新
              stopCurrentTaskCore(isLeaving).then(() => {
                  updateDoc(doc(db, "work_status", userId), { isWorking: false });
              });
