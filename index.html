@@ -20,10 +20,8 @@
     <link rel="stylesheet" href="css/style.css" />
     <style>
       body {
-         /* style.cssに移行したが、フォント指定は念のため残す */
          font-family: 'Noto Sans JP', 'Inter', sans-serif;
       }
-      /* Ensure hidden class works as expected */
       .hidden {
         display: none !important;
       }
@@ -85,7 +83,7 @@
                 type="text"
                 id="word-of-the-day-input"
                 class="flex-grow p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
-                placeholder="同じ作業に入っているみなさんに共有されます"
+                placeholder="今日の一言を入力"
               />
               <button
                 id="save-word-btn"
@@ -216,13 +214,7 @@
             </div>
             <div class="flex flex-col items-center gap-2 mb-4 border-t pt-6">
                 <h2 class="text-xl font-bold text-gray-700">アカウントリスト</h2>
-                <button
-                  id="open-add-user-modal-btn"
-                  class="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition text-sm whitespace-nowrap shadow-sm"
-                >
-                  ユーザーを追加 +
-                </button>
-            </div>
+                </div>
             <div id="summary-list" class="space-y-3 max-h-[40vh] overflow-y-auto custom-scrollbar pr-2">
                 <p class="text-gray-500">読み込み中...</p>
             </div>
