@@ -1,19 +1,46 @@
 // js/views/modeSelection.js
 
-import { showView, VIEWS, userId, db } from "../main.js";
+import { showView, VIEWS, userId, userName, db } from "../main.js"; // userNameを追加
 import { showPasswordModal } from "../components/modal.js";
-import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// DOM要素 (HTMLのIDに合わせて修正)
+// DOM要素
 const clientBtn = document.getElementById("select-client-btn");
 const hostBtn = document.getElementById("select-host-btn");
-const settingsBtn = document.getElementById("task-settings-btn"); // 追加
+const settingsBtn = document.getElementById("task-settings-btn");
+const logoutBtn = document.getElementById("logout-btn-selection");
+const userNameDisplay = document.getElementById("user-name-display"); // 追加
+const wordInput = document.getElementById("word-of-the-day-input"); // 追加
+const saveWordBtn = document.getElementById("save-word-btn"); // 追加
+
+let wordUnsubscribe = null; // リスナー解除用
 
 /**
  * モード選択画面の初期化
  */
 export function initializeModeSelectionView() {
     console.log("Initializing Mode Selection View...");
+    
+    // ユーザー名の表示
+    if (userNameDisplay) {
+        userNameDisplay.textContent = userName || "ユーザー";
+    }
+
+    // 今日の一言を監視開始
+    subscribeToWordOfTheDay();
+}
+
+/**
+ * モード選択画面終了時の処理（リスナー解除など）
+ * main.jsで cleanup として登録されていなくても、
+ * showViewのロジックで呼び出される可能性があります。
+ */
+export function cleanupModeSelectionView() {
+    if (wordUnsubscribe) {
+        console.log("Unsubscribing from word of the day...");
+        wordUnsubscribe();
+        wordUnsubscribe = null;
+    }
 }
 
 /**
@@ -22,21 +49,77 @@ export function initializeModeSelectionView() {
 export function setupModeSelectionEventListeners() {
     console.log("Setting up Mode Selection event listeners...");
 
-    // 従業員モード
+    // モード選択ボタン
     clientBtn?.addEventListener("click", () => handleModeSelect(VIEWS.CLIENT));
-    
-    // 管理者モード
     hostBtn?.addEventListener("click", () => handleModeSelect(VIEWS.HOST));
+    settingsBtn?.addEventListener("click", () => showView(VIEWS.TASK_SETTINGS));
 
-    // 業務内容設定 (追加)
-    settingsBtn?.addEventListener("click", () => {
-        showView(VIEWS.TASK_SETTINGS);
+    // ログアウトボタン（簡易実装：リロードなど。必要に応じてauth.signOutなどを呼ぶ）
+    logoutBtn?.addEventListener("click", () => {
+        if(confirm("ログアウトしますか？")) {
+             // 簡易的なリロード（実際のログアウト処理はokta.js等に依存）
+             location.reload(); 
+        }
+    });
+
+    // 今日の一言保存ボタン
+    saveWordBtn?.addEventListener("click", handleSaveWord);
+}
+
+/**
+ * 今日の一言をFirestoreから監視する
+ */
+function subscribeToWordOfTheDay() {
+    if (wordUnsubscribe) return; // 既に監視中なら何もしない
+
+    const wordRef = doc(db, "settings", "daily_word");
+    
+    wordUnsubscribe = onSnapshot(wordRef, (docSnap) => {
+        if (docSnap.exists() && wordInput) {
+            const text = docSnap.data().text || "";
+            // 自分が編集中の場合は上書きしない制御を入れても良いが、
+            // ここではシンプルに常に最新を表示する（共有事項のため）
+            if (document.activeElement !== wordInput) {
+                wordInput.value = text;
+            }
+        }
+    }, (error) => {
+        console.error("Error listening to word of the day:", error);
     });
 }
 
 /**
+ * 今日の一言を保存する
+ */
+async function handleSaveWord() {
+    if (!wordInput) return;
+    const text = wordInput.value.trim();
+
+    try {
+        const btnOriginalText = saveWordBtn.textContent;
+        saveWordBtn.textContent = "保存中...";
+        saveWordBtn.disabled = true;
+
+        await setDoc(doc(db, "settings", "daily_word"), {
+            text: text,
+            updatedBy: userName,
+            updatedAt: new Date()
+        });
+        
+        alert("今日の一言を保存しました！");
+    } catch (error) {
+        console.error("Error saving word of the day:", error);
+        alert("保存に失敗しました。");
+    } finally {
+        if (saveWordBtn) {
+            saveWordBtn.textContent = "保存";
+            saveWordBtn.disabled = false;
+        }
+    }
+}
+
+/**
  * モード選択時の処理
- * 権限チェックを行い、権限があればパスワードをスキップする
  */
 async function handleModeSelect(mode) {
     // 1. 一般画面（Client）は無条件で移動
@@ -56,15 +139,12 @@ async function handleModeSelect(mode) {
 
     // 3. 権限がない場合はパスワード入力を求める
     if (mode === VIEWS.HOST) {
-        // "host" という文字列は modal.js の showPasswordModal 内で判定に使われます
         showPasswordModal("host", () => showView(VIEWS.HOST));
     } 
 }
 
 /**
  * ユーザーの権限を確認する関数
- * @param {string} targetView - 移動先のビュー
- * @returns {Promise<boolean>} - 権限があれば true
  */
 async function checkUserPermission(targetView) {
     if (!userId) return false;
@@ -77,9 +157,7 @@ async function checkUserPermission(targetView) {
 
         const role = userSnap.data().role;
 
-        // 管理者画面へ行く場合
         if (targetView === VIEWS.HOST) {
-            // roleが host または manager ならアクセス許可（要件に合わせて調整してください）
             return role === "host" || role === "manager";
         }
 
