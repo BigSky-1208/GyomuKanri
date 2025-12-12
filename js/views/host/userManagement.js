@@ -1,23 +1,22 @@
 // js/views/host/userManagement.js
 import { db } from "../../firebase.js";
-import { collection, onSnapshot, doc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, onSnapshot, doc, deleteDoc, updateDoc, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { showConfirmationModal, hideConfirmationModal } from "../../components/modal.js";
 
 let userListUnsubscribe = null;
+let currentStatuses = []; // キャッシュ用
 
-// キャッシュ用（statusDisplay.jsから更新を受け取る）
-let currentStatuses = []; 
-
+// ステータス表示モジュールから最新情報を受け取る関数
 export function updateStatusesCache(newStatuses) {
     currentStatuses = newStatuses;
-    // ステータス更新時にリストも再描画したい場合はここで renderUserList を呼ぶことも可能ですが、
-    // 頻度が高いため、基本は userListUnsubscribe 側の更新または手動更新に任せます。
-    // 必要に応じて実装を追加してください。
+    // 必要であればここで再描画をトリガーできますが、
+    // 基本はonSnapshotの更新に任せます
 }
 
+// 初期化関数
 export function initializeUserManagement() {
     console.log("Initializing User Management...");
-    const userListContainer = document.getElementById("user-list-tbody"); // テーブルのtbodyを取得
+    const userListContainer = document.getElementById("user-list-tbody");
     if (!userListContainer) {
         console.error("User list container not found.");
         return;
@@ -39,6 +38,41 @@ export function initializeUserManagement() {
     });
 }
 
+// ★復元: 新規ユーザー追加処理
+export async function handleAddNewUser() {
+    const nameInput = document.getElementById("new-user-name");
+    const emailInput = document.getElementById("new-user-email");
+
+    if (!nameInput || !nameInput.value.trim()) {
+        alert("ユーザー名を入力してください。");
+        return;
+    }
+
+    const name = nameInput.value.trim();
+    const email = emailInput ? emailInput.value.trim() : "";
+
+    try {
+        await addDoc(collection(db, "user_profiles"), {
+            name: name,
+            email: email,
+            role: "client", // デフォルトは一般権限
+            createdAt: new Date().toISOString()
+        });
+        
+        // 入力欄をクリア
+        nameInput.value = "";
+        if (emailInput) emailInput.value = "";
+
+        // ※リストはonSnapshotで自動更新されるため手動追加は不要
+        console.log(`User ${name} added.`);
+        
+    } catch (error) {
+        console.error("Error adding new user:", error);
+        alert("ユーザーの追加に失敗しました。");
+    }
+}
+
+// ユーザーリスト描画関数
 function renderUserList(users, container) {
     container.innerHTML = "";
 
@@ -54,15 +88,14 @@ function renderUserList(users, container) {
         const tr = document.createElement("tr");
         tr.className = "hover:bg-gray-50 border-b";
 
-        // 現在のステータスを探す
+        // 現在の稼働ステータスを確認
         const status = currentStatuses.find(s => s.id === user.id);
         const isWorking = status ? status.isWorking : false;
         const statusText = isWorking ? 
             `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">稼働中</span>` : 
             `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">未稼働</span>`;
 
-        // ★追加: 権限選択用のセレクトボックス作成
-        // role が未設定の場合は 'client' (一般) とする
+        // 権限設定 (デフォルトは client)
         const currentRole = user.role || 'client'; 
         
         tr.innerHTML = `
@@ -84,8 +117,9 @@ function renderUserList(users, container) {
         container.appendChild(tr);
     });
 
-    // イベントリスナーの設定
-    // 1. 権限変更
+    // イベントリスナー設定
+    
+    // 1. 権限変更の監視
     container.querySelectorAll(".role-select").forEach(select => {
         select.addEventListener("change", async (e) => {
             const userId = e.target.dataset.id;
@@ -94,7 +128,7 @@ function renderUserList(users, container) {
         });
     });
 
-    // 2. 削除ボタン
+    // 2. 削除ボタンの監視
     container.querySelectorAll(".delete-user-btn").forEach(btn => {
         btn.addEventListener("click", (e) => {
             const userId = e.target.dataset.id;
@@ -108,7 +142,7 @@ function renderUserList(users, container) {
     });
 }
 
-// ★追加: 権限を更新する関数
+// 権限更新関数
 async function updateUserRole(userId, newRole) {
     try {
         const userRef = doc(db, "user_profiles", userId);
@@ -116,18 +150,17 @@ async function updateUserRole(userId, newRole) {
             role: newRole
         });
         console.log(`User ${userId} role updated to ${newRole}`);
-        // 成功時のトースト表示などがあると親切ですが、今回はonSnapshotでリストが自動更新されるため省略
     } catch (error) {
         console.error("Error updating user role:", error);
         alert("権限の更新に失敗しました。");
     }
 }
 
+// ユーザー削除関数
 async function deleteUser(userId) {
     try {
         await deleteDoc(doc(db, "user_profiles", userId));
         hideConfirmationModal();
-        // onSnapshotが自動的にUIを更新します
     } catch (error) {
         console.error("Error deleting user:", error);
         alert("ユーザーの削除中にエラーが発生しました。");
