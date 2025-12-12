@@ -9,7 +9,6 @@ import { updateStatusesCache } from "./userManagement.js";
 
 // --- Module State ---
 let statusListenerUnsubscribe = null; 
-let wordListenerUnsubscribe = null;
 let hostViewIntervals = []; 
 let currentAllStatuses = []; 
 
@@ -29,9 +28,6 @@ export function startListeningForStatusUpdates() {
     }
 
     console.log("Starting listener for work status updates...");
-
-    // UIの準備: 今日の一言エリアがない場合は作成して追加
-    setupDailyWordUI();
 
     // 1. 稼働状況の監視
     const q = query(collection(db, `work_status`));
@@ -78,9 +74,6 @@ export function startListeningForStatusUpdates() {
         console.error("Error listening for status updates:", error);
         statusListContainer.innerHTML = '<p class="text-red-500">ステータスの読み込み中にエラーが発生しました。</p>';
     });
-
-    // 2. 今日の一言の監視
-    setupDailyWordMonitoring();
 }
 
 /**
@@ -91,10 +84,6 @@ export function stopListeningForStatusUpdates() {
         console.log("Stopping listener for work status updates.");
         statusListenerUnsubscribe();
         statusListenerUnsubscribe = null;
-    }
-    if (wordListenerUnsubscribe) {
-        wordListenerUnsubscribe();
-        wordListenerUnsubscribe = null;
     }
     hostViewIntervals.forEach(clearInterval);
     hostViewIntervals = [];
@@ -153,6 +142,10 @@ function renderWorkingClientList(workingClientsData) {
            displayKeyClean = displayKeyClean.substring(4); 
         }
 
+        // ★修正: 従業員画面と同じデータ（memo）を取得して表示します
+        // もし "dailyWord" や "comment" という別の名前で保存している場合はここを変更します
+        const userDailyWord = data.memo ? escapeHtml(data.memo) : "";
+
         const card = document.createElement("div");
         // 休憩中は色を変える
         const isBreak = data.currentTask === "休憩";
@@ -163,17 +156,18 @@ function renderWorkingClientList(workingClientsData) {
         card.id = `status-card-${userId}`; 
 
         card.innerHTML = `
-            <div class="flex justify-between items-center mb-2">
+            <div class="flex justify-between items-start mb-2">
                 <div>
                     <p class="font-semibold ${taskColor}">${escapeHtml(displayKeyClean)}</p>
-                    <p class="text-sm text-gray-500 mt-1">${escapeHtml(userName)}</p>
+                    <p class="text-sm text-gray-800 font-bold mt-1">${escapeHtml(userName)}</p>
+                    ${userDailyWord ? `<p class="text-xs text-gray-600 mt-2 bg-yellow-50 p-2 rounded border border-yellow-100 inline-block max-w-full break-words">💬 ${userDailyWord}</p>` : ''}
                 </div>
-                <p id="timer-${userId}" class="font-mono text-lg text-gray-700">--:--:--</p>
-            </div>
-            <div class="text-right">
-                <button class="force-stop-btn bg-red-600 text-white font-bold py-1 px-3 text-xs rounded-lg hover:bg-red-700 transition" data-user-id="${userId}" data-user-name="${escapeHtml(userName)}">
-                    強制停止
-                </button>
+                <div class="text-right flex flex-col items-end">
+                    <p id="timer-${userId}" class="font-mono text-lg text-gray-700 mb-1">--:--:--</p>
+                    <button class="force-stop-btn bg-red-600 text-white font-bold py-1 px-3 text-xs rounded-lg hover:bg-red-700 transition" data-user-id="${userId}" data-user-name="${escapeHtml(userName)}">
+                        強制停止
+                    </button>
+                </div>
             </div>`;
 
         statusListContainer.appendChild(card);
@@ -206,72 +200,11 @@ function renderWorkingClientList(workingClientsData) {
     });
 }
 
-// --- 今日の一言 機能 ---
-
-function setupDailyWordUI() {
-    // 既存のコンテナを探す
-    let wordContainer = document.getElementById("host-daily-word-display");
-    
-    // statusListContainer (activeUsersContainer) の親要素に追加
-    if (!wordContainer && statusListContainer && statusListContainer.parentNode) {
-        wordContainer = document.createElement("div");
-        wordContainer.id = "host-daily-word-display";
-        wordContainer.className = "mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg shadow-sm";
-        wordContainer.innerHTML = `
-            <h3 class="font-bold text-gray-700 mb-2 flex items-center">
-                <span class="text-xl mr-2">📢</span> 今日の一言
-            </h3>
-            <p id="host-daily-word-text" class="text-gray-600 whitespace-pre-wrap">読み込み中...</p>
-            <p id="host-daily-word-info" class="text-xs text-gray-400 mt-2 text-right"></p>
-        `;
-        
-        statusListContainer.parentNode.appendChild(wordContainer);
-    }
-}
-
-function setupDailyWordMonitoring() {
-    const wordRef = doc(db, "settings", "daily_word");
-    
-    wordListenerUnsubscribe = onSnapshot(wordRef, (docSnap) => {
-        const textElem = document.getElementById("host-daily-word-text");
-        const infoElem = document.getElementById("host-daily-word-info");
-        
-        if (docSnap.exists() && textElem) {
-            const data = docSnap.data();
-            textElem.textContent = data.text || "（設定されていません）";
-            
-            if (data.updatedBy) {
-                let timeStr = "";
-                if (data.updatedAt && data.updatedAt.toDate) {
-                    const d = data.updatedAt.toDate();
-                    timeStr = `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-                }
-                infoElem.textContent = `Updated by ${data.updatedBy} (${timeStr})`;
-            } else {
-                infoElem.textContent = "";
-            }
-        } else if (textElem) {
-            textElem.textContent = "（未設定）";
-        }
-    }, (error) => {
-        console.error("Error listening to daily word:", error);
-    });
-}
-
 // --- 強制停止（強制退勤）機能 ---
 
 function setupForceStopListeners() {
      if (!statusListContainer) return;
-     // 重複登録を防ぐため、一度クローンするか、既存の仕組みを使う
-     // ここではシンプルにイベント委譲を使う（innerHTML書き換えでイベントが消えるため、親ではなく毎回設定する場合は注意が必要だが、
-     // statusListContainer自体が書き換わるわけではないならOK。今回は中身を書き換えているので、statusListContainerにイベント委譲を設定するのが良い）
      
-     // 既存のリスナーがあれば削除したいが、無名関数だと難しい。
-     // なので、onclick属性や、毎回生成されるボタンに対して直接イベントをつける方式でも良いが、
-     // ここでは安全に、statusListContainerへのイベント委譲を「初回のみ」設定するロジックにするか、
-     // あるいは生成時にボタンにaddEventListenerする（renderWorkingClientList内で実施済みなら不要だが、していない）
-     
-     // renderWorkingClientList の中で innerHTML で生成した後、ボタンを取得してイベントを設定します。
      const buttons = statusListContainer.querySelectorAll(".force-stop-btn");
      buttons.forEach(btn => {
          btn.addEventListener('click', handleForceStopClick);
@@ -279,7 +212,7 @@ function setupForceStopListeners() {
  }
 
  function handleForceStopClick(event) {
-     const button = event.currentTarget; // addEventListenerならcurrentTarget
+     const button = event.currentTarget; 
      const userIdToStop = button.dataset.userId;
      const userNameToStop = button.dataset.userName;
 
