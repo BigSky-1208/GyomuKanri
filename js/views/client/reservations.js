@@ -101,9 +101,7 @@ export function listenForUserReservations() {
     );
 
     reservationsUnsubscribe = onSnapshot(q, (snapshot) => {
-        // ここでは「リストの表示更新」だけを行う
-        // 自動実行のロジック(processReservations)はすべて削除しました
-        
+        // マッピング
         userReservations = snapshot.docs.map((d) => {
             const data = d.data();
             let timeDisplay = "??:??";
@@ -121,12 +119,17 @@ export function listenForUserReservations() {
 
             return { id: d.id, time: timeDisplay, ...data };
         });
+
+        // ★追加: 時間順(昇順)にソート
+        userReservations.sort((a, b) => {
+            if (a.time === "??:??") return 1; // 不明な時間は後ろへ
+            if (b.time === "??:??") return -1;
+            return a.time.localeCompare(b.time);
+        });
         
         updateReservationDisplay(); 
     });
 }
-
-// processReservations, executeAction は削除しました（サーバー側に委譲）
 
 export function updateReservationDisplay() {
     const breakList = getBreakList();
