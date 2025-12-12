@@ -1,24 +1,22 @@
 // js/views/modeSelection.js
 
-import { showView, VIEWS, userId, userName, db } from "../main.js"; // userNameを追加
+import { showView, VIEWS, userId, userName, db } from "../main.js";
 import { showPasswordModal } from "../components/modal.js";
-import { doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // DOM要素
 const clientBtn = document.getElementById("select-client-btn");
 const hostBtn = document.getElementById("select-host-btn");
 const settingsBtn = document.getElementById("task-settings-btn");
 const logoutBtn = document.getElementById("logout-btn-selection");
-const userNameDisplay = document.getElementById("user-name-display"); // 追加
-const wordInput = document.getElementById("word-of-the-day-input"); // 追加
-const saveWordBtn = document.getElementById("save-word-btn"); // 追加
-
-let wordUnsubscribe = null; // リスナー解除用
+const userNameDisplay = document.getElementById("user-name-display");
+const wordInput = document.getElementById("word-of-the-day-input");
+const saveWordBtn = document.getElementById("save-word-btn");
 
 /**
  * モード選択画面の初期化
  */
-export function initializeModeSelectionView() {
+export async function initializeModeSelectionView() {
     console.log("Initializing Mode Selection View...");
     
     // ユーザー名の表示
@@ -26,21 +24,35 @@ export function initializeModeSelectionView() {
         userNameDisplay.textContent = userName || "ユーザー";
     }
 
-    // 今日の一言を監視開始
-    subscribeToWordOfTheDay();
+    // 今日の一言の初期表示（ローカルストレージ優先、無ければFirestore）
+    if (wordInput) {
+        const localWord = localStorage.getItem('wordOfTheDay');
+        if (localWord) {
+            wordInput.value = localWord;
+        }
+
+        // Firestoreから最新を取得して上書き（もしあれば）
+        if (userId) {
+            try {
+                const statusDoc = await getDoc(doc(db, "work_status", userId));
+                if (statusDoc.exists() && statusDoc.data().wordOfTheDay) {
+                    const serverWord = statusDoc.data().wordOfTheDay;
+                    wordInput.value = serverWord;
+                    // ローカルも更新しておく
+                    localStorage.setItem('wordOfTheDay', serverWord);
+                }
+            } catch (error) {
+                console.error("Error fetching word of the day:", error);
+            }
+        }
+    }
 }
 
 /**
- * モード選択画面終了時の処理（リスナー解除など）
- * main.jsで cleanup として登録されていなくても、
- * showViewのロジックで呼び出される可能性があります。
+ * クリーンアップ（今回はリスナーを使っていないので特に処理なし）
  */
 export function cleanupModeSelectionView() {
-    if (wordUnsubscribe) {
-        console.log("Unsubscribing from word of the day...");
-        wordUnsubscribe();
-        wordUnsubscribe = null;
-    }
+    // 特になし
 }
 
 /**
@@ -49,67 +61,55 @@ export function cleanupModeSelectionView() {
 export function setupModeSelectionEventListeners() {
     console.log("Setting up Mode Selection event listeners...");
 
-    // モード選択ボタン
     clientBtn?.addEventListener("click", () => handleModeSelect(VIEWS.CLIENT));
     hostBtn?.addEventListener("click", () => handleModeSelect(VIEWS.HOST));
     settingsBtn?.addEventListener("click", () => showView(VIEWS.TASK_SETTINGS));
 
-    // ログアウトボタン（簡易実装：リロードなど。必要に応じてauth.signOutなどを呼ぶ）
     logoutBtn?.addEventListener("click", () => {
         if(confirm("ログアウトしますか？")) {
-             // 簡易的なリロード（実際のログアウト処理はokta.js等に依存）
              location.reload(); 
         }
     });
 
     // 今日の一言保存ボタン
-    saveWordBtn?.addEventListener("click", handleSaveWord);
+    saveWordBtn?.addEventListener("click", handleSaveWordOfTheDay);
 }
 
 /**
- * 今日の一言をFirestoreから監視する
+ * 今日の一言を保存する (ユーザー提示コードを踏襲)
  */
-function subscribeToWordOfTheDay() {
-    if (wordUnsubscribe) return; // 既に監視中なら何もしない
-
-    const wordRef = doc(db, "settings", "daily_word");
-    
-    wordUnsubscribe = onSnapshot(wordRef, (docSnap) => {
-        if (docSnap.exists() && wordInput) {
-            const text = docSnap.data().text || "";
-            // 自分が編集中の場合は上書きしない制御を入れても良いが、
-            // ここではシンプルに常に最新を表示する（共有事項のため）
-            if (document.activeElement !== wordInput) {
-                wordInput.value = text;
-            }
-        }
-    }, (error) => {
-        console.error("Error listening to word of the day:", error);
-    });
-}
-
-/**
- * 今日の一言を保存する
- */
-async function handleSaveWord() {
+async function handleSaveWordOfTheDay() {
     if (!wordInput) return;
-    const text = wordInput.value.trim();
+
+    const word = wordInput.value.trim();
+
+    // ★修正2: ローカルストレージに保存（次回即座に表示するため）
+    localStorage.setItem('wordOfTheDay', word);
+
+    if (!userId) {
+        // ユーザーIDがまだ無い場合でも、ローカル保存はできたのでアラートは控えめにするか、
+        // ローカルだけで動作するように振る舞う
+        alert("一時的に保存しました。（サーバーへの同期はログイン後に行われます）");
+        return;
+    }
+
+    const statusRef = doc(db, "work_status", userId);
 
     try {
         const btnOriginalText = saveWordBtn.textContent;
         saveWordBtn.textContent = "保存中...";
         saveWordBtn.disabled = true;
 
-        await setDoc(doc(db, "settings", "daily_word"), {
-            text: text,
-            updatedBy: userName,
-            updatedAt: new Date()
-        });
+        // Update the 'wordOfTheDay' field in the user's status document.
+        // Use setDoc with merge:true to create the document if it doesn't exist,
+        // or update the field without overwriting other status info.
+        await setDoc(statusRef, { wordOfTheDay: word }, { merge: true });
         
-        alert("今日の一言を保存しました！");
+        // Optionally show a success message to the user
+        alert("今日の一言を保存しました。");
     } catch (error) {
-        console.error("Error saving word of the day:", error);
-        alert("保存に失敗しました。");
+        // console.error("Error saving word of the day:", error); 
+        alert("サーバーへの保存中にエラーが発生しましたが、ブラウザには保存されました。");
     } finally {
         if (saveWordBtn) {
             saveWordBtn.textContent = "保存";
@@ -122,13 +122,11 @@ async function handleSaveWord() {
  * モード選択時の処理
  */
 async function handleModeSelect(mode) {
-    // 1. 一般画面（Client）は無条件で移動
     if (mode === VIEWS.CLIENT) {
         showView(VIEWS.CLIENT);
         return;
     }
 
-    // 2. 権限チェック (管理者 or 業務管理者)
     const hasPermission = await checkUserPermission(mode);
 
     if (hasPermission) {
@@ -137,7 +135,6 @@ async function handleModeSelect(mode) {
         return;
     }
 
-    // 3. 権限がない場合はパスワード入力を求める
     if (mode === VIEWS.HOST) {
         showPasswordModal("host", () => showView(VIEWS.HOST));
     } 
