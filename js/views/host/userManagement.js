@@ -1,6 +1,6 @@
 // js/views/host/userManagement.js
 import { db } from "../../firebase.js";
-import { collection, onSnapshot, doc, deleteDoc, updateDoc, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, onSnapshot, doc, deleteDoc, updateDoc, addDoc, getDocs, writeBatch, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { showConfirmationModal, hideConfirmationModal } from "../../components/modal.js";
 
 let userListUnsubscribe = null;
@@ -9,8 +9,6 @@ let currentStatuses = []; // キャッシュ用
 // ステータス表示モジュールから最新情報を受け取る関数
 export function updateStatusesCache(newStatuses) {
     currentStatuses = newStatuses;
-    // 必要であればここで再描画をトリガーできますが、
-    // 基本はonSnapshotの更新に任せます
 }
 
 // 初期化関数
@@ -38,7 +36,7 @@ export function initializeUserManagement() {
     });
 }
 
-// ★復元: 新規ユーザー追加処理
+// 新規ユーザー追加処理
 export async function handleAddNewUser() {
     const nameInput = document.getElementById("new-user-name");
     const emailInput = document.getElementById("new-user-email");
@@ -59,17 +57,47 @@ export async function handleAddNewUser() {
             createdAt: new Date().toISOString()
         });
         
-        // 入力欄をクリア
         nameInput.value = "";
         if (emailInput) emailInput.value = "";
-
-        // ※リストはonSnapshotで自動更新されるため手動追加は不要
         console.log(`User ${name} added.`);
         
     } catch (error) {
         console.error("Error adding new user:", error);
         alert("ユーザーの追加に失敗しました。");
     }
+}
+
+// ★復元: 全ログ削除処理
+export async function handleDeleteAllLogs() {
+    showConfirmationModal(
+        "全ての業務ログを削除しますか？\nこの操作は取り消せません。\n（ユーザーデータは削除されません）",
+        async () => {
+            hideConfirmationModal();
+            try {
+                console.log("Deleting all work logs...");
+                // 全件取得してバッチ削除
+                const q = query(collection(db, "work_logs"));
+                const snapshot = await getDocs(q);
+                
+                if (snapshot.empty) {
+                    alert("削除するログがありません。");
+                    return;
+                }
+
+                const batch = writeBatch(db);
+                snapshot.docs.forEach(doc => {
+                    batch.delete(doc.ref);
+                });
+
+                await batch.commit();
+                alert("全ての業務ログを削除しました。");
+            } catch (error) {
+                console.error("Error deleting logs:", error);
+                alert("ログの削除中にエラーが発生しました。");
+            }
+        },
+        hideConfirmationModal
+    );
 }
 
 // ユーザーリスト描画関数
