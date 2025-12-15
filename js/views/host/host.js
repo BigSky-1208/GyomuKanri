@@ -17,7 +17,6 @@ const userListContainer = document.getElementById("summary-list");
 const helpButton = document.querySelector('#host-view .help-btn');
 const tomuraStatusRadios = document.querySelectorAll('input[name="tomura-status"]');
 
-// ★修正: 「レポート表示」ボタンを基準にして、そのエリアの下に確実に挿入する
 function injectApprovalButton() {
     // すでに作成済みなら何もしない
     if (document.getElementById("view-approval-container")) return;
@@ -32,15 +31,21 @@ function injectApprovalButton() {
         // 新しいボタンを入れるコンテナを作成
         const container = document.createElement("div");
         container.id = "view-approval-container";
-        // 余白と区切り線で少し目立たせる
-        container.className = "mb-8 pb-4 pt-2 border-b border-gray-300 w-full"; 
+        
+        // ★修正: 線が2本になるのを防ぐため、border-b (下線) を削除しました
+        // mb-6 で下のリストとの間隔を確保しています
+        container.className = "mb-6 mt-2 w-full"; 
 
         // 承認ボタンを作成
         const btn = document.createElement("button");
         btn.id = "view-approval-btn";
-        btn.className = "w-full sm:w-auto bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 px-6 rounded-lg shadow-md flex items-center justify-center gap-3 transition duration-150 ease-in-out mx-auto sm:mx-0";
+        
+        // ★修正: w-full で横幅いっぱいに（長く）しました
+        // ★修正: py-2 px-4 rounded shadow で他のボタンとサイズ感を統一しました
+        btn.className = "w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center gap-3 transition duration-150 ease-in-out";
+        
         btn.innerHTML = `
-            <span class="text-lg">📩 業務時間申請を確認・承認する</span>
+            <span>📩 業務時間申請を確認・承認する</span>
             <span id="approval-badge" class="bg-white text-orange-600 text-xs font-bold px-3 py-1 rounded-full hidden border border-orange-600">0</span>
         `;
         btn.onclick = () => showView(VIEWS.APPROVAL);
