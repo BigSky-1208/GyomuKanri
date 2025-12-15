@@ -1,12 +1,9 @@
 // js/views/personalDetail/logDisplay.js (UI描画 担当)
 
 import { formatDuration, formatTime, escapeHtml } from "../../utils.js";
+// ★追加: 申請モーダルを開く関数をインポート
+import { openUpdateRequestModal } from "./requestModal.js";
 
-/**
- * Clears the details pane and resets the title.
- * @param {HTMLElement} detailsTitleEl - The title element.
- * @param {HTMLElement} detailsContentEl - The content element.
- */
 export function clearDetails(detailsTitleEl, detailsContentEl) {
     if (detailsTitleEl) detailsTitleEl.textContent = "詳細";
     if (detailsContentEl) {
@@ -14,37 +11,33 @@ export function clearDetails(detailsTitleEl, detailsContentEl) {
     }
 }
 
-/**
- * Displays the detailed logs and summary for a specific day.
- * @param {string} date - The selected date string "YYYY-MM-DD".
- * @param {Array} selectedUserLogs - The array of logs for the *current month*.
- * @param {string} authLevel - The user's auth level.
- * @param {string} currentUserForDetailView - The name of the user being viewed.
- * @param {string} currentUserName - The name of the logged-in user.
- * @param {HTMLElement} detailsTitleEl - The title element.
- * @param {HTMLElement} detailsContentEl - The content element.
- */
 export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForDetailView, currentUserName, detailsTitleEl, detailsContentEl) {
     if (!date || !detailsTitleEl || !detailsContentEl) return;
 
-    // Filter logs for the selected day
     const logsForDay = selectedUserLogs.filter((log) => log.date === date);
-    detailsTitleEl.textContent = `${date} の業務内訳`; // Update details title
+    detailsTitleEl.textContent = `${date} の業務内訳`; 
 
     if (logsForDay.length > 0) {
         let summaryHtml = '';
         let timelineHtml = '';
         let goalHtml = '';
 
-        const dailyWorkSummary = {}; // Summarize work task durations
-        const goalContributions = {}; // Summarize goal contributions { goalKey: { contribution, logs: [] } }
+        const dailyWorkSummary = {}; 
+        const goalContributions = {}; 
 
         logsForDay.sort((a, b) => (a.startTime?.getTime() || 0) - (b.startTime?.getTime() || 0));
+
+        // ★追加: 変更申請ボタンのイベントハンドラをwindowに登録（HTML文字列から呼ぶため）
+        window.handleRequestUpdateClick = (logId) => {
+            const log = logsForDay.find(l => l.id === logId);
+            if (log) openUpdateRequestModal(log);
+        };
 
         logsForDay.forEach((log) => {
             const startTimeStr = formatTime(log.startTime);
             const endTimeStr = formatTime(log.endTime);
 
+            // 集計ロジック
             if (log.type === "goal" && log.goalTitle && log.task) {
                 const key = `[${log.task}] ${log.goalTitle}`;
                 if (!goalContributions[key]) {
@@ -52,60 +45,60 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
                 }
                 goalContributions[key].contribution += (log.contribution || 0);
                 goalContributions[key].logs.push(log);
-
             } else if (log.task && log.task !== "休憩") {
                 const summaryKey = log.goalTitle ? `${log.task} (${log.goalTitle})` : log.task;
                 if (!dailyWorkSummary[summaryKey]) dailyWorkSummary[summaryKey] = 0;
                 dailyWorkSummary[summaryKey] += (log.duration || 0);
+            }
 
-                 const taskDisplay = log.goalTitle
-                     ? `${escapeHtml(log.task)} <span class="text-xs text-gray-500">(${escapeHtml(log.goalTitle)})</span>`
-                     : escapeHtml(log.task);
-                 const memoHtml = log.memo ? `<p class="text-sm text-gray-600 mt-1 pl-2 border-l-2 border-gray-300 whitespace-pre-wrap">${escapeHtml(log.memo)}</p>` : "";
+            // --- タイムライン表示構築 ---
+            const taskDisplay = log.goalTitle
+                ? `${escapeHtml(log.task)} <span class="text-xs text-gray-500">(${escapeHtml(log.goalTitle)})</span>`
+                : escapeHtml(log.task);
+            const memoHtml = log.memo ? `<p class="text-sm text-gray-600 mt-1 pl-2 border-l-2 border-gray-300 whitespace-pre-wrap">${escapeHtml(log.memo)}</p>` : "";
 
-                 const canEdit = authLevel === 'admin' || currentUserForDetailView === currentUserName;
-                 const editButtons = canEdit ? `
+            const isAdmin = authLevel === 'admin';
+            const isSelf = currentUserForDetailView === currentUserName;
+            
+            let actionButtons = "";
+            
+            // 管理者は直接編集、本人は申請
+            if (isAdmin) {
+                 actionButtons = `
                      <div class="flex gap-2 mt-1">
                          <button class="edit-log-btn text-xs bg-blue-500 text-white font-bold py-1 px-2 rounded hover:bg-blue-600" data-log-id="${log.id}" data-duration="${log.duration || 0}" data-task-name="${escapeHtml(log.task)}">時間修正</button>
                          <button class="edit-memo-btn text-xs bg-gray-500 text-white font-bold py-1 px-2 rounded hover:bg-gray-600" data-log-id="${log.id}" data-memo="${escapeHtml(log.memo || "")}">メモ修正</button>
                      </div>
-                 ` : "";
-
-                 timelineHtml += `<li class="p-3 bg-gray-50 rounded-lg">
-                     <div class="flex justify-between items-center">
-                         <span class="font-semibold text-gray-800">${taskDisplay}</span>
-                         <span class="font-mono text-sm bg-gray-200 px-2 py-1 rounded">${startTimeStr} - ${endTimeStr}</span>
-                     </div>
-                     ${memoHtml}
-                     <div class="flex justify-between items-center mt-1">
-                          <div class="text-gray-500 text-sm">合計: ${formatDuration(log.duration || 0)}</div>
-                          ${editButtons}
-                     </div>
-                 </li>`;
-
-            } else if (log.task === "休憩") {
-                 // ★修正: 休憩ログにも編集ボタンを追加
-                 const canEdit = authLevel === 'admin' || currentUserForDetailView === currentUserName;
-                 const editButtons = canEdit ? `
-                     <div class="flex gap-2 mt-1">
-                         <button class="edit-log-btn text-xs bg-blue-500 text-white font-bold py-1 px-2 rounded hover:bg-blue-600" data-log-id="${log.id}" data-duration="${log.duration || 0}" data-task-name="${escapeHtml(log.task)}">時間修正</button>
-                     </div>
-                 ` : "";
-
-                 timelineHtml += `<li class="p-3 bg-yellow-50 rounded-lg">
-                     <div class="flex justify-between items-center">
-                         <span class="font-semibold text-yellow-800">${escapeHtml(log.task)}</span>
-                         <span class="font-mono text-sm bg-gray-200 px-2 py-1 rounded">${startTimeStr} - ${endTimeStr}</span>
-                     </div>
-                      <div class="flex justify-between items-center mt-1">
-                          <div class="text-gray-500 text-sm">合計: ${formatDuration(log.duration || 0)}</div>
-                          ${editButtons}
-                      </div>
-                 </li>`;
+                 `;
+            } else if (isSelf) {
+                // ★追加: ユーザー本人用の「変更申請」ボタン
+                actionButtons = `
+                    <div class="flex gap-2 mt-1">
+                        <button onclick="handleRequestUpdateClick('${log.id}')" class="text-xs bg-yellow-500 text-white font-bold py-1 px-2 rounded hover:bg-yellow-600">
+                            変更申請
+                        </button>
+                    </div>
+                `;
             }
+
+            // 休憩とそれ以外で色分け
+            const bgClass = log.task === "休憩" ? "bg-yellow-50" : "bg-gray-50";
+            const textClass = log.task === "休憩" ? "text-yellow-800" : "text-gray-800";
+
+            timelineHtml += `<li class="p-3 ${bgClass} rounded-lg">
+                <div class="flex justify-between items-center">
+                    <span class="font-semibold ${textClass}">${taskDisplay}</span>
+                    <span class="font-mono text-sm bg-gray-200 px-2 py-1 rounded">${startTimeStr} - ${endTimeStr}</span>
+                </div>
+                ${memoHtml}
+                <div class="flex justify-between items-center mt-1">
+                     <div class="text-gray-500 text-sm">合計: ${formatDuration(log.duration || 0)} ${log.contribution ? `/ ${log.contribution}件` : ''}</div>
+                     ${actionButtons}
+                </div>
+            </li>`;
         });
 
-        // --- Build Summary Section ---
+        // --- Summary Section ---
         summaryHtml = '<h4 class="text-lg font-semibold mb-2">1日の合計 (休憩除く)</h4>';
         if (Object.keys(dailyWorkSummary).length > 0) {
             summaryHtml += '<ul class="space-y-2">';
@@ -119,17 +112,19 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
              summaryHtml += '<p class="text-gray-500 text-sm">この日の業務記録はありません。</p>';
         }
 
-        // --- Build Goal Contribution Section ---
+        // --- Goal Contribution Section (管理用編集ボタンは残すが、申請フロー重視なら隠すか) ---
+        // ※ここでは管理者用の直接編集は残し、ユーザー用の申請はタイムラインに集約する
         goalHtml = '';
         if (Object.keys(goalContributions).length > 0) {
             goalHtml += '<h4 class="text-lg font-semibold mt-4 mb-2 border-t pt-4">目標貢献</h4><ul class="space-y-2">';
-            const canEdit = authLevel === 'admin' || currentUserForDetailView === currentUserName;
+            const isAdmin = authLevel === 'admin';
 
             Object.entries(goalContributions)
                  .sort((a, b) => a[0].localeCompare(b[0], "ja"))
                  .forEach(([goalKey, goalData]) => {
                      const firstLog = goalData.logs[0];
-                     const editButtonHtml = canEdit && firstLog ? `
+                     // ゴール貢献の直接修正は管理者のみとする
+                     const editButtonHtml = isAdmin && firstLog ? `
                          <button class="edit-contribution-btn text-xs bg-blue-500 text-white font-bold py-1 px-2 rounded hover:bg-blue-600"
                                  data-user-name="${escapeHtml(currentUserForDetailView)}"
                                  data-goal-id="${firstLog.goalId}"
@@ -146,7 +141,6 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
              goalHtml += "</ul>";
         }
 
-        // --- Build Timeline Section ---
          timelineHtml = timelineHtml ? `<h4 class="text-lg font-semibold mt-4 mb-2 border-t pt-4">タイムライン</h4><ul class="space-y-3">${timelineHtml}</ul>` : '';
 
         detailsContentEl.innerHTML = summaryHtml + goalHtml + timelineHtml;
@@ -156,21 +150,12 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
     }
 }
 
-/**
- * Displays the monthly summary of work logs in the details pane.
- * @param {Date} currentCalendarDate - The date object for the displayed month.
- * @param {Array} logsForMonth - The (already filtered) array of logs for the month.
- * @param {HTMLElement} detailsTitleEl - The title element.
- * @param {HTMLElement} detailsContentEl - The content element.
- * @param {HTMLElement} monthYearEl - The month/year display element.
- */
 export function showMonthlyLogs(currentCalendarDate, logsForMonth, detailsTitleEl, detailsContentEl, monthYearEl) {
     if (!detailsTitleEl || !detailsContentEl || !monthYearEl) return;
 
     const year = currentCalendarDate.getFullYear();
-    const month = currentCalendarDate.getMonth() + 1; // 1-based
+    const month = currentCalendarDate.getMonth() + 1;
     
-    // (monthYearEl は renderCalendar が更新するが、念のためこちらでも更新)
     monthYearEl.textContent = `${year}年 ${month}月`;
     detailsTitleEl.textContent = `${year}年 ${month}月 の業務集計`;
 
