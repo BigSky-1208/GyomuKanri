@@ -1,7 +1,7 @@
 // js/views/client/clientUI.js
 
 import { allTaskObjects, userDisplayPreferences, userId, db, escapeHtml } from "../../main.js";
-import { doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { getCurrentTask, getCurrentGoalId } from "./timer.js";
 
 // --- DOM Elements ---
@@ -15,6 +15,15 @@ const startBtn = document.getElementById("start-btn");
 const warningMessage = document.getElementById("change-warning-message");
 const taskDisplaySettingsList = document.getElementById("task-display-settings-list");
 const notificationIntervalInput = document.getElementById("notification-interval-input");
+
+/**
+ * 従業員画面のUIセットアップ
+ */
+export function setupClientUI() {
+    renderTaskOptions();
+    renderTaskDisplaySettings();
+    setupWordOfTheDayListener();
+}
 
 /**
  * 業務プルダウンの選択肢を描画
@@ -231,11 +240,12 @@ export function updateTaskDisplaysForSelection() {
     // 工数（ゴール）表示
     const activeGoals = (selectedTask.goals || []).filter((g) => !g.isComplete);
     if (activeGoals.length > 0) {
-        // インデックスをvalueとして設定する（timer.jsとの整合性）
-        selectedTask.goals.forEach((goal, index) => {
+        // インデックスではなくIDをvalueとして設定するのが理想だが、timer.jsとの整合性維持のため
+        // 今回は元のロジックに従うか、IDがある場合はIDを使うようにする
+        selectedTask.goals.forEach((goal) => {
             if (!goal.isComplete) {
                 const option = document.createElement("option");
-                option.value = index; // インデックスを使用
+                option.value = goal.id || goal.title; // IDがあればID、なければタイトル
                 option.textContent = `${escapeHtml(goal.title)} (目標: ${goal.target})`;
                 goalSelect.appendChild(option);
             }
@@ -246,7 +256,6 @@ export function updateTaskDisplaysForSelection() {
 
 /**
  * 変更警告の表示・非表示を切り替える
- * ★修正: アニメーション制御と、厳密な比較ロジックを追加
  */
 export function checkIfWarningIsNeeded() {
     if (!startBtn || !warningMessage) return;
@@ -263,8 +272,6 @@ export function checkIfWarningIsNeeded() {
     const selectedTask = taskSelect.value;
     const selectedGoal = goalSelect.value;
     
-    // currentGoalId は timer.js では数値(index)またはnullとして管理されている可能性がある
-    // goalSelect.value は文字列なので比較時に注意
     let currentGoalId = getCurrentGoalId();
     if (currentGoalId === null) currentGoalId = "";
     
@@ -291,4 +298,92 @@ export function checkIfWarningIsNeeded() {
         startBtn.classList.add("animate-pulse-scale");
         warningMessage.classList.remove("hidden");
     }
+}
+
+// ★追加: ステータスと場所の両方を受け取って表示
+export function updateTomuraStatusDisplay(data) {
+    const statusEl = document.getElementById("tomura-status-display");
+    if (!statusEl) return;
+
+    // data が文字列できた場合（後方互換）とオブジェクトの場合を考慮
+    let statusText = "声掛けNG";
+    let locationText = "";
+    
+    if (typeof data === 'string') {
+        statusText = data;
+    } else if (data && typeof data === 'object') {
+        statusText = data.status || "声掛けNG";
+        locationText = data.location || "";
+    }
+
+    // アイコンや色の決定
+    let bgColor = "bg-gray-100";
+    let textColor = "text-gray-500";
+    let icon = "🔒";
+
+    if (statusText === "声掛けOK") {
+        bgColor = "bg-green-100";
+        textColor = "text-green-700";
+        icon = "⭕";
+    } else if (statusText === "声掛けNG") {
+        bgColor = "bg-red-100";
+        textColor = "text-red-700";
+        icon = "❌";
+    } else if (statusText === "急用ならOK") {
+        bgColor = "bg-yellow-100";
+        textColor = "text-yellow-800";
+        icon = "⚠";
+    }
+
+    // 場所アイコン
+    let locIcon = "";
+    if (locationText === "出社") locIcon = "🏢";
+    if (locationText === "リモート") locIcon = "🏠";
+
+    statusEl.className = `p-3 rounded-lg border shadow-sm flex items-center justify-between ${bgColor}`;
+    
+    // 表示内容の構築
+    let htmlContent = `
+        <div class="flex flex-col">
+            <span class="text-xs text-gray-500 font-bold mb-1">戸村さんステータス</span>
+            <div class="flex items-center gap-2">
+    `;
+
+    if (locationText) {
+        htmlContent += `
+            <span class="font-bold text-gray-800 flex items-center bg-white px-2 py-1 rounded shadow-sm border border-gray-200 text-sm">
+                ${locIcon} ${locationText}
+            </span>
+        `;
+    }
+
+    htmlContent += `
+                <span class="font-bold ${textColor} text-lg flex items-center">
+                    ${icon} ${statusText}
+                </span>
+            </div>
+        </div>
+    `;
+
+    statusEl.innerHTML = htmlContent;
+}
+
+// ★追加: 今日の一言リスナー設定
+function setupWordOfTheDayListener() {
+    const input = document.getElementById("word-of-the-day-input");
+    if (!input || !userId) return;
+
+    // 現在の値をDBから取得して表示（初期化時）
+    // ※ timer.jsなどのrestoreClientStateで取得した値をinputに入れる処理が本来必要だが、
+    // ここでは簡易的に、ユーザーが入力したタイミングで保存する処理のみ実装
+    
+    input.addEventListener("change", async (e) => {
+        const val = e.target.value.trim();
+        const statusRef = doc(db, "work_status", userId);
+        try {
+            await updateDoc(statusRef, { wordOfTheDay: val });
+        } catch(err) {
+            console.error("Error updating word of the day:", err);
+        }
+    });
 }
