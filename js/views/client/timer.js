@@ -60,13 +60,10 @@ export async function restoreClientState() {
         // データが存在するか確認
         const data = docSnap.exists() ? docSnap.data() : null;
         const newIsWorking = data ? data.isWorking : false;
-        const newTask = data ? data.currentTask : null;
+        // DB上のタスクが undefined の場合は null として扱う
+        const newTask = (data && data.currentTask !== undefined) ? data.currentTask : null;
 
         // ★追加: 外部（Worker予約）による変更を検知して通知を出す
-        // ポイント: 手動操作(Optimistic UI)の場合は既に currentTask が書き換わっているため、
-        // ここでの比較は false になり通知は重複しない。
-        // Workerによる変更の場合のみ、 currentTask(古い) !== newTask(新しい) となる。
-        
         if (currentTask && startTime) { // 現在稼働中の場合のみチェック
             if (newIsWorking) {
                 // 稼働継続中だが、タスクが「休憩」に変わった場合
@@ -109,7 +106,10 @@ export async function restoreClientState() {
 
             // 状態同期
             startTime = localStartTime;
-            currentTask = data.currentTask;
+            
+            // ★修正: currentTask が undefined にならないようガード
+            currentTask = (data.currentTask !== undefined) ? data.currentTask : null;
+            
             localStorage.setItem('currentTaskName', currentTask);
 
             currentGoalId = data.currentGoalId || null;
@@ -292,7 +292,7 @@ export async function handleStartClick() {
     const taskSelect = document.getElementById("task-select");
     const goalSelect = document.getElementById("goal-select");
     
-    const newTask = taskSelect.value;
+    let newTask = taskSelect.value;
     if (!newTask) {
         alert("業務を選択してください。");
         return;
@@ -366,12 +366,13 @@ export async function handleBreakClick(isAuto = false) {
         // 休憩終了
         await stopCurrentTask(false);
         const taskToReturnTo = statusData.preBreakTask;
-        // resetClientState は onSnapshot がやるが、UI即時反映のためここで呼ぶ
         resetClientState(); 
 
-        if (taskToReturnTo) {
+        // ★修正: taskToReturnTo.task が有効かチェックし、undefinedエラーを回避
+        if (taskToReturnTo && taskToReturnTo.task) {
             await startTask(taskToReturnTo.task, taskToReturnTo.goalId, taskToReturnTo.goalTitle);
         } else {
+            console.log("No valid pre-break task found. Resetting status.");
             await updateDoc(statusRef, { isWorking: false, currentTask: null });
         }
     } else {
@@ -409,6 +410,12 @@ export async function handleBreakClick(isAuto = false) {
 
 async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = null) {
     if (!userId) return;
+
+    // ★修正: newTask が undefined の場合は null にしてエラー回避
+    if (newTask === undefined) {
+        console.warn("startTask called with undefined task. Defaulting to null.");
+        newTask = null;
+    }
 
     // UIを即時更新 (Optimistic UI)
     currentTask = newTask;
@@ -466,7 +473,21 @@ async function stopCurrentTaskCore(isLeaving, forcedEndTime = null, taskDataOver
     const taskStartTime = taskDataOverride?.startTime || startTime;
     let memo = taskDataOverride?.memo;
 
-    if (!taskStartTime || !taskToLog) return;
+    // --- デバッグログ (Debug: 保存処理の詳細を表示) ---
+    console.group("stopCurrentTaskCore Debug");
+    console.log("Attempting to save log...");
+    console.log("taskToLog:", taskToLog);
+    console.log("taskStartTime:", taskStartTime);
+    console.log("isLeaving:", isLeaving);
+    // -------------------
+
+    if (!taskStartTime || !taskToLog) {
+        // ★何故保存されなかったかを明確に表示
+        console.error("❌ 保存中止: タスク名または開始時間がありません");
+        console.log("理由 -> taskToLog:", taskToLog, " taskStartTime:", taskStartTime);
+        console.groupEnd();
+        return;
+    }
 
     const endTime = forcedEndTime || new Date();
     const duration = Math.floor((endTime - taskStartTime) / 1000);
@@ -482,17 +503,37 @@ async function stopCurrentTaskCore(isLeaving, forcedEndTime = null, taskDataOver
     }
 
     if (duration > 0) {
-        await addDoc(collection(db, "work_logs"), {
-            userId,
-            userName,
-            task: taskToLog,
-            goalId: goalIdToLog,
-            goalTitle: goalTitleToLog,
-            date: getJSTDateString(taskStartTime),
-            duration,
-            startTime: taskStartTime,
-            endTime,
-            memo
-        });
+        try {
+            await addDoc(collection(db, "work_logs"), {
+                userId,
+                userName,
+                task: taskToLog,
+                goalId: goalIdToLog,
+                goalTitle: goalTitleToLog,
+                date: getJSTDateString(taskStartTime),
+                duration,
+                startTime: taskStartTime,
+                endTime,
+                memo
+            });
+            console.log("✅ 保存成功");
+        } catch (e) {
+            console.error("❌ Firestore保存エラー:", e);
+        }
+    } else {
+        console.warn("⚠️ 経過時間が0秒のため保存しませんでした");
     }
+    console.groupEnd();
 }
+
+// --- DEBUG UTILITY (手動デバッグ用) ---
+window.debugTimer = {
+    getStatus: () => {
+        console.log("=== Timer Internal Status ===");
+        console.log("currentTask:", currentTask);
+        console.log("startTime:", startTime);
+        console.log("currentGoalTitle:", currentGoalTitle);
+        console.log("preBreakTask:", preBreakTask);
+        return "Check completed";
+    }
+};
