@@ -16,6 +16,9 @@ let preBreakTask = null;
 let midnightStopTimer = null; 
 let hasContributedToCurrentGoal = false;
 
+// ★追加: 手動操作中かどうかを判定するフラグ（通知抑制用）
+let isManualStateChange = false;
+
 // リスナー解除関数
 let statusUnsubscribe = null;
 
@@ -62,8 +65,8 @@ export async function restoreClientState() {
         const newIsWorking = data ? data.isWorking : false;
         const newTask = (data && data.currentTask !== undefined) ? data.currentTask : null;
 
-        // ★追加: 外部（Worker予約）による変更を検知して通知を出す
-        if (currentTask && startTime) { // 現在稼働中の場合のみチェック
+        // ★修正: 手動操作中(!isManualStateChange)の場合のみ通知判定を行う
+        if (!isManualStateChange && currentTask && startTime) { // 現在稼働中の場合のみチェック
             if (newIsWorking) {
                 // 稼働継続中だが、タスクが「休憩」に変わった場合
                 if (currentTask !== "休憩" && newTask === "休憩") {
@@ -308,7 +311,6 @@ export async function handleStartClick() {
             `「${currentGoalTitle}」の進捗(件数)が入力されていません。\nこのまま業務を変更しますか？`,
             async () => {
                 hideConfirmationModal();
-                // ★修正: 業務変更前に、現在の業務を保存する
                 await stopCurrentTaskCore(false);
                 await startTask(newTask, newGoalId, newGoalTitle);
             },
@@ -317,7 +319,6 @@ export async function handleStartClick() {
         return;
     }
 
-    // ★修正: 業務変更前に、現在の業務を保存する
     await stopCurrentTaskCore(false);
     await startTask(newTask, newGoalId, newGoalTitle);
 }
@@ -363,8 +364,7 @@ export async function handleBreakClick(isAuto = false) {
     const currentDbTask = statusData.currentTask;
 
     if (currentDbTask === "休憩") {
-        // 休憩終了（業務再開）
-        // ※ここはOK（休憩の記録を保存している）
+        // 休憩終了
         await stopCurrentTask(false);
         const taskToReturnTo = statusData.preBreakTask;
         resetClientState(); 
@@ -388,7 +388,6 @@ export async function handleBreakClick(isAuto = false) {
                         goalId: currentGoalId,
                         goalTitle: currentGoalTitle
                     };
-                    // ★修正: 休憩に入る前に、現在の業務を保存する
                     await stopCurrentTaskCore(false);
                     await startTask("休憩", null, null);
                     if (isAuto) triggerReservationNotification("休憩");
@@ -403,7 +402,6 @@ export async function handleBreakClick(isAuto = false) {
             goalId: currentGoalId,
             goalTitle: currentGoalTitle
         };
-        // ★修正: 休憩に入る前に、現在の業務を保存する
         await stopCurrentTaskCore(false);
         await startTask("休憩", null, null);
         if (isAuto) triggerReservationNotification("休憩");
@@ -429,6 +427,9 @@ async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = nul
     updateUIForActiveTask();
     startTimerLoop();
 
+    // ★修正: 手動操作フラグをON
+    isManualStateChange = true;
+
     const statusRef = doc(db, "work_status", userId);
     await setDoc(statusRef, {
         userId,
@@ -442,6 +443,9 @@ async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = nul
         preBreakTask: preBreakTask || null
     }, { merge: true });
 
+    // ★修正: 少し待ってから手動操作フラグをOFF（通知重複防止のため）
+    setTimeout(() => { isManualStateChange = false; }, 500);
+
     listenForColleagues(newTask);
     setupMidnightTimer();
 }
@@ -451,6 +455,9 @@ async function stopCurrentTask(isLeaving) {
     await stopCurrentTaskCore(isLeaving);
 
     if (isLeaving) {
+        // ★修正: 手動操作フラグをON
+        isManualStateChange = true;
+
         // 2. 次にFirestore上のステータスを更新する
         if (userId) {
              await updateDoc(doc(db, "work_status", userId), { isWorking: false, currentTask: null });
@@ -458,6 +465,9 @@ async function stopCurrentTask(isLeaving) {
         
         // 3. 最後にローカルの状態をリセット（表示をクリア）する
         resetClientState();
+
+        // ★修正: 少し待ってから手動操作フラグをOFF
+        setTimeout(() => { isManualStateChange = false; }, 500);
     }
 }
 
