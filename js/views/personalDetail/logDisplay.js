@@ -1,7 +1,6 @@
 // js/views/personalDetail/logDisplay.js (UI描画 担当)
 
 import { formatDuration, formatTime, escapeHtml } from "../../utils.js";
-// ★追加: 申請モーダルを開く関数をインポート
 import { openUpdateRequestModal } from "./requestModal.js";
 
 export function clearDetails(detailsTitleEl, detailsContentEl) {
@@ -27,7 +26,7 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
 
         logsForDay.sort((a, b) => (a.startTime?.getTime() || 0) - (b.startTime?.getTime() || 0));
 
-        // ★追加: 変更申請ボタンのイベントハンドラをwindowに登録（HTML文字列から呼ぶため）
+        // 変更申請ボタン用ハンドラ
         window.handleRequestUpdateClick = (logId) => {
             const log = logsForDay.find(l => l.id === logId);
             if (log) openUpdateRequestModal(log);
@@ -37,7 +36,7 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
             const startTimeStr = formatTime(log.startTime);
             const endTimeStr = formatTime(log.endTime);
 
-            // 集計ロジック
+            // 集計処理
             if (log.type === "goal" && log.goalTitle && log.task) {
                 const key = `[${log.task}] ${log.goalTitle}`;
                 if (!goalContributions[key]) {
@@ -51,7 +50,7 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
                 dailyWorkSummary[summaryKey] += (log.duration || 0);
             }
 
-            // --- タイムライン表示構築 ---
+            // タイムライン表示
             const taskDisplay = log.goalTitle
                 ? `${escapeHtml(log.task)} <span class="text-xs text-gray-500">(${escapeHtml(log.goalTitle)})</span>`
                 : escapeHtml(log.task);
@@ -60,28 +59,26 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
             const isAdmin = authLevel === 'admin';
             const isSelf = currentUserForDetailView === currentUserName;
             
-            let actionButtons = "";
-            
-            // 管理者は直接編集、本人は申請
-            if (isAdmin) {
-                 actionButtons = `
-                     <div class="flex gap-2 mt-1">
-                         <button class="edit-log-btn text-xs bg-blue-500 text-white font-bold py-1 px-2 rounded hover:bg-blue-600" data-log-id="${log.id}" data-duration="${log.duration || 0}" data-task-name="${escapeHtml(log.task)}">時間修正</button>
-                         <button class="edit-memo-btn text-xs bg-gray-500 text-white font-bold py-1 px-2 rounded hover:bg-gray-600" data-log-id="${log.id}" data-memo="${escapeHtml(log.memo || "")}">メモ修正</button>
-                     </div>
-                 `;
-            } else if (isSelf) {
-                // ★追加: ユーザー本人用の「変更申請」ボタン
-                actionButtons = `
-                    <div class="flex gap-2 mt-1">
-                        <button onclick="handleRequestUpdateClick('${log.id}')" class="text-xs bg-yellow-500 text-white font-bold py-1 px-2 rounded hover:bg-yellow-600">
-                            変更申請
-                        </button>
-                    </div>
+            // ★修正: ボタン表示ロジック
+            // 「時間修正」「メモ修正」は、管理者または本人なら表示（元の機能）
+            let editButtons = "";
+            if (isAdmin || isSelf) {
+                editButtons = `
+                    <button class="edit-log-btn text-xs bg-blue-500 text-white font-bold py-1 px-2 rounded hover:bg-blue-600" data-log-id="${log.id}" data-duration="${log.duration || 0}" data-task-name="${escapeHtml(log.task)}">時間修正</button>
+                    <button class="edit-memo-btn text-xs bg-gray-500 text-white font-bold py-1 px-2 rounded hover:bg-gray-600" data-log-id="${log.id}" data-memo="${escapeHtml(log.memo || "")}">メモ修正</button>
                 `;
             }
 
-            // 休憩とそれ以外で色分け
+            // 「変更申請」は、本人の場合に追加で表示
+            let requestButton = "";
+            if (isSelf) {
+                requestButton = `
+                    <button onclick="handleRequestUpdateClick('${log.id}')" class="text-xs bg-yellow-500 text-white font-bold py-1 px-2 rounded hover:bg-yellow-600 ml-2">
+                        変更申請
+                    </button>
+                `;
+            }
+
             const bgClass = log.task === "休憩" ? "bg-yellow-50" : "bg-gray-50";
             const textClass = log.task === "休憩" ? "text-yellow-800" : "text-gray-800";
 
@@ -93,12 +90,15 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
                 ${memoHtml}
                 <div class="flex justify-between items-center mt-1">
                      <div class="text-gray-500 text-sm">合計: ${formatDuration(log.duration || 0)} ${log.contribution ? `/ ${log.contribution}件` : ''}</div>
-                     ${actionButtons}
+                     <div class="flex gap-1">
+                        ${editButtons}
+                        ${requestButton}
+                     </div>
                 </div>
             </li>`;
         });
 
-        // --- Summary Section ---
+        // サマリー表示
         summaryHtml = '<h4 class="text-lg font-semibold mb-2">1日の合計 (休憩除く)</h4>';
         if (Object.keys(dailyWorkSummary).length > 0) {
             summaryHtml += '<ul class="space-y-2">';
@@ -112,8 +112,7 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
              summaryHtml += '<p class="text-gray-500 text-sm">この日の業務記録はありません。</p>';
         }
 
-        // --- Goal Contribution Section (管理用編集ボタンは残すが、申請フロー重視なら隠すか) ---
-        // ※ここでは管理者用の直接編集は残し、ユーザー用の申請はタイムラインに集約する
+        // ゴール貢献表示
         goalHtml = '';
         if (Object.keys(goalContributions).length > 0) {
             goalHtml += '<h4 class="text-lg font-semibold mt-4 mb-2 border-t pt-4">目標貢献</h4><ul class="space-y-2">';
@@ -123,7 +122,6 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
                  .sort((a, b) => a[0].localeCompare(b[0], "ja"))
                  .forEach(([goalKey, goalData]) => {
                      const firstLog = goalData.logs[0];
-                     // ゴール貢献の直接修正は管理者のみとする
                      const editButtonHtml = isAdmin && firstLog ? `
                          <button class="edit-contribution-btn text-xs bg-blue-500 text-white font-bold py-1 px-2 rounded hover:bg-blue-600"
                                  data-user-name="${escapeHtml(currentUserForDetailView)}"
