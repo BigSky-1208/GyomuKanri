@@ -3,7 +3,7 @@ import { db, userId, userName, allTaskObjects } from "../../main.js";
 import { collection, addDoc, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { escapeHtml } from "../../utils.js";
 
-// DOM要素の生成（HTMLに記述がないためJSで動的生成）
+// DOM要素の生成
 function createRequestModalHTML() {
     if (document.getElementById("request-modal")) return;
 
@@ -38,7 +38,7 @@ function createRequestModalHTML() {
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">工数（目標）※任意</label>
+                        <label class="block text-sm font-medium text-gray-700">工数（目標）※件数を入れる場合は必須</label>
                         <select id="req-goal" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
                             <option value="">(選択なし)</option>
                         </select>
@@ -69,13 +69,11 @@ function createRequestModalHTML() {
     </div>`;
     document.body.insertAdjacentHTML("beforeend", modalHtml);
 
-    // イベントリスナー設定
     document.getElementById("req-cancel-btn").addEventListener("click", closeRequestModal);
     document.getElementById("req-send-btn").addEventListener("click", submitRequest);
-    document.getElementById("req-task").addEventListener("change", updateGoalOptions);
+    document.getElementById("req-task").addEventListener("change", () => updateGoalOptions());
 }
 
-// タスク選択肢の更新
 function updateTaskOptions(selectedTaskName = null) {
     const taskSelect = document.getElementById("req-task");
     taskSelect.innerHTML = '<option value="">業務を選択</option>';
@@ -89,26 +87,35 @@ function updateTaskOptions(selectedTaskName = null) {
     updateGoalOptions();
 }
 
-// ゴール選択肢の更新
 function updateGoalOptions() {
     const taskSelect = document.getElementById("req-task");
     const goalSelect = document.getElementById("req-goal");
     const selectedTask = allTaskObjects.find(t => t.name === taskSelect.value);
+    
+    // 現在選択されているGoalを保持（あれば）
+    const currentGoal = goalSelect.value;
     
     goalSelect.innerHTML = '<option value="">(選択なし)</option>';
     
     if (selectedTask && selectedTask.goals) {
         selectedTask.goals.forEach(goal => {
             const option = document.createElement("option");
-            option.value = goal.id; // IDをvalueにする
+            option.value = goal.id; 
             option.dataset.title = goal.title;
             option.textContent = goal.title;
             goalSelect.appendChild(option);
         });
     }
+    
+    // もしタスクが変わっていなくて、元のゴールがまだリストにあれば再選択
+    if (currentGoal) {
+        // 同じ値を持つoptionがあるか確認
+        if(goalSelect.querySelector(`option[value="${currentGoal}"]`)){
+            goalSelect.value = currentGoal;
+        }
+    }
 }
 
-// モーダルを開く（追加申請）
 export function openAddRequestModal(dateStr) {
     createRequestModalHTML();
     const modal = document.getElementById("request-modal");
@@ -116,7 +123,7 @@ export function openAddRequestModal(dateStr) {
     document.getElementById("req-type").value = "add";
     document.getElementById("request-modal-title").textContent = "業務追加申請";
     document.getElementById("req-date").value = dateStr;
-    document.getElementById("req-time-container").style.display = "grid"; // 時間入力表示
+    document.getElementById("req-time-container").style.display = "grid";
     document.getElementById("req-start-time").value = "";
     document.getElementById("req-end-time").value = "";
     document.getElementById("req-count").value = "";
@@ -127,7 +134,6 @@ export function openAddRequestModal(dateStr) {
     modal.classList.remove("hidden");
 }
 
-// モーダルを開く（変更申請）
 export function openUpdateRequestModal(log) {
     createRequestModalHTML();
     const modal = document.getElementById("request-modal");
@@ -137,8 +143,6 @@ export function openUpdateRequestModal(log) {
     document.getElementById("req-target-log-id").value = log.id;
     document.getElementById("req-date").value = log.date;
     
-    // 変更申請では時間は変更しない仕様（要望より）だが、表示だけしておくか、非表示にする
-    // ここでは混乱を避けるため非表示にする
     document.getElementById("req-time-container").style.display = "none";
 
     document.getElementById("req-count").value = log.contribution || "";
@@ -147,9 +151,11 @@ export function openUpdateRequestModal(log) {
 
     updateTaskOptions(log.task);
     
-    // ゴールの選択復元
+    // updateTaskOptionsの中でupdateGoalOptionsが呼ばれるが、
+    // タイミング的にここで明示的にゴールIDをセットする
     const goalSelect = document.getElementById("req-goal");
     if (log.goalId) {
+        // 既にoptionが生成されているはず
         goalSelect.value = log.goalId;
     }
 
@@ -161,7 +167,6 @@ function closeRequestModal() {
     if (modal) modal.classList.add("hidden");
 }
 
-// 申請送信
 async function submitRequest() {
     const type = document.getElementById("req-type").value;
     const date = document.getElementById("req-date").value;
@@ -175,6 +180,12 @@ async function submitRequest() {
 
     if (!task) {
         errorEl.textContent = "業務を選択してください。";
+        return;
+    }
+
+    // ★追加: 件数と工数のリンク強制バリデーション
+    if (count > 0 && !goalId) {
+        errorEl.textContent = "件数を入力する場合は、必ず対象の工数（目標）を選択してください。";
         return;
     }
 
