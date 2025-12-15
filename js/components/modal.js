@@ -289,7 +289,7 @@ export function showHelpModal(pageKey) {
     let title = "ヘルプ";
     let content = "<p>ヘルプコンテンツが見つかりません。</p>";
 
-    const helpContents = {
+const helpContents = {
         client: {
             title: "従業員画面ヘルプ",
             content: `
@@ -308,9 +308,9 @@ export function showHelpModal(pageKey) {
                     <li><strong>予約設定:</strong> 休憩や帰宅を指定時刻に自動実行する予約を設定できます（毎日繰り返し）。手動で操作するとその日の予約はキャンセルされます。</li>
                      <li><strong>表示設定:</strong> ドロップダウンに表示したくない業務を非表示に設定できます。「休憩」は非表示にできません。</li>
                     <li><strong>同僚表示:</strong> 現在記録中の業務を、他の誰が同時に行っているかを表示します。相手の「今日の一言」も表示されます。</li>
-                    <li><strong>戸村さんステータス:</strong> 管理者が設定した戸村さんの現在の状況が表示されます。</li>
+                    <li><strong>戸村さんステータス:</strong> 管理者が設定した戸村さんの現在の状況（勤務場所や声掛けの可否）が表示されます。</li>
                     <li><strong>個人記録/業務進捗:</strong> 各種詳細ページへ移動できます。</li>
-                    <li><strong>退勤忘れを修正:</strong> 前日以前の退勤打刻を忘れた場合に、後から正しい時刻を登録できます。指定日の最後の業務終了時刻が更新され、それ以降のログは削除されます。</li>
+                    <li><strong>退勤忘れを修正:</strong> 前日以前の退勤打刻を忘れた場合に、後から正しい時刻を登録できます。修正内容は管理者の承認が必要な場合があります。</li>
                 </ul>`
         },
         host: {
@@ -322,13 +322,13 @@ export function showHelpModal(pageKey) {
                     <li><strong>リアルタイム稼働状況:</strong> どの従業員が、どの業務（工数）を、どれくらいの時間行っているかリアルタイムで表示します。業務ごとに従事している人数も分かります。</li>
                     <li><strong>強制停止:</strong> 稼働中の従業員の記録を強制的に停止（帰宅処理）させることができます。</li>
                     <li><strong>アカウントリスト:</strong> 登録されている全従業員を表示します。名前をクリックすると個人の詳細記録ページに移動します。</li>
-                    <li><strong>戸村さんステータス設定:</strong> 戸村さんの現在の状況を設定し、従業員画面に表示させます（毎日リセットされます）。</li>
+                    <li><strong>戸村さんステータス設定:</strong> 戸村さんの現在の状況（勤務場所：出社/リモート、声掛けOK/NGなど）を設定し、従業員画面に表示させます（日付変更でリセット）。</li>
                 </ul>
                 <h4 class="font-bold mt-3 mb-1 text-base border-b">データ分析と管理</h4>
                 <ul class="list-disc list-inside ml-4 space-y-1 text-sm text-gray-700">
+                    <li><strong>申請を確認・承認:</strong> 従業員からの「退勤修正」などの申請を確認し、承認または却下します。</li>
                     <li><strong>ユーザーを追加:</strong> 新しい従業員アカウントを作成します。ユーザー名は空白不可で、既存ユーザー名とは重複できません。</li>
                     <li><strong>稼働時間Excelを出力:</strong> 指定した月の全従業員の稼働記録（月次サマリー、日別サマリー）をExcelファイルでダウンロードします。</li>
-                    <li><strong>業務進捗を確認:</strong> チーム全体の工数（目標）進捗や、メンバーごとの貢献度・稼働時間などを詳細に確認・管理できます。</li>
                     <li><strong>業務レポートを表示:</strong> 業務時間の割合を円グラフで視覚的に確認できます。カレンダーで日や月を指定して期間を絞り込めます。</li>
                     <li><strong>全従業員の全業務記録を削除:</strong> 全従業員の全ての業務ログ (work_logs) を削除します。ユーザープロフィールは削除されません。この操作は元に戻せません。</li>
                 </ul>`
@@ -339,18 +339,17 @@ export function showHelpModal(pageKey) {
                 <p class="font-semibold mb-2">従業員が選択する業務内容（タスク）の管理や、各タスクに紐づく工数（目標）を設定する画面です。</p>
                 <h4 class="font-bold mt-3 mb-1 text-base border-b">業務の管理</h4>
                 <ul class="list-disc list-inside ml-4 space-y-1 text-sm text-gray-700">
-                    <li><strong>業務の追加 (管理者のみ):</strong> 新しい業務を追加します。「休憩」は追加できません。空白は含められません。</li>
-                    <li><strong>業務の削除 (管理者のみ):</strong> 不要になった業務を削除します。「休憩」は削除できません。関連する工数も削除されますが、過去の業務ログは残ります。</li>
-                    <li><strong>業務メモ:</strong> 各業務にルールや補足情報をメモとして残せます。このメモは従業員が業務を選択した際に表示されます。変更後は「メモを保存」ボタンを押してください。</li>
-                    <li><strong>担当者別 合計時間:</strong> 「担当者別 合計時間 [+]」をクリックすると、その業務にこれまで誰がどれくらいの時間を費したかを通算で確認できます。</li>
+                    <li><strong>業務の追加 (管理者のみ):</strong> 新しい業務を追加します。カテゴリ（A/B/C等）の設定も可能です。</li>
+                    <li><strong>業務の編集:</strong> 既存の業務名やカテゴリ、デフォルトのメモを編集できます。</li>
+                    <li><strong>業務の削除 (管理者のみ):</strong> 不要になった業務を削除します。「休憩」は削除できません。関連する工数も削除されます。</li>
+                    <li><strong>業務メモ:</strong> 各業務にルールや補足情報をメモとして残せます。このメモは従業員が業務を選択した際に表示されます。</li>
                 </ul>
                 <h4 class="font-bold mt-3 mb-1 text-base border-b">工数（目標）設定</h4>
                 <ul class="list-disc list-inside ml-4 space-y-1 text-sm text-gray-700">
-                    <li><strong>工数を追加:</strong> 各業務に対して「〇〇を50件完了する」といった具体的な数値目標（工数）を設定できます。「休憩」には追加できません。</li>
+                    <li><strong>工数を追加:</strong> 各業務に対して「〇〇を50件完了する」といった具体的な数値目標（工数）を設定できます。</li>
                     <li><strong>工数タイトル・目標値:</strong> 工数の名前と目標となる件数などを設定します。</li>
-                    <li><strong>納期・工数納期:</strong> それぞれの工数に対して、最終的な「納期」（製品・サービスの納期など）と、作業時間を見積もるための目安となる「工数納期」を設定できます（任意）。</li>
+                    <li><strong>納期・工数納期:</strong> 最終的な「納期」と、作業時間の目安となる「工数納期」を設定できます。</li>
                     <li><strong>メモ:</strong> 工数に関する詳細な指示などをメモとして残せます。</li>
-                    <li>設定した工数（タイトル、目標値、納期、メモ）は、「業務進捗を確認」ページで編集・完了・削除の管理ができます。</li>
                 </ul>`
         },
         progress: {
@@ -359,26 +358,31 @@ export function showHelpModal(pageKey) {
                 <p class="font-semibold mb-2">設定された工数（目標）の進捗状況や、チーム全体の業務量を詳細に確認・管理する画面です。</p>
                 <h4 class="font-bold mt-3 mb-1 text-base border-b">基本的な使い方</h4>
                 <ul class="list-disc list-inside ml-4 space-y-1 text-sm text-gray-700">
-                    <li><strong>1. 業務選択:</strong> 左上のリストから、詳細を見たい業務を選択します（進行中の工数がある業務のみ表示されます）。</li>
-                    <li><strong>2. 工数選択:</strong> 右上のリストに、選択した業務に含まれる進行中の工数が表示されるので、目的のものを選択します。</li>
-                    <li><strong>3. 詳細確認:</strong> 選択すると、下にその工数の詳細情報（目標値、納期、メモ、現在の進捗率）、貢献度グラフ（日別）、稼働サマリー（週別）が表示されます。</li>
+                    <li><strong>1. 業務選択:</strong> 左上のリストから、詳細を見たい業務を選択します。</li>
+                    <li><strong>2. 工数選択:</strong> 右上のリストから、目的の工数を選択します。</li>
+                    <li><strong>3. 詳細確認:</strong> 選択すると、目標達成状況、貢献度グラフ、週別の稼働サマリーが表示されます。</li>
                 </ul>
-                <h4 class="font-bold mt-3 mb-1 text-base border-b">工数の管理 (読み取り専用モードでは不可)</h4>
+                <h4 class="font-bold mt-3 mb-1 text-base border-b">工数の管理</h4>
                 <ul class="list-disc list-inside ml-4 space-y-1 text-sm text-gray-700">
-                    <li><strong>編集:</strong> 工数のタイトル、目標値、納期、メモなどを変更できます。「業務内容設定」画面からも編集可能です。</li>
-                    <li><strong>完了:</strong> 目標が達成されたら「完了」ボタンを押してください。完了した工数はこのリストから消え、「完了した工数を見る」ページ（アーカイブ）に移動します。</li>
-                    <li><strong>削除:</strong> 工数を完全に削除します。関連するログは残りますが、工数自体は復元できません。</li>
+                    <li><strong>編集・完了・削除:</strong> 工数の内容変更や、完了扱いにすることができます。完了するとアーカイブに移動します。</li>
                 </ul>
-                <h4 class="font-bold mt-3 mb-1 text-base border-b">グラフ・サマリーの操作</h4>
+                <h4 class="font-bold mt-3 mb-1 text-base border-b">その他</h4>
                 <ul class="list-disc list-inside ml-4 space-y-1 text-sm text-gray-700">
-                    <li><strong>グラフ種別切替:</strong> グラフ右上のボタンで「合計件数」と「時間あたり件数」の表示を切り替えられます。</li>
-                    <li><strong>週/月の移動:</strong> サマリー表の上部にあるボタンで、表示する週や月を移動できます。</li>
-                </ul>
-                 <h4 class="font-bold mt-3 mb-1 text-base border-b">完了した工数</h4>
-                 <ul class="list-disc list-inside ml-4 space-y-1 text-sm text-gray-700">
-                    <li>右上の「完了した工数を見る」ボタンから、完了済みの工数の一覧と、その貢献履歴を確認できます。</li>
-                 </ul>`
+                    <li><strong>完了した工数を見る:</strong> アーカイブされた過去の工数を確認できます。</li>
+                    <li><strong>グラフ切替:</strong> 「合計件数」と「時間あたり件数」のグラフを切り替えられます。</li>
+                </ul>`
         },
+        approval: { // ★追加: 承認画面用のヘルプ
+            title: "申請承認画面ヘルプ",
+            content: `
+                 <p class="font-semibold mb-2">従業員から提出された修正申請を確認・承認する画面です。</p>
+                 <ul class="list-disc list-inside ml-4 space-y-1 text-sm text-gray-700">
+                    <li><strong>申請一覧:</strong> 「退勤忘れの修正」など、承認待ちの申請がリスト表示されます。</li>
+                    <li><strong>承認:</strong> 内容を確認し、問題なければ「承認」ボタンを押してください。データが正式に更新されます。</li>
+                    <li><strong>却下:</strong> 申請内容に不備がある場合は「却下」できます。データは更新されません。</li>
+                 </ul>
+            `
+        }
     };
 
     if (helpContents[pageKey]) {
