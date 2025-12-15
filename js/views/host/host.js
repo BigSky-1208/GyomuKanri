@@ -17,29 +17,28 @@ const userListContainer = document.getElementById("summary-list");
 const helpButton = document.querySelector('#host-view .help-btn');
 const tomuraStatusRadios = document.querySelectorAll('input[name="tomura-status"]');
 
-// ★修正: 管理者ボタン群の「下」に承認ボタンを配置する関数
+// ★修正: 「レポート表示」ボタンを基準にして、そのエリアの下に確実に挿入する
 function injectApprovalButton() {
-    const hostView = document.getElementById("host-view");
-    if (!hostView) return;
-
-    // 既に作成済みの場合は重複しないように終了
+    // すでに作成済みなら何もしない
     if (document.getElementById("view-approval-container")) return;
 
-    // 既存の管理者ボタン群（Excel出力などが並んでいるエリア）を探す
-    // index.htmlの構造に依存しますが、通常はクラス名で特定します
-    const buttonGroup = hostView.querySelector(".flex.flex-wrap.gap-2.mb-6");
+    // 基準となる「レポート表示」ボタンを探す
+    const referenceBtn = document.getElementById("view-report-btn");
+    
+    if (referenceBtn) {
+        // ボタンが並んでいるコンテナ（親要素）を取得
+        const buttonGroup = referenceBtn.parentElement;
 
-    if (buttonGroup) {
-        // 新しいコンテナを作成
+        // 新しいボタンを入れるコンテナを作成
         const container = document.createElement("div");
         container.id = "view-approval-container";
-        container.className = "mb-8 pb-4 border-b border-gray-300"; // 下に余白と区切り線を追加
+        // 余白と区切り線で少し目立たせる
+        container.className = "mb-8 pb-4 pt-2 border-b border-gray-300 w-full"; 
 
-        // ボタンを作成
+        // 承認ボタンを作成
         const btn = document.createElement("button");
         btn.id = "view-approval-btn";
-        // 目立つデザインにする
-        btn.className = "w-full sm:w-auto bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 px-6 rounded-lg shadow-md flex items-center justify-center gap-3 transition duration-150 ease-in-out";
+        btn.className = "w-full sm:w-auto bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 px-6 rounded-lg shadow-md flex items-center justify-center gap-3 transition duration-150 ease-in-out mx-auto sm:mx-0";
         btn.innerHTML = `
             <span class="text-lg">📩 業務時間申請を確認・承認する</span>
             <span id="approval-badge" class="bg-white text-orange-600 text-xs font-bold px-3 py-1 rounded-full hidden border border-orange-600">0</span>
@@ -48,26 +47,29 @@ function injectApprovalButton() {
 
         container.appendChild(btn);
 
-        // ボタン群の「直後（下）」に挿入する
-        buttonGroup.parentNode.insertBefore(container, buttonGroup.nextSibling);
+        // ボタン群エリアの「直後（下）」に挿入する
+        if (buttonGroup && buttonGroup.parentNode) {
+            buttonGroup.parentNode.insertBefore(container, buttonGroup.nextSibling);
+        }
 
         // 未承認件数の監視（リアルタイム更新）
         const q = query(collection(db, "work_log_requests"), where("status", "==", "pending"));
         onSnapshot(q, (snap) => {
             const badge = document.getElementById("approval-badge");
-            const btnText = btn.querySelector("span:first-child");
             
             if (badge) {
                 if (snap.size > 0) {
                     badge.textContent = `${snap.size}件`;
                     badge.classList.remove("hidden");
-                    btn.classList.add("animate-pulse"); // 未承認があるときは少し目立たせる
+                    btn.classList.add("animate-pulse"); // 未承認があるときは点滅して知らせる
                 } else {
                     badge.classList.add("hidden");
                     btn.classList.remove("animate-pulse");
                 }
             }
         });
+    } else {
+        console.warn("injectApprovalButton: Reference button 'view-report-btn' not found.");
     }
 }
 
@@ -77,7 +79,7 @@ export function initializeHostView() {
     startListeningForUsers();      
     listenForTomuraStatus();
     
-    // ボタンを追加
+    // ボタンを追加実行
     injectApprovalButton();
 }
 
