@@ -17,44 +17,6 @@ const userListContainer = document.getElementById("summary-list");
 const helpButton = document.querySelector('#host-view .help-btn');
 const tomuraStatusRadios = document.querySelectorAll('input[name="tomura-status"]');
 
-// ★復元: 勤務場所選択UI（出社/リモート）を注入する関数
-function injectTomuraLocationUI() {
-    if (document.getElementById("tomura-location-container")) return;
-
-    // 既存のステータス（声掛けOK/NG）のコンテナを探す
-    const statusContainer = document.querySelector('#host-view input[name="tomura-status"]')?.closest('.bg-white');
-
-    if (statusContainer) {
-        const wrapper = document.createElement("div");
-        wrapper.id = "tomura-location-container";
-        wrapper.className = "mb-4 p-4 bg-white rounded shadow border border-gray-200";
-        
-        wrapper.innerHTML = `
-            <h3 class="font-bold text-gray-700 mb-2 border-b pb-1">勤務場所</h3>
-            <div class="flex gap-6">
-                <label class="flex items-center cursor-pointer hover:bg-gray-50 p-2 rounded transition">
-                    <input type="radio" name="tomura-location" value="出社" class="form-radio h-5 w-5 text-blue-600">
-                    <span class="ml-2 text-gray-800 font-bold">🏢 出社</span>
-                </label>
-                <label class="flex items-center cursor-pointer hover:bg-gray-50 p-2 rounded transition">
-                    <input type="radio" name="tomura-location" value="リモート" class="form-radio h-5 w-5 text-orange-500">
-                    <span class="ml-2 text-gray-800 font-bold">🏠 リモート</span>
-                </label>
-            </div>
-        `;
-
-        // 既存ステータスの上に挿入
-        statusContainer.parentNode.insertBefore(wrapper, statusContainer);
-
-        // イベントリスナー登録
-        const radios = wrapper.querySelectorAll('input[name="tomura-location"]');
-        radios.forEach(radio => {
-            radio.addEventListener("change", handleTomuraLocationChange);
-        });
-    }
-}
-
-// ご指定の承認ボタンUI注入関数
 function injectApprovalButton() {
     // すでに作成済みなら何もしない
     if (document.getElementById("view-approval-container")) return;
@@ -70,12 +32,16 @@ function injectApprovalButton() {
         const container = document.createElement("div");
         container.id = "view-approval-container";
         
+        // ★修正: 線が2本になるのを防ぐため、border-b (下線) を削除しました
+        // mb-6 で下のリストとの間隔を確保しています
         container.className = "mb-6 mt-2 w-full"; 
 
         // 承認ボタンを作成
         const btn = document.createElement("button");
         btn.id = "view-approval-btn";
         
+        // ★修正: w-full で横幅いっぱいに（長く）しました
+        // ★修正: py-2 px-4 rounded shadow で他のボタンとサイズ感を統一しました
         btn.className = "w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center gap-3 transition duration-150 ease-in-out";
         
         btn.innerHTML = `
@@ -114,15 +80,12 @@ function injectApprovalButton() {
 
 export function initializeHostView() {
     console.log("Initializing Host View...");
-    
-    // UI注入（復元分と新規分）
-    injectTomuraLocationUI(); // ★復元
-    injectApprovalButton();
-
-    // リスナー開始
     startListeningForStatusUpdates(); 
     startListeningForUsers();      
     listenForTomuraStatus();
+    
+    // ボタンを追加実行
+    injectApprovalButton();
 }
 
 export function cleanupHostView() {
@@ -155,7 +118,6 @@ export function setupHostEventListeners() {
     console.log("Host View event listeners set up complete.");
 }
 
-// ステータス変更ハンドラ
 async function handleTomuraStatusChange(event) {
     const newStatus = event.target.value;
     const statusRef = doc(db, "settings", "tomura_status");
@@ -170,52 +132,22 @@ async function handleTomuraStatusChange(event) {
     }
 }
 
-// ★復元: 勤務場所変更ハンドラ
-async function handleTomuraLocationChange(event) {
-    const newLocation = event.target.value;
-    const statusRef = doc(db, "settings", "tomura_status");
-    const todayStr = new Date().toISOString().split("T")[0]; 
-    try {
-        await setDoc(statusRef, {
-            location: newLocation,
-            date: todayStr, 
-        }, { merge: true }); 
-    } catch (error) {
-        console.error("Error updating Tomura location:", error);
-    }
-}
-
 function listenForTomuraStatus() {
     const statusRef = doc(db, "settings", "tomura_status");
     const todayStr = new Date().toISOString().split("T")[0];
     const defaultStatus = "声掛けNG"; 
-    const defaultLocation = "出社"; // ★復元: デフォルト値
 
     onSnapshot(statusRef, async (docSnap) => {
         let statusToSet = defaultStatus;
-        let locationToSet = defaultLocation; // ★復元
-
         if (docSnap.exists() && docSnap.data().date === todayStr) {
             statusToSet = docSnap.data().status || defaultStatus;
-            locationToSet = docSnap.data().location || defaultLocation; // ★復元
         } else {
              // 日付が変わっている等の場合はリセット
              if (!docSnap.exists() || docSnap.data().date !== todayStr) {
-                setDoc(statusRef, { 
-                    status: defaultStatus, 
-                    location: defaultLocation, // ★復元
-                    date: todayStr 
-                }, { merge: true }).catch(console.error);
+                setDoc(statusRef, { status: defaultStatus, date: todayStr }, { merge: true }).catch(console.error);
              }
         }
-
-        // ステータスのラジオボタン反映
         const currentRadio = document.querySelector(`input[name="tomura-status"][value="${statusToSet}"]`);
         if (currentRadio) currentRadio.checked = true;
-
-        // ★復元: 場所のラジオボタン反映
-        const locationRadio = document.querySelector(`input[name="tomura-location"][value="${locationToSet}"]`);
-        if (locationRadio) locationRadio.checked = true;
-
     }, console.error);
 }
