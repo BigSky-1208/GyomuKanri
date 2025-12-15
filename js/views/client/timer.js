@@ -308,6 +308,8 @@ export async function handleStartClick() {
             `「${currentGoalTitle}」の進捗(件数)が入力されていません。\nこのまま業務を変更しますか？`,
             async () => {
                 hideConfirmationModal();
+                // ★修正: 業務変更前に、現在の業務を保存する
+                await stopCurrentTaskCore(false);
                 await startTask(newTask, newGoalId, newGoalTitle);
             },
             hideConfirmationModal
@@ -315,6 +317,8 @@ export async function handleStartClick() {
         return;
     }
 
+    // ★修正: 業務変更前に、現在の業務を保存する
+    await stopCurrentTaskCore(false);
     await startTask(newTask, newGoalId, newGoalTitle);
 }
 
@@ -359,7 +363,8 @@ export async function handleBreakClick(isAuto = false) {
     const currentDbTask = statusData.currentTask;
 
     if (currentDbTask === "休憩") {
-        // 休憩終了
+        // 休憩終了（業務再開）
+        // ※ここはOK（休憩の記録を保存している）
         await stopCurrentTask(false);
         const taskToReturnTo = statusData.preBreakTask;
         resetClientState(); 
@@ -383,6 +388,8 @@ export async function handleBreakClick(isAuto = false) {
                         goalId: currentGoalId,
                         goalTitle: currentGoalTitle
                     };
+                    // ★修正: 休憩に入る前に、現在の業務を保存する
+                    await stopCurrentTaskCore(false);
                     await startTask("休憩", null, null);
                     if (isAuto) triggerReservationNotification("休憩");
                 },
@@ -396,6 +403,8 @@ export async function handleBreakClick(isAuto = false) {
             goalId: currentGoalId,
             goalTitle: currentGoalTitle
         };
+        // ★修正: 休憩に入る前に、現在の業務を保存する
+        await stopCurrentTaskCore(false);
         await startTask("休憩", null, null);
         if (isAuto) triggerReservationNotification("休憩");
     }
@@ -437,7 +446,6 @@ async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = nul
     setupMidnightTimer();
 }
 
-// ★修正箇所: 保存処理を最初に行うように順番を変更
 async function stopCurrentTask(isLeaving) {
     // 1. 変数が消される前に、まずログを保存する！
     await stopCurrentTaskCore(isLeaving);
@@ -451,7 +459,6 @@ async function stopCurrentTask(isLeaving) {
         // 3. 最後にローカルの状態をリセット（表示をクリア）する
         resetClientState();
     }
-    // isLeaving = false の場合は、単に業務切り替えの前処理なので、リセットは行わない（次のstartTaskで上書きされる）
 }
 
 async function stopCurrentTaskCore(isLeaving, forcedEndTime = null, taskDataOverride = null) {
