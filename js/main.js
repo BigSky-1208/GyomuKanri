@@ -13,7 +13,6 @@ import { initializeReportView, cleanupReportView, setupReportEventListeners } fr
 import { initializeProgressView, setupProgressEventListeners } from './views/progress/progress.js';
 import { initializeArchiveView, setupArchiveEventListeners } from './views/archive.js';
 
-// ★追加: 承認ビュー
 import { initializeApprovalView, cleanupApprovalView } from './views/host/approval.js';
 
 import { setupModalEventListeners, adminPasswordView, closeModal } from './components/modal.js';
@@ -40,7 +39,7 @@ export const VIEWS = {
     PROGRESS: "progress-view",
     ARCHIVE: "archive-view",
     ADMIN_PASSWORD: "admin-password-view", 
-    APPROVAL: "approval-view", // ★追加
+    APPROVAL: "approval-view", 
 };
 
 const viewLifecycle = {
@@ -52,19 +51,20 @@ const viewLifecycle = {
     [VIEWS.REPORT]: { init: initializeReportView, cleanup: cleanupReportView },
     [VIEWS.PROGRESS]: { init: initializeProgressView },
     [VIEWS.ARCHIVE]: { init: initializeArchiveView },
-    [VIEWS.APPROVAL]: { init: initializeApprovalView, cleanup: cleanupApprovalView }, // ★追加
+    [VIEWS.APPROVAL]: { init: initializeApprovalView, cleanup: cleanupApprovalView },
 };
 
-// ★追加: 承認画面用のHTMLコンテナを動的に生成
+// ★修正: hidden クラスを削除しました
 function injectApprovalViewHTML() {
     if (document.getElementById(VIEWS.APPROVAL)) return;
     const div = document.createElement("div");
     div.id = VIEWS.APPROVAL;
-    div.className = "view hidden p-6 max-w-5xl mx-auto";
+    // hidden を削除し、初期状態はCSSの .view で制御させる
+    div.className = "view p-6 max-w-5xl mx-auto"; 
     div.innerHTML = `
         <div class="flex items-center justify-between mb-6">
             <h2 class="text-2xl font-bold text-gray-800">業務時間追加・変更承認</h2>
-            <button onclick="document.getElementById('back-from-approval').click()" id="back-from-approval" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded shadow">
+            <button id="back-from-approval" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded shadow">
                 戻る
             </button>
         </div>
@@ -72,7 +72,7 @@ function injectApprovalViewHTML() {
     `;
     document.getElementById("app-container").appendChild(div);
     
-    // 戻るボタンの動作（ここで登録）
+    // イベントリスナーは要素作成直後に登録するのが確実
     document.getElementById("back-from-approval").addEventListener("click", () => {
         showView(VIEWS.HOST);
     });
@@ -87,7 +87,6 @@ async function initialize() {
         return;
     }
     
-    // ★追加
     injectApprovalViewHTML();
 
     setupGlobalEventListeners();
@@ -187,6 +186,9 @@ export function showView(viewId, data = {}) {
     }
 
     targetViewElement.classList.add("active-view");
+    // ★修正: 念のため hidden クラスがあれば強制的に削除する
+    targetViewElement.classList.remove("hidden");
+
     const newLifecycle = viewLifecycle[viewId];
     if (newLifecycle?.init) {
          try {
