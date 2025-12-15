@@ -60,7 +60,6 @@ export async function restoreClientState() {
         // データが存在するか確認
         const data = docSnap.exists() ? docSnap.data() : null;
         const newIsWorking = data ? data.isWorking : false;
-        // DB上のタスクが undefined の場合は null として扱う
         const newTask = (data && data.currentTask !== undefined) ? data.currentTask : null;
 
         // ★追加: 外部（Worker予約）による変更を検知して通知を出す
@@ -106,10 +105,7 @@ export async function restoreClientState() {
 
             // 状態同期
             startTime = localStartTime;
-            
-            // ★修正: currentTask が undefined にならないようガード
             currentTask = (data.currentTask !== undefined) ? data.currentTask : null;
-            
             localStorage.setItem('currentTaskName', currentTask);
 
             currentGoalId = data.currentGoalId || null;
@@ -368,7 +364,6 @@ export async function handleBreakClick(isAuto = false) {
         const taskToReturnTo = statusData.preBreakTask;
         resetClientState(); 
 
-        // ★修正: taskToReturnTo.task が有効かチェックし、undefinedエラーを回避
         if (taskToReturnTo && taskToReturnTo.task) {
             await startTask(taskToReturnTo.task, taskToReturnTo.goalId, taskToReturnTo.goalTitle);
         } else {
@@ -411,13 +406,11 @@ export async function handleBreakClick(isAuto = false) {
 async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = null) {
     if (!userId) return;
 
-    // ★修正: newTask が undefined の場合は null にしてエラー回避
     if (newTask === undefined) {
         console.warn("startTask called with undefined task. Defaulting to null.");
         newTask = null;
     }
 
-    // UIを即時更新 (Optimistic UI)
     currentTask = newTask;
     currentGoalId = newGoalId || null;
     currentGoalTitle = newGoalTitle || null;
@@ -427,7 +420,6 @@ async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = nul
     updateUIForActiveTask();
     startTimerLoop();
 
-    // DB更新
     const statusRef = doc(db, "work_status", userId);
     await setDoc(statusRef, {
         userId,
@@ -445,19 +437,21 @@ async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = nul
     setupMidnightTimer();
 }
 
+// ★修正箇所: 保存処理を最初に行うように順番を変更
 async function stopCurrentTask(isLeaving) {
+    // 1. 変数が消される前に、まずログを保存する！
+    await stopCurrentTaskCore(isLeaving);
+
     if (isLeaving) {
-        resetClientState();
+        // 2. 次にFirestore上のステータスを更新する
         if (userId) {
-             stopCurrentTaskCore(isLeaving).then(() => {
-                 updateDoc(doc(db, "work_status", userId), { isWorking: false });
-             });
-        } else {
-            await stopCurrentTaskCore(isLeaving);
+             await updateDoc(doc(db, "work_status", userId), { isWorking: false, currentTask: null });
         }
-    } else {
-        await stopCurrentTaskCore(isLeaving);
+        
+        // 3. 最後にローカルの状態をリセット（表示をクリア）する
+        resetClientState();
     }
+    // isLeaving = false の場合は、単に業務切り替えの前処理なので、リセットは行わない（次のstartTaskで上書きされる）
 }
 
 async function stopCurrentTaskCore(isLeaving, forcedEndTime = null, taskDataOverride = null) {
@@ -473,7 +467,7 @@ async function stopCurrentTaskCore(isLeaving, forcedEndTime = null, taskDataOver
     const taskStartTime = taskDataOverride?.startTime || startTime;
     let memo = taskDataOverride?.memo;
 
-    // --- デバッグログ (Debug: 保存処理の詳細を表示) ---
+    // --- デバッグログ ---
     console.group("stopCurrentTaskCore Debug");
     console.log("Attempting to save log...");
     console.log("taskToLog:", taskToLog);
@@ -482,7 +476,6 @@ async function stopCurrentTaskCore(isLeaving, forcedEndTime = null, taskDataOver
     // -------------------
 
     if (!taskStartTime || !taskToLog) {
-        // ★何故保存されなかったかを明確に表示
         console.error("❌ 保存中止: タスク名または開始時間がありません");
         console.log("理由 -> taskToLog:", taskToLog, " taskStartTime:", taskStartTime);
         console.groupEnd();
@@ -526,14 +519,12 @@ async function stopCurrentTaskCore(isLeaving, forcedEndTime = null, taskDataOver
     console.groupEnd();
 }
 
-// --- DEBUG UTILITY (手動デバッグ用) ---
+// --- DEBUG UTILITY ---
 window.debugTimer = {
     getStatus: () => {
         console.log("=== Timer Internal Status ===");
         console.log("currentTask:", currentTask);
         console.log("startTime:", startTime);
-        console.log("currentGoalTitle:", currentGoalTitle);
-        console.log("preBreakTask:", preBreakTask);
         return "Check completed";
     }
 };
