@@ -17,12 +17,53 @@ const userListContainer = document.getElementById("summary-list");
 const helpButton = document.querySelector('#host-view .help-btn');
 const tomuraStatusRadios = document.querySelectorAll('input[name="tomura-status"]');
 
+/**
+ * ★追加: レイアウト崩れを強制修正する関数
+ * 左カラム（リスト）が長すぎる場合にスクロール化し、左右を横並び（Flex/Grid）にします。
+ */
+function enforceTwoColumnLayout() {
+    const listElement = document.getElementById("summary-list");
+    // 右側のコンテナを特定（ステータスラジオボタンが含まれているカードの親を探す）
+    const rightElementMarker = document.querySelector('#host-view input[name="tomura-status"]');
+    
+    if (!listElement || !rightElementMarker) return;
+
+    // 左カラムのカード（白い枠）を特定
+    const leftCard = listElement.closest('.bg-white') || listElement.parentElement;
+    // 右カラムのカード（白い枠）を特定
+    const rightCard = rightElementMarker.closest('.bg-white');
+    
+    if (leftCard && rightCard) {
+        // 左カラムと右カラムの共通の親要素（メインコンテナ）を取得
+        const mainContainer = leftCard.parentElement;
+
+        if (mainContainer) {
+            // メインコンテナを横並び（Flex）にする
+            mainContainer.classList.remove('flex-col'); // 縦並びクラスがあれば除去
+            mainContainer.classList.add('flex', 'flex-row', 'gap-6', 'items-start', 'w-full');
+
+            // 左カラムの幅を固定（約35%）し、高さを制限してスクロール可能にする
+            leftCard.parentElement.classList.add('w-1/3', 'min-w-[350px]'); // 親ラッパーがある場合
+            leftCard.classList.add('w-full'); 
+            
+            // ★重要: リストが無限に伸びないように高さを制限
+            listElement.classList.add('max-h-[80vh]', 'overflow-y-auto', 'pr-2');
+            
+            // 右カラムの幅を残りの領域に広げる
+            if(rightCard.parentElement === mainContainer) {
+                rightCard.classList.add('flex-1'); // 右カラムが直接の子要素の場合
+            } else {
+                rightCard.parentElement.classList.add('flex-1', 'w-full'); // 右カラムがラッパーに入っている場合
+            }
+        }
+    }
+}
+
 // ★追加: 勤務場所選択UIを注入する関数
 function injectTomuraLocationUI() {
     if (document.getElementById("tomura-location-container")) return;
 
     // 既存のステータス（声掛けOK/NG）のコンテナを探す
-    // index.htmlの構造上、ラジオボタンの親要素の親要素あたりを狙う
     const statusContainer = document.querySelector('#host-view input[name="tomura-status"]')?.closest('.bg-white');
 
     if (statusContainer) {
@@ -55,7 +96,7 @@ function injectTomuraLocationUI() {
     }
 }
 
-// 承認ボタンの注入（前回作成したもの）
+// 承認ボタンの注入
 function injectApprovalButton() {
     if (document.getElementById("view-approval-container")) return;
     const referenceBtn = document.getElementById("view-report-btn");
@@ -77,7 +118,9 @@ function injectApprovalButton() {
         btn.onclick = () => showView(VIEWS.APPROVAL);
 
         container.appendChild(btn);
+        // ボタン群の下、または適切な位置に挿入
         if (buttonGroup && buttonGroup.parentNode) {
+            // ボタン群の直後に挿入するとレイアウトがきれいになることが多い
             buttonGroup.parentNode.insertBefore(container, buttonGroup.nextSibling);
         }
 
@@ -100,12 +143,19 @@ function injectApprovalButton() {
 
 export function initializeHostView() {
     console.log("Initializing Host View...");
+    
+    // UIパーツの注入
+    injectTomuraLocationUI(); 
+    injectApprovalButton();
+
+    // リスナーの開始
     startListeningForStatusUpdates(); 
     startListeningForUsers();      
-    
-    injectTomuraLocationUI(); // ★追加
     listenForTomuraStatus();
-    injectApprovalButton();
+    
+    // ★追加: 最後にレイアウトを強制修正
+    // DOM描画のタイミングを少し待ってから実行すると確実です
+    setTimeout(enforceTwoColumnLayout, 100);
 }
 
 export function cleanupHostView() {
@@ -153,7 +203,7 @@ async function handleTomuraStatusChange(event) {
     }
 }
 
-// ★追加: 勤務場所の変更ハンドラ
+// 勤務場所の変更ハンドラ
 async function handleTomuraLocationChange(event) {
     const newLocation = event.target.value;
     const statusRef = doc(db, "settings", "tomura_status");
@@ -172,7 +222,7 @@ function listenForTomuraStatus() {
     const statusRef = doc(db, "settings", "tomura_status");
     const todayStr = new Date().toISOString().split("T")[0];
     const defaultStatus = "声掛けNG"; 
-    const defaultLocation = "出社"; // デフォルト
+    const defaultLocation = "出社"; 
 
     onSnapshot(statusRef, async (docSnap) => {
         let statusToSet = defaultStatus;
@@ -196,7 +246,7 @@ function listenForTomuraStatus() {
         const statusRadio = document.querySelector(`input[name="tomura-status"][value="${statusToSet}"]`);
         if (statusRadio) statusRadio.checked = true;
 
-        // ★追加: 場所ラジオボタンの状態更新
+        // 場所ラジオボタンの状態更新
         const locationRadio = document.querySelector(`input[name="tomura-location"][value="${locationToSet}"]`);
         if (locationRadio) locationRadio.checked = true;
 
