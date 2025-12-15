@@ -3,12 +3,13 @@
 import { showView, VIEWS, db, userName } from "../../main.js";
 import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// ★修正: timer.js から操作関数をインポート
+// timer.js から操作関数をインポート
 import { handleStartClick, handleStopClick, handleBreakClick, restoreClientState as restoreTimerState } from "./timer.js";
 import { listenForUserReservations, handleSaveBreakReservation, handleSetStopReservation, handleCancelStopReservation, deleteReservation } from "./reservations.js";
-import { handleTaskSelectionChange, handleGoalSelectionChange, handleDisplaySettingChange, renderTaskOptions, renderTaskDisplaySettings } from "./clientUI.js";
+// ★修正: updateTomuraStatusDisplay を追加インポート
+import { handleTaskSelectionChange, handleGoalSelectionChange, handleDisplaySettingChange, renderTaskOptions, renderTaskDisplaySettings, updateTomuraStatusDisplay } from "./clientUI.js";
 
-// ★修正: clientActions.js からは handleFixCheckout のみをインポート
+// clientActions.js からは handleFixCheckout のみをインポート
 import { handleFixCheckout } from "./clientActions.js";
 
 import { toggleMiniDisplay } from "./miniDisplay.js";
@@ -41,13 +42,8 @@ const fixCheckoutSaveBtn = document.getElementById("fix-checkout-save-btn");
 // Help Button
 const helpButton = document.querySelector('#client-view .help-btn');
 
-// 戸村さんステータス用リスナー解除関数とクラス定義
+// 戸村さんステータス用リスナー解除関数
 let tomuraStatusUnsubscribe = null;
-const STATUS_CLASSES = {
-    "声掛けOK": ["bg-green-100", "text-green-800"],
-    "急用ならOK": ["bg-yellow-100", "text-yellow-800"],
-    "声掛けNG": ["bg-red-100", "text-red-800"],
-};
 
 /**
  * クライアント画面の初期化
@@ -174,24 +170,23 @@ function listenForTomuraStatus() {
     const todayStr = new Date().toISOString().split("T")[0];
 
     tomuraStatusUnsubscribe = onSnapshot(statusRef, (docSnap) => {
-        let status = "声掛けNG"; // デフォルト
-        
-        if (docSnap.exists() && docSnap.data().date === todayStr) {
-            status = docSnap.data().status;
-        }
+        let statusData = {
+            status: "声掛けNG",
+            location: "" // デフォルト
+        };
 
-        const displayDiv = document.getElementById("tomura-status-display");
-        const textSpan = document.getElementById("tomura-status-text");
-
-        if (displayDiv && textSpan) {
-            textSpan.textContent = status;
-            
-            Object.values(STATUS_CLASSES).flat().forEach(cls => displayDiv.classList.remove(cls));
-            
-            if (STATUS_CLASSES[status]) {
-                displayDiv.classList.add(...STATUS_CLASSES[status]);
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            // 日付が今日の場合のみ有効
+            if (data.date === todayStr) {
+                statusData.status = data.status || "声掛けNG";
+                statusData.location = data.location || ""; // 場所情報を取得
             }
         }
+        
+        // ★修正: clientUI.js の表示更新関数を使用
+        updateTomuraStatusDisplay(statusData);
+
     }, (error) => {
         console.error("Error listening for Tomura's status:", error);
     });
