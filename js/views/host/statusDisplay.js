@@ -1,49 +1,127 @@
 // js/views/host/statusDisplay.js
 
 import { db } from "../../main.js";
-import { collection, onSnapshot, doc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { escapeHtml, formatDuration } from "../../utils.js";
+import { collection, query, onSnapshot, doc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { formatDuration, escapeHtml } from "../../utils.js";
+import { updateStatusesCache } from "./userManagement.js";
 
-let unsubscribe = null;
+// --- Module State ---
+let statusListenerUnsubscribe = null;
+let hostViewIntervals = [];
 
+// --- DOM Element references ---
+const statusListContainer = document.getElementById("status-list");
+const taskSummaryContainer = document.getElementById("task-summary-list");
+
+/**
+ * 監視を開始する（host.jsから呼ばれる）
+ */
 export function startListeningForStatusUpdates() {
-    const statusRef = collection(db, "work_status");
-    
-    unsubscribe = onSnapshot(statusRef, (snapshot) => {
-        const activeUsers = [];
-        snapshot.forEach((doc) => {
-            const data = doc.data();
-            if (data.isWorking) {
-                activeUsers.push({ id: doc.id, ...data });
-            }
-        });
-        updateStatusDisplay(activeUsers);
-    });
-}
+    stopListeningForStatusUpdates();
 
-export function stopListeningForStatusUpdates() {
-    if (unsubscribe) {
-        unsubscribe();
-        unsubscribe = null;
-    }
-}
-
-function updateStatusDisplay(users) {
-    const container = document.getElementById("summary-list");
-    if (!container) return;
-
-    container.innerHTML = "";
-
-    if (users.length === 0) {
-        container.innerHTML = `<div class="p-4 text-gray-500 text-center border-2 border-dashed border-gray-300 rounded-lg">現在稼働中のメンバーはいません</div>`;
+    if (!statusListContainer || !taskSummaryContainer) {
+        console.error("Host view status display elements not found.");
         return;
     }
 
-    // ★ソート処理の修正
+    console.log("Starting listener for work status updates...");
+
+    // 稼働状況の監視
+    const q = query(collection(db, `work_status`));
+
+    statusListenerUnsubscribe = onSnapshot(q, (snapshot) => {
+        // 更新のたびにタイマーをリセット
+        hostViewIntervals.forEach(clearInterval);
+        hostViewIntervals = [];
+        
+        // コンテナのクリア
+        statusListContainer.innerHTML = "";
+        taskSummaryContainer.innerHTML = "";
+
+        // データの取得
+        const currentAllStatuses = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+        // ユーザー管理モジュールへ最新情報を渡す
+        updateStatusesCache(currentAllStatuses);
+
+        // 稼働中のユーザーのみフィルタリング
+        const workingClientsData = currentAllStatuses.filter(
+            (data) => data.isWorking && data.userName 
+        );
+
+        if (workingClientsData.length === 0) {
+            statusListContainer.innerHTML = '<p class="text-gray-500">稼働中の従業員はいません。</p>';
+            taskSummaryContainer.innerHTML = '<p class="text-gray-500">稼働中の業務はありません。</p>';
+        } else {
+            renderTaskSummary(workingClientsData); 
+            renderWorkingClientList(workingClientsData); 
+        }
+
+    }, (error) => {
+        console.error("Error listening for status updates:", error);
+        statusListContainer.innerHTML = '<p class="text-red-500">ステータスの読み込み中にエラーが発生しました。</p>';
+    });
+}
+
+/**
+ * 監視を停止する（host.jsから呼ばれる）
+ */
+export function stopListeningForStatusUpdates() {
+    if (statusListenerUnsubscribe) {
+        console.log("Stopping listener for work status updates.");
+        statusListenerUnsubscribe();
+        statusListenerUnsubscribe = null;
+    }
+    hostViewIntervals.forEach(clearInterval);
+    hostViewIntervals = [];
+}
+
+/**
+ * 業務サマリー（左上）の描画
+ */
+function renderTaskSummary(workingClientsData) {
+    if (!taskSummaryContainer) return;
+    
+    const taskSummary = {}; 
+
+    workingClientsData.forEach((data) => {
+        const taskDisplayKey = data.currentGoalTitle
+            ? `${data.currentTask} (${data.currentGoalTitle})`
+            : data.currentTask || "未定義の業務"; 
+
+         let displayKeyClean = taskDisplayKey;
+         if (displayKeyClean.startsWith("その他_")) {
+            displayKeyClean = displayKeyClean.substring(4); 
+         }
+
+        if (!taskSummary[displayKeyClean]) {
+            taskSummary[displayKeyClean] = 0;
+        }
+        taskSummary[displayKeyClean]++;
+    });
+
+    const sortedTasks = Object.keys(taskSummary).sort((a, b) => a.localeCompare(b, "ja"));
+
+    sortedTasks.forEach((taskKey) => {
+        const count = taskSummary[taskKey];
+        const summaryItem = document.createElement("div");
+        summaryItem.className = "flex justify-between items-center text-sm";
+        summaryItem.innerHTML = `<span class="font-semibold text-gray-600">${escapeHtml(taskKey)}</span><span class="font-mono bg-gray-200 px-2 py-1 rounded-md text-gray-800">${count}人</span>`;
+        taskSummaryContainer.appendChild(summaryItem);
+    });
+}
+
+/**
+ * 稼働中ユーザーリスト（左下）の描画
+ */
+function renderWorkingClientList(workingClientsData) {
+    if (!statusListContainer) return;
+
+    // ★ソート処理
     // 1. 休憩は一番下
     // 2. 業務名順
     // 3. 名前順
-    users.sort((a, b) => {
+    workingClientsData.sort((a, b) => {
         const taskA = a.currentTask || "";
         const taskB = b.currentTask || "";
         const isRestA = taskA === "休憩";
@@ -60,15 +138,12 @@ function updateStatusDisplay(users) {
         return a.userName.localeCompare(b.userName, "ja");
     });
 
-    users.forEach(user => {
-        const startTime = user.startTime ? user.startTime.toDate() : new Date();
-        const now = new Date();
-        const elapsed = Math.floor((now - startTime) / 1000);
-        const durationStr = formatDuration(elapsed);
-        
-        const isRest = user.currentTask === "休憩";
+    workingClientsData.forEach((data) => {
+        const userId = data.userId || data.id; 
+        const userName = data.userName || "不明なユーザー";
         
         // ★デザイン修正: 枠取りと色分け
+        const isRest = data.currentTask === "休憩";
         const cardClass = isRest 
             ? "border-2 border-yellow-400 bg-yellow-50 rounded-lg shadow-md p-3 mb-3 flex justify-between items-center transition hover:shadow-lg hover:translate-y-px"
             : "border-2 border-blue-200 bg-white rounded-lg shadow-md p-3 mb-3 flex justify-between items-center transition hover:shadow-lg hover:translate-y-px";
@@ -79,38 +154,63 @@ function updateStatusDisplay(users) {
 
         const div = document.createElement("div");
         div.className = cardClass;
+        div.id = `status-card-${userId}`;
         // host.jsでのクリック判定用にデータ属性を付与
-        div.dataset.userId = user.id; 
-        div.dataset.userName = user.userName; 
-        
-        // クリック可能であることを示すカーソル
+        div.dataset.userId = userId; 
+        div.dataset.userName = userName; 
         div.style.cursor = "pointer";
+
+        // 時間計算
+        const startTime = data.startTime ? data.startTime.toDate() : new Date();
+        // 初期表示
+        const updateTime = () => {
+            const now = new Date();
+            const elapsed = Math.floor((now - startTime) / 1000);
+            const timeEl = div.querySelector(".duration-display");
+            if(timeEl) timeEl.textContent = `⏱ ${formatDuration(elapsed)}`;
+        };
+
+        const taskDisplayKey = data.currentGoalTitle
+            ? `${data.currentTask} (${data.currentGoalTitle})`
+            : data.currentTask || "未定義の業務";
+        
+        let displayKeyClean = taskDisplayKey;
+        if (displayKeyClean.startsWith("その他_")) {
+           displayKeyClean = displayKeyClean.substring(4); 
+        }
+
+        const wordOfTheDay = data.wordOfTheDay ? escapeHtml(data.wordOfTheDay) : "";
 
         div.innerHTML = `
             <div class="flex flex-col flex-grow overflow-hidden">
                 <div class="flex items-center mb-1">
-                    <span class="font-bold text-lg text-gray-800 truncate">${escapeHtml(user.userName)}</span>
-                    <span class="${taskBadgeClass} whitespace-nowrap">${escapeHtml(user.currentTask)}</span>
+                    <span class="font-bold text-lg text-gray-800 truncate">${escapeHtml(userName)}</span>
+                    <span class="${taskBadgeClass} whitespace-nowrap">${escapeHtml(displayKeyClean)}</span>
                 </div>
                 <div class="text-sm text-gray-600 flex items-center gap-2 flex-wrap">
-                    <span class="font-mono bg-gray-100 px-2 rounded border border-gray-200">⏱ ${durationStr}</span>
-                    <span class="text-xs text-gray-500 truncate">${user.currentGoalTitle ? `(${escapeHtml(user.currentGoalTitle)})` : ""}</span>
+                    <span class="duration-display font-mono bg-gray-100 px-2 rounded border border-gray-200">計算中...</span>
+                    ${wordOfTheDay ? `<span class="text-xs text-gray-600 bg-yellow-50 p-1 rounded border border-yellow-100 inline-block max-w-full break-words">💬 ${wordOfTheDay}</span>` : ''}
                 </div>
             </div>
             <button class="force-stop-btn ml-3 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-3 rounded text-xs shadow whitespace-nowrap z-10" 
-                    data-user-id="${user.id}" data-user-name="${escapeHtml(user.userName)}">
+                    data-user-id="${userId}" data-user-name="${escapeHtml(userName)}">
                 停止
             </button>
         `;
+
+        // タイマー更新開始
+        updateTime();
+        const intervalId = setInterval(updateTime, 1000);
+        hostViewIntervals.push(intervalId);
 
         // 停止ボタンのイベント（カード自体のクリックイベントと干渉しないようにstopPropagationを入れる）
         const stopBtn = div.querySelector(".force-stop-btn");
         stopBtn.addEventListener("click", (e) => {
             e.stopPropagation(); 
-            forceStopUser(user.id, user.userName);
+            forceStopUser(userId, userName);
         });
 
-        container.appendChild(div);
+        statusListContainer.appendChild(div);
     });
 }
 
