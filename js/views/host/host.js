@@ -17,54 +17,7 @@ const userListContainer = document.getElementById("summary-list");
 const helpButton = document.querySelector('#host-view .help-btn');
 const tomuraStatusRadios = document.querySelectorAll('input[name="tomura-status"]');
 
-/**
- * ★レイアウト崩れを強制修正する関数
- * 左カラム（リスト）が長すぎる場合にスクロール化し、左右を横並び（Flex/Grid）にします。
- */
-function enforceTwoColumnLayout() {
-    const listElement = document.getElementById("summary-list");
-    // 右側のコンテナを特定（ステータスラジオボタンが含まれているカードの親を探す）
-    const rightElementMarker = document.querySelector('#host-view input[name="tomura-status"]');
-    
-    if (!listElement || !rightElementMarker) return;
-
-    // 左カラムのカード（白い枠）を特定
-    const leftCard = listElement.closest('.bg-white') || listElement.parentElement;
-    // 右カラムのカード（白い枠）を特定
-    const rightCard = rightElementMarker.closest('.bg-white');
-    
-    if (leftCard && rightCard) {
-        // 左カラムと右カラムの共通の親要素（メインコンテナ）を取得
-        const mainContainer = leftCard.parentElement;
-
-        if (mainContainer) {
-            // メインコンテナを横並び（Flex）にする
-            mainContainer.classList.remove('flex-col'); // 縦並びクラスがあれば除去
-            mainContainer.classList.add('flex', 'flex-row', 'gap-6', 'items-start', 'w-full');
-
-            // 左カラムの幅を固定（約35%）し、高さを制限してスクロール可能にする
-            if (leftCard.parentElement !== mainContainer) {
-                 // 親ラッパーがある場合
-                 leftCard.parentElement.classList.add('w-1/3', 'min-w-[350px]'); 
-            } else {
-                 leftCard.classList.add('w-1/3', 'min-w-[350px]');
-            }
-            leftCard.classList.add('w-full'); 
-            
-            // ★重要: リストが無限に伸びないように高さを制限
-            listElement.classList.add('max-h-[80vh]', 'overflow-y-auto', 'pr-2');
-            
-            // 右カラムの幅を残りの領域に広げる
-            if(rightCard.parentElement === mainContainer) {
-                rightCard.classList.add('flex-1'); // 右カラムが直接の子要素の場合
-            } else {
-                rightCard.parentElement.classList.add('flex-1', 'w-full'); // 右カラムがラッパーに入っている場合
-            }
-        }
-    }
-}
-
-// ★追加: 勤務場所選択UIを注入する関数
+// ★復元: 勤務場所選択UI（出社/リモート）を注入する関数
 function injectTomuraLocationUI() {
     if (document.getElementById("tomura-location-container")) return;
 
@@ -101,19 +54,28 @@ function injectTomuraLocationUI() {
     }
 }
 
-// 承認ボタンの注入
+// ご指定の承認ボタンUI注入関数
 function injectApprovalButton() {
+    // すでに作成済みなら何もしない
     if (document.getElementById("view-approval-container")) return;
+
+    // 基準となる「レポート表示」ボタンを探す
     const referenceBtn = document.getElementById("view-report-btn");
     
     if (referenceBtn) {
+        // ボタンが並んでいるコンテナ（親要素）を取得
         const buttonGroup = referenceBtn.parentElement;
+
+        // 新しいボタンを入れるコンテナを作成
         const container = document.createElement("div");
         container.id = "view-approval-container";
+        
         container.className = "mb-6 mt-2 w-full"; 
 
+        // 承認ボタンを作成
         const btn = document.createElement("button");
         btn.id = "view-approval-btn";
+        
         btn.className = "w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center gap-3 transition duration-150 ease-in-out";
         
         btn.innerHTML = `
@@ -123,45 +85,44 @@ function injectApprovalButton() {
         btn.onclick = () => showView(VIEWS.APPROVAL);
 
         container.appendChild(btn);
-        
-        // ボタン群の直後に挿入するとレイアウトがきれいになる
+
+        // ボタン群エリアの「直後（下）」に挿入する
         if (buttonGroup && buttonGroup.parentNode) {
             buttonGroup.parentNode.insertBefore(container, buttonGroup.nextSibling);
         }
 
-        // 未承認件数の監視
+        // 未承認件数の監視（リアルタイム更新）
         const q = query(collection(db, "work_log_requests"), where("status", "==", "pending"));
         onSnapshot(q, (snap) => {
             const badge = document.getElementById("approval-badge");
+            
             if (badge) {
                 if (snap.size > 0) {
                     badge.textContent = `${snap.size}件`;
                     badge.classList.remove("hidden");
-                    btn.classList.add("animate-pulse"); 
+                    btn.classList.add("animate-pulse"); // 未承認があるときは点滅して知らせる
                 } else {
                     badge.classList.add("hidden");
                     btn.classList.remove("animate-pulse");
                 }
             }
         });
+    } else {
+        console.warn("injectApprovalButton: Reference button 'view-report-btn' not found.");
     }
 }
 
 export function initializeHostView() {
     console.log("Initializing Host View...");
     
-    // UIパーツの注入
-    injectTomuraLocationUI(); 
+    // UI注入（復元分と新規分）
+    injectTomuraLocationUI(); // ★復元
     injectApprovalButton();
 
-    // リスナーの開始
+    // リスナー開始
     startListeningForStatusUpdates(); 
     startListeningForUsers();      
     listenForTomuraStatus();
-    
-    // ★レイアウト修正の実行
-    // DOM描画のタイミングを考慮して少し遅延させる
-    setTimeout(enforceTwoColumnLayout, 100);
 }
 
 export function cleanupHostView() {
@@ -194,7 +155,7 @@ export function setupHostEventListeners() {
     console.log("Host View event listeners set up complete.");
 }
 
-// 声掛けステータスの変更ハンドラ
+// ステータス変更ハンドラ
 async function handleTomuraStatusChange(event) {
     const newStatus = event.target.value;
     const statusRef = doc(db, "settings", "tomura_status");
@@ -209,7 +170,7 @@ async function handleTomuraStatusChange(event) {
     }
 }
 
-// 勤務場所の変更ハンドラ
+// ★復元: 勤務場所変更ハンドラ
 async function handleTomuraLocationChange(event) {
     const newLocation = event.target.value;
     const statusRef = doc(db, "settings", "tomura_status");
@@ -228,31 +189,31 @@ function listenForTomuraStatus() {
     const statusRef = doc(db, "settings", "tomura_status");
     const todayStr = new Date().toISOString().split("T")[0];
     const defaultStatus = "声掛けNG"; 
-    const defaultLocation = "出社"; 
+    const defaultLocation = "出社"; // ★復元: デフォルト値
 
     onSnapshot(statusRef, async (docSnap) => {
         let statusToSet = defaultStatus;
-        let locationToSet = defaultLocation;
+        let locationToSet = defaultLocation; // ★復元
 
         if (docSnap.exists() && docSnap.data().date === todayStr) {
             statusToSet = docSnap.data().status || defaultStatus;
-            locationToSet = docSnap.data().location || defaultLocation;
+            locationToSet = docSnap.data().location || defaultLocation; // ★復元
         } else {
              // 日付が変わっている等の場合はリセット
              if (!docSnap.exists() || docSnap.data().date !== todayStr) {
                 setDoc(statusRef, { 
                     status: defaultStatus, 
-                    location: defaultLocation,
+                    location: defaultLocation, // ★復元
                     date: todayStr 
                 }, { merge: true }).catch(console.error);
              }
         }
 
-        // ラジオボタンの状態更新
-        const statusRadio = document.querySelector(`input[name="tomura-status"][value="${statusToSet}"]`);
-        if (statusRadio) statusRadio.checked = true;
+        // ステータスのラジオボタン反映
+        const currentRadio = document.querySelector(`input[name="tomura-status"][value="${statusToSet}"]`);
+        if (currentRadio) currentRadio.checked = true;
 
-        // 場所ラジオボタンの状態更新
+        // ★復元: 場所のラジオボタン反映
         const locationRadio = document.querySelector(`input[name="tomura-location"][value="${locationToSet}"]`);
         if (locationRadio) locationRadio.checked = true;
 
