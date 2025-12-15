@@ -33,8 +33,6 @@ function injectTomuraLocationUI() {
         if (radioGroupParent) {
             const wrapper = document.createElement("div");
             wrapper.id = "tomura-location-container";
-            // デザイン調整: 下線(border-b)を入れて区切りを見やすくし、マージンを設定
-            wrapper.className = "mb-3 border-b border-gray-200 pb-3"; 
             
             wrapper.innerHTML = `
                 <label class="block text-gray-700 text-sm font-bold mb-2">勤務場所</label>
