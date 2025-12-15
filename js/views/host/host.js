@@ -17,32 +17,58 @@ const userListContainer = document.getElementById("summary-list");
 const helpButton = document.querySelector('#host-view .help-btn');
 const tomuraStatusRadios = document.querySelectorAll('input[name="tomura-status"]');
 
-// ★追加: 承認画面ボタンの挿入とバッジ監視
+// ★修正: 管理者ボタン群の「下」に承認ボタンを配置する関数
 function injectApprovalButton() {
-    const container = document.querySelector("#host-view .flex.flex-wrap.gap-2.mb-6");
-    if (!container || document.getElementById("view-approval-btn")) return;
+    const hostView = document.getElementById("host-view");
+    if (!hostView) return;
 
-    const btn = document.createElement("button");
-    btn.id = "view-approval-btn";
-    btn.className = "bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded shadow relative";
-    btn.innerHTML = `
-        業務時間追加変更承認
-        <span id="approval-badge" class="absolute top-0 right-0 -mt-1 -mr-1 px-2 py-1 bg-red-600 text-white text-xs font-bold rounded-full hidden">0</span>
-    `;
-    btn.onclick = () => showView(VIEWS.APPROVAL);
-    container.insertBefore(btn, viewReportButton); // レポートボタンの前に追加
+    // 既に作成済みの場合は重複しないように終了
+    if (document.getElementById("view-approval-container")) return;
 
-    // 未承認件数の監視
-    const q = query(collection(db, "work_log_requests"), where("status", "==", "pending"));
-    onSnapshot(q, (snap) => {
-        const badge = document.getElementById("approval-badge");
-        if (snap.size > 0) {
-            badge.textContent = snap.size;
-            badge.classList.remove("hidden");
-        } else {
-            badge.classList.add("hidden");
-        }
-    });
+    // 既存の管理者ボタン群（Excel出力などが並んでいるエリア）を探す
+    // index.htmlの構造に依存しますが、通常はクラス名で特定します
+    const buttonGroup = hostView.querySelector(".flex.flex-wrap.gap-2.mb-6");
+
+    if (buttonGroup) {
+        // 新しいコンテナを作成
+        const container = document.createElement("div");
+        container.id = "view-approval-container";
+        container.className = "mb-8 pb-4 border-b border-gray-300"; // 下に余白と区切り線を追加
+
+        // ボタンを作成
+        const btn = document.createElement("button");
+        btn.id = "view-approval-btn";
+        // 目立つデザインにする
+        btn.className = "w-full sm:w-auto bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 px-6 rounded-lg shadow-md flex items-center justify-center gap-3 transition duration-150 ease-in-out";
+        btn.innerHTML = `
+            <span class="text-lg">📩 業務時間申請を確認・承認する</span>
+            <span id="approval-badge" class="bg-white text-orange-600 text-xs font-bold px-3 py-1 rounded-full hidden border border-orange-600">0</span>
+        `;
+        btn.onclick = () => showView(VIEWS.APPROVAL);
+
+        container.appendChild(btn);
+
+        // ボタン群の「直後（下）」に挿入する
+        buttonGroup.parentNode.insertBefore(container, buttonGroup.nextSibling);
+
+        // 未承認件数の監視（リアルタイム更新）
+        const q = query(collection(db, "work_log_requests"), where("status", "==", "pending"));
+        onSnapshot(q, (snap) => {
+            const badge = document.getElementById("approval-badge");
+            const btnText = btn.querySelector("span:first-child");
+            
+            if (badge) {
+                if (snap.size > 0) {
+                    badge.textContent = `${snap.size}件`;
+                    badge.classList.remove("hidden");
+                    btn.classList.add("animate-pulse"); // 未承認があるときは少し目立たせる
+                } else {
+                    badge.classList.add("hidden");
+                    btn.classList.remove("animate-pulse");
+                }
+            }
+        });
+    }
 }
 
 export function initializeHostView() {
@@ -51,7 +77,7 @@ export function initializeHostView() {
     startListeningForUsers();      
     listenForTomuraStatus();
     
-    // ★追加
+    // ボタンを追加
     injectApprovalButton();
 }
 
