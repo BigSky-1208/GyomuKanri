@@ -9,9 +9,8 @@ let unsubscribe = null;
 export function initializeApprovalView() {
     console.log("Initializing Approval View...");
     const container = document.getElementById("approval-view");
-    if (!container) return; // HTMLがない場合（初回など）
+    if (!container) return; 
     
-    // リスナー開始
     const q = query(
         collection(db, "work_log_requests"),
         where("status", "==", "pending"),
@@ -76,7 +75,6 @@ function renderApprovalList(docs) {
             </div>
         `;
         
-        // 承認ボタンイベント
         card.querySelector(".approve-btn").addEventListener("click", () => handleApprove(docSnap));
         listEl.appendChild(card);
     });
@@ -94,7 +92,6 @@ async function handleApprove(reqDoc) {
             // 新規ログ作成
             const newLogRef = doc(collection(db, "work_logs"));
             
-            // 時間計算
             const [sh, sm] = req.data.startTime.split(":");
             const [eh, em] = req.data.endTime.split(":");
             const startD = new Date(req.requestDate);
@@ -144,11 +141,9 @@ async function handleApprove(reqDoc) {
             });
 
             // 目標進捗更新（差分）
-            // 古いゴールから減算
             if (oldLog.goalId && oldLog.contribution > 0) {
                 await updateGoalProgress(oldLog.task, oldLog.goalId, -oldLog.contribution);
             }
-            // 新しいゴールへ加算
             if (req.data.goalId && req.data.count > 0) {
                 await updateGoalProgress(req.data.task, req.data.goalId, req.data.count);
             }
@@ -170,7 +165,6 @@ async function handleApprove(reqDoc) {
 async function updateGoalProgress(taskName, goalId, diff) {
     if (!allTaskObjects) return;
     
-    // メモリ上のデータを更新して即時反映させるためのディープコピー
     const updatedTasks = JSON.parse(JSON.stringify(allTaskObjects));
     
     const taskIdx = updatedTasks.findIndex(t => t.name === taskName);
@@ -181,12 +175,10 @@ async function updateGoalProgress(taskName, goalId, diff) {
 
     updatedTasks[taskIdx].goals[goalIdx].current = Math.max(0, (updatedTasks[taskIdx].goals[goalIdx].current || 0) + diff);
 
-    // Firestore保存
     await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js")
         .then(({ updateDoc, doc }) => {
             updateDoc(doc(db, "settings", "tasks"), { list: updatedTasks });
         });
     
-    // グローバル変数更新
     updateGlobalTaskObjects(updatedTasks);
 }
