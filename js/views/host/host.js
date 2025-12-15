@@ -35,7 +35,6 @@ function injectTomuraLocationUI() {
             wrapper.id = "tomura-location-container";
             
             wrapper.innerHTML = `
-                <label class="block text-gray-700 text-sm font-bold mb-2">勤務場所</label>
                 <div class="flex gap-4">
                     <label class="flex items-center cursor-pointer hover:bg-gray-50 p-1 rounded transition">
                         <input type="radio" name="tomura-location" value="出社" class="form-radio h-4 w-4 text-blue-600">
