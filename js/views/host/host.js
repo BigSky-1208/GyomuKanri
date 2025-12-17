@@ -1,9 +1,9 @@
 // js/views/host/host.js
 
 import { db, showView, VIEWS } from "../../main.js"; 
+// ★修正: インポートを整理・統合
 import { doc, setDoc, onSnapshot, collection, query, where, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { openMessageModal } from "../../components/modal.js";
-import { showHelpModal } from "../../components/modal.js"; 
+import { openMessageModal, showHelpModal } from "../../components/modal.js"; 
 import { openExportExcelModal } from "../../excelExport.js"; 
 
 import { startListeningForStatusUpdates, stopListeningForStatusUpdates, forceStopUser } from "./statusDisplay.js";
@@ -265,7 +265,8 @@ function injectMessageFeature() {
     const approvalContainer = document.getElementById("view-approval-container");
     if (approvalContainer && !document.getElementById("open-message-modal-btn")) {
         const msgBtnContainer = document.createElement("div");
-        msgBtnContainer.className = "mb-4 w-full";
+        // ★修正: mb-4 mt-6 で上下の間隔を確保
+        msgBtnContainer.className = "mb-4 mt-8 w-full"; 
         msgBtnContainer.innerHTML = `
             <button id="open-message-modal-btn" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center gap-2 transition duration-150">
                 📢 メッセージを作成・送信する
@@ -281,6 +282,14 @@ function injectMessageFeature() {
 
 // ★追加: モーダルを開く処理（データの準備）
 async function handleOpenMessageModal() {
+    console.log("Opening message modal...");
+
+    // モーダル機能のロード確認
+    if (typeof openMessageModal !== 'function') {
+        alert("エラー: modal.js が正しく読み込まれていません。\njs/components/modal.js の openMessageModal が実装されているか確認してください。");
+        return;
+    }
+
     try {
         // 1. 全ユーザー情報の取得
         const usersSnap = await getDocs(collection(db, "user_profiles"));
@@ -297,7 +306,7 @@ async function handleOpenMessageModal() {
 
     } catch (error) {
         console.error("データ取得エラー:", error);
-        alert("ユーザー情報の取得に失敗しました");
+        alert("ユーザー情報の取得に失敗しました:\n" + error.message);
     }
 }
 
