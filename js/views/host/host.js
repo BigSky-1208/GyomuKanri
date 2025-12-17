@@ -1,11 +1,8 @@
 // js/views/host/host.js
 
 import { db, showView, VIEWS } from "../../main.js"; 
-// ★追加: Firestoreの関数を追加
-import { collection, getDocs, addDoc, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-// ★追加: modal.js から openMessageModal をインポート
+import { doc, setDoc, onSnapshot, collection, query, where, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { openMessageModal } from "../../components/modal.js";
-import { doc, setDoc, onSnapshot, collection, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
 import { showHelpModal } from "../../components/modal.js"; 
 import { openExportExcelModal } from "../../excelExport.js"; 
 
