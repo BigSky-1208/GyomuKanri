@@ -1,7 +1,7 @@
 import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
-import { app, db, auth } from "./firebase.js"; // userIdは削除してもOK（auth.currentUserを使うため）
+import { app, db, auth } from "./firebase.js";
 import { doc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { fcmConfig } from "./config.js";
+import { fcmConfig, firebaseConfig } from "./config.js"; // ★firebaseConfigもインポート
 
 const messaging = getMessaging(app);
 const VAPID_KEY = fcmConfig.vapidKey;
@@ -14,17 +14,17 @@ export async function initMessaging() {
             return;
         }
 
-        // ★追加: Service Worker を { type: 'module' } で明示的に登録する
-        // これがないと sw.js 内での import がエラーになります
         let registration;
         if ('serviceWorker' in navigator) {
-            registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
-                type: 'module' // ここが重要
-            });
-            console.log('Service Worker registered with type: module');
+            // ★変更: ConfigをURLパラメータに変換して渡す
+            const params = new URLSearchParams(firebaseConfig).toString();
+            const swUrl = `/firebase-messaging-sw.js?${params}`;
+
+            // ★変更: type: 'module' を削除（クラシックモードで登録）
+            registration = await navigator.serviceWorker.register(swUrl);
+            console.log('Service Worker registered (Classic Mode)');
         }
 
-        // トークン取得時に、登録した registration を渡す
         const token = await getToken(messaging, { 
             vapidKey: VAPID_KEY,
             serviceWorkerRegistration: registration 
@@ -42,7 +42,6 @@ export async function initMessaging() {
     }
 }
 
-// ... (listenForMessages はそのまま)
 export function listenForMessages() {
     onMessage(messaging, (payload) => {
         console.log('フォアグラウンド通知受信:', payload);
