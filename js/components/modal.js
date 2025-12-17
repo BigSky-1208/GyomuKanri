@@ -1,10 +1,10 @@
-// js/components/modal.js - モーダルダイアログ管理
+// js/components/modal.js 
+// 全文を上書きしてください
 
 import { allTaskObjects, escapeHtml } from "../main.js";
 import { userReservations } from '../views/client/reservations.js';
 
 // --- DOM Element References ---
-// ※ メッセージモーダル関連の要素は動的に追加されるため、ここでは定義せず関数内で取得します
 
 export const confirmationModal = document.getElementById("confirmation-modal");
 export const adminPasswordView = document.getElementById("admin-password-view");
@@ -88,10 +88,9 @@ function showModal(modalElement) {
 }
 
 // --- Message Modal (管理者メッセージ機能) ---
-// ★修正: HTMLが動的に追加されるため、要素の取得を関数内で行う
 
-export function openMessageModal(allUsers, workingUserIds, onSendCallback) {
-    // 1. 要素をここで取得する
+// ★修正: workingData引数を受け取り、タスク選択プルダウンを生成
+export function openMessageModal(allUsers, workingData, onSendCallback) {
     const messageModal = document.getElementById("message-modal");
     if (!messageModal) {
         console.error("Message modal element not found. Make sure injectMessageFeature() runs first.");
@@ -108,34 +107,35 @@ export function openMessageModal(allUsers, workingUserIds, onSendCallback) {
     const messageTargetWorkingInfo = document.getElementById("message-target-working-info");
     const messageTargetIndividualContainer = document.getElementById("message-target-individual-container");
     const messageTargetManualContainer = document.getElementById("message-target-manual-container");
-    
+    // ★追加: 業務選択用プルダウン
+    const messageWorkingTaskSelect = document.getElementById("message-working-task-select");
+    const messageTargetWorkingContainer = messageTargetWorkingInfo.parentElement;
+
     // 入力欄リセット
     messageTitleInput.value = "";
     messageBodyInput.value = "";
     
-    // ターゲット選択の初期化（個人選択をデフォルトに）
+    // ターゲット選択の初期化
     if(messageTargetRadios[0]) messageTargetRadios[0].checked = true;
     
-    // UI表示切り替えヘルパー (内部関数)
+    // UI表示切り替えヘルパー
     const updateTargetUI = (type) => {
         messageTargetIndividualContainer.classList.add("hidden");
-        messageTargetWorkingInfo.parentElement.classList.add("hidden");
+        messageTargetWorkingContainer.classList.add("hidden");
         messageTargetManualContainer.classList.add("hidden");
 
         if (type === "individual") messageTargetIndividualContainer.classList.remove("hidden");
-        else if (type === "working") messageTargetWorkingInfo.parentElement.classList.remove("hidden");
+        else if (type === "working") messageTargetWorkingContainer.classList.remove("hidden");
         else if (type === "manual") messageTargetManualContainer.classList.remove("hidden");
     };
 
     updateTargetUI("individual");
 
-    // リスナー設定: ラジオボタン切り替え
-    // onclickで設定して、前回のリスナーが残らないようにする
     Array.from(messageTargetRadios).forEach(radio => {
         radio.onclick = () => updateTargetUI(radio.value);
     });
 
-    // 1. 個人選択用プルダウンの生成
+    // 1. 個人選択用プルダウン
     messageUserSelect.innerHTML = "";
     allUsers.forEach(user => {
         const option = document.createElement("option");
@@ -144,11 +144,30 @@ export function openMessageModal(allUsers, workingUserIds, onSendCallback) {
         messageUserSelect.appendChild(option);
     });
 
-    // 2. 稼働中情報の表示
-    const workingCount = workingUserIds.length;
-    messageTargetWorkingInfo.textContent = `現在、${workingCount}名の従業員が業務中です。`;
+    // 2. 稼働中情報の表示 & タスク別プルダウン生成
+    const allCount = workingData.all.length;
+    messageTargetWorkingInfo.textContent = `現在、${allCount}名の従業員が業務中です。送信対象とする業務を選択してください。`;
 
-    // 3. 手動選択用チェックボックスリストの生成
+    messageWorkingTaskSelect.innerHTML = "";
+    
+    // 「全員」オプション
+    const allOption = document.createElement("option");
+    allOption.value = "all";
+    allOption.textContent = `全員 (${allCount}名)`;
+    messageWorkingTaskSelect.appendChild(allOption);
+
+    // 各タスクオプション
+    // workingData.byTask のキー（タスク名）でループ
+    const taskNames = Object.keys(workingData.byTask).sort();
+    taskNames.forEach(taskName => {
+        const count = workingData.byTask[taskName].length;
+        const option = document.createElement("option");
+        option.value = taskName;
+        option.textContent = `${taskName} (${count}名)`;
+        messageWorkingTaskSelect.appendChild(option);
+    });
+
+    // 3. 手動選択リスト
     messageManualList.innerHTML = "";
     allUsers.forEach(user => {
         const label = document.createElement("label");
@@ -160,7 +179,7 @@ export function openMessageModal(allUsers, workingUserIds, onSendCallback) {
         messageManualList.appendChild(label);
     });
 
-    // 送信ボタンのハンドラ設定
+    // 送信ボタン
     messageSendBtn.onclick = () => {
         const title = messageTitleInput.value.trim();
         const body = messageBodyInput.value.trim();
@@ -175,7 +194,14 @@ export function openMessageModal(allUsers, workingUserIds, onSendCallback) {
         if (targetType === "individual") {
             targetIds = [messageUserSelect.value];
         } else if (targetType === "working") {
-            targetIds = workingUserIds;
+            // ★修正: 選択されたタスクに応じてターゲットIDを取得
+            const selectedTask = messageWorkingTaskSelect.value;
+            if (selectedTask === "all") {
+                targetIds = workingData.all;
+            } else {
+                // 選択されたタスクのIDリストを使用
+                targetIds = workingData.byTask[selectedTask] || [];
+            }
         } else if (targetType === "manual") {
             const checkboxes = messageManualList.querySelectorAll(".manual-target-checkbox:checked");
             checkboxes.forEach(cb => targetIds.push(cb.value));
@@ -186,12 +212,10 @@ export function openMessageModal(allUsers, workingUserIds, onSendCallback) {
             return;
         }
 
-        // コールバック実行
         onSendCallback(targetIds, title, body);
         closeMessageModal();
     };
 
-    // キャンセルボタン
     messageCancelBtn.onclick = closeMessageModal;
 
     showModal(messageModal);
@@ -203,7 +227,7 @@ export function closeMessageModal() {
 }
 
 
-// --- Confirmation Modal (元のコードを維持) ---
+// --- Confirmation Modal ---
 
 export function showConfirmationModal(message, onConfirm, onCancel = hideConfirmationModal) {
     if (!confirmationModal || !modalMessage || !modalConfirmBtn || !modalCancelBtn) {
@@ -247,7 +271,7 @@ export function hideConfirmationModal() {
     onConfirmCallback = null;
 }
 
-// --- パスワード入力モーダル (modeSelection.jsで使用) ---
+// --- パスワード入力モーダル ---
 export function showPasswordModal(role, onSuccess) {
     if (!adminPasswordView || !adminPasswordInput) {
         const password = prompt(role === "host" ? "管理者パスワードを入力:" : "業務管理者パスワードを入力:");
@@ -300,7 +324,7 @@ export function showPasswordModal(role, onSuccess) {
     };
 }
 
-// --- 業務編集モーダル (taskSettings.jsで使用) ---
+// --- 業務編集モーダル ---
 export function openTaskModal(task = null) {
     if (!taskModal) return;
 
@@ -396,7 +420,6 @@ export function showHelpModal(pageKey) {
     let title = "ヘルプ";
     let content = "<p>ヘルプコンテンツが見つかりません。</p>";
 
-    // (helpContentsの内容は変更がないため省略しますが、そのまま維持してください)
     const helpContents = {
         client: {
             title: "従業員画面ヘルプ",
@@ -416,15 +439,13 @@ export function showHelpModal(pageKey) {
                     <li><strong>稼働状況:</strong> リアルタイムで誰が何をしているか確認できます。</li>
                 </ul>`
         }
-        // ... (他もそのまま)
+        // 他のヘルプコンテンツも必要であればここに追加
     };
-    // ※ 実際のコードでは元のhelpContentsをそのまま残してください
 
     if (helpContents[pageKey]) {
         title = helpContents[pageKey].title;
         content = helpContents[pageKey].content;
     } else {
-        // フォールバック（元の内容が省略された場合の安全策）
         if (pageKey === 'client') title = "従業員画面ヘルプ";
         else if (pageKey === 'host') title = "管理者画面ヘルプ";
         else if (pageKey === 'taskSettings') title = "業務内容設定ヘルプ";
@@ -492,6 +513,9 @@ export function setupModalEventListeners() {
     const editContributionCancelBtn = document.getElementById('edit-contribution-cancel-btn');
     const fixCheckoutCancelBtn = document.getElementById('fix-checkout-cancel-btn');
     const exportExcelCancelBtn = document.getElementById('cancel-export-excel-btn');
+    const messageCancelBtn = document.getElementById("message-cancel-btn");
+
+    if (messageCancelBtn) messageCancelBtn.addEventListener('click', closeMessageModal);
 
     goalModalCancelBtn?.addEventListener('click', closeGoalModal);
     addUserModalCancelBtn?.addEventListener('click', closeAddUserModal);
