@@ -1,21 +1,25 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getMessaging, onBackgroundMessage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
+// ★ESMのimportではなく、importScriptsを使用
+importScripts("https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging-compat.js");
 
-// ★ここが変更点: 生成済みの config.js をインポートする
-import { firebaseConfig } from './js/config.js';
+// ★URLパラメータから設定値を取り出す
+const params = new URLSearchParams(self.location.search);
+const config = Object.fromEntries(params);
 
-// initializeApp にインポートした config を渡す
-const app = initializeApp(firebaseConfig);
-const messaging = getMessaging(app);
+// Firebase初期化 (compat版なので firebase.initializeApp を使う)
+firebase.initializeApp(config);
 
-// バックグラウンド通知の処理（変更なし）
-onBackgroundMessage(messaging, (payload) => {
+const messaging = firebase.messaging();
+
+// バックグラウンド通知ハンドラ
+messaging.onBackgroundMessage((payload) => {
     console.log('[firebase-messaging-sw.js] Background message: ', payload);
     
+    // 通知の表示
     const notificationTitle = payload.notification.title;
     const notificationOptions = {
         body: payload.notification.body,
-        icon: '/512.pngs32.png', // アイコンファイル名に合わせて修正
+        icon: '/512.pngs32.png',
         badge: '/512.pngs32.png'
     };
 
