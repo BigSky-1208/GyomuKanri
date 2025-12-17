@@ -352,25 +352,52 @@ async function executeSendMessage(targetIds, title, bodyContent) {
         });
         await Promise.all(writePromises);
 
-        // ★WorkerのURLを確認してください
-        const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev/send-message"; 
+        // ★WorkerのURLを確認 (末尾 /send-message)
+        const WORKER_URL = "https://gyomu-timer-worker.bigsky-1208.workers.dev/send-message"; 
         
-        targetIds.forEach(uid => {
-            fetch(WORKER_URL, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    targetUserId: uid,
-                    title: title,
-                    body: bodyContent
-                })
-            }).catch(e => console.error(`通知送信エラー (${uid}):`, e));
+        let errorReport = [];
+        let successTotal = 0;
+
+        const sendPromises = targetIds.map(async (uid) => {
+            try {
+                const response = await fetch(WORKER_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        targetUserId: uid,
+                        title: title,
+                        body: bodyContent
+                    })
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    // エラー詳細があれば追加
+                    const msg = result.error || (result.errors ? result.errors.join(", ") : "不明なエラー");
+                    errorReport.push(`${uid}: ${msg}`);
+                } else {
+                    successTotal += result.sent || 0;
+                    // 一部失敗している場合
+                    if (result.errors && result.errors.length > 0) {
+                        errorReport.push(`${uid}: ${result.errors.join(", ")}`);
+                    }
+                }
+            } catch (e) {
+                errorReport.push(`${uid}: 通信エラー ${e.message}`);
+            }
         });
 
-        alert("メッセージを送信しました！");
+        await Promise.all(sendPromises);
+
+        if (errorReport.length > 0) {
+            alert(`【送信結果】\n成功: ${successTotal}件\n失敗/警告: ${errorReport.length}件\n\n詳細:\n${errorReport.join("\n")}`);
+        } else {
+            alert(`送信完了！\n${successTotal}件の通知を送信しました。`);
+        }
 
     } catch (error) {
         console.error("送信エラー:", error);
-        alert("送信中にエラーが発生しました。");
+        alert("送信処理中にエラーが発生しました。");
     }
 }
