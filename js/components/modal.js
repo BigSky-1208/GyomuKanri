@@ -3,6 +3,19 @@
 import { allTaskObjects, escapeHtml } from "../main.js";
 import { userReservations } from '../views/client/reservations.js';
 
+// ★追加: メッセージ送信モーダル用
+export const messageModal = document.getElementById("message-modal");
+const messageTargetRadios = document.getElementsByName("message-target-type");
+const messageTargetIndividualContainer = document.getElementById("message-target-individual-container");
+const messageTargetManualContainer = document.getElementById("message-target-manual-container");
+const messageTargetWorkingInfo = document.getElementById("message-target-working-info");
+const messageUserSelect = document.getElementById("message-user-select");
+const messageManualList = document.getElementById("message-manual-list");
+const messageTitleInput = document.getElementById("message-title-input");
+const messageBodyInput = document.getElementById("message-body-input");
+const messageSendBtn = document.getElementById("message-send-btn");
+const messageCancelBtn = document.getElementById("message-cancel-btn");
+
 // --- DOM Element References (元のコードの定義を全て維持) ---
 export const confirmationModal = document.getElementById("confirmation-modal");
 export const adminPasswordView = document.getElementById("admin-password-view");
