@@ -1,12 +1,12 @@
 const fs = require('fs');
 
-// --- 診断用ログ出力 (キーの値は見せずに、設定されているかだけ確認) ---
+// --- 診断用ログ出力 ---
 console.log("--- [DEBUG] Environment Variable Check ---");
-console.log("FIREBASE_API_KEY exists:", !!process.env.FIREBASE_API_KEY); // trueならOK, falseなら空
-console.log("OKTA_DOMAIN exists:", !!process.env.OKTA_DOMAIN);
-console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("FIREBASE_API_KEY exists:", !!process.env.FIREBASE_API_KEY);
+console.log("VAPID_KEY exists:", !!process.env.VAPID_KEY); // ★追加: 確認用ログ
 console.log("------------------------------------------");
 
+// ★修正: fcmConfig を追加
 const configContent = `
 export const firebaseConfig = {
     apiKey: "${process.env.FIREBASE_API_KEY || ''}",
@@ -26,10 +26,13 @@ export const oktaConfig = {
 export const groqConfig = {
     apiKey: "${process.env.GROQ_API_KEY || ''}"
 };
+
+export const fcmConfig = {
+    vapidKey: "${process.env.VAPID_KEY || ''}"
+};
 `;
 
-// js/config.js ファイルを生成
-// ディレクトリが存在しない場合の対策も念のため追加
+// ... (以下変更なし)
 if (!fs.existsSync('./js')) {
     fs.mkdirSync('./js');
 }
