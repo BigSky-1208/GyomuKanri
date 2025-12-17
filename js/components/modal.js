@@ -464,6 +464,8 @@ function closeBreakReservationModal() {
 export function setupModalEventListeners() {
     console.log("Setting up modal event listeners...");
 
+    messageCancelBtn?.addEventListener('click', closeMessageModal);
+
     const editLogCancelBtn = document.getElementById('edit-log-cancel-btn');
     const editMemoCancelBtn = document.getElementById('edit-memo-cancel-btn');
     const editContributionCancelBtn = document.getElementById('edit-contribution-cancel-btn');
@@ -492,4 +494,100 @@ export function setupModalEventListeners() {
     });
 
     console.log("Modal event listeners set up complete.");
+}
+
+export function openMessageModal(allUsers, workingUserIds, onSendCallback) {
+    if (!messageModal) return;
+
+    // 入力欄リセット
+    messageTitleInput.value = "";
+    messageBodyInput.value = "";
+    
+    // ターゲット選択の初期化（個人選択をデフォルトに）
+    if(messageTargetRadios[0]) messageTargetRadios[0].checked = true;
+    updateTargetUI("individual");
+
+    // リスナー設定: ラジオボタン切り替え
+    messageTargetRadios.forEach(radio => {
+        radio.onclick = () => updateTargetUI(radio.value);
+    });
+
+    // 1. 個人選択用プルダウンの生成
+    messageUserSelect.innerHTML = "";
+    allUsers.forEach(user => {
+        const option = document.createElement("option");
+        option.value = user.id;
+        option.textContent = user.displayName || user.name || "名称未設定";
+        messageUserSelect.appendChild(option);
+    });
+
+    // 2. 稼働中情報の表示
+    const workingCount = workingUserIds.length;
+    messageTargetWorkingInfo.textContent = `現在、${workingCount}名の従業員が業務中です。`;
+
+    // 3. 手動選択用チェックボックスリストの生成
+    messageManualList.innerHTML = "";
+    allUsers.forEach(user => {
+        const label = document.createElement("label");
+        label.className = "flex items-center p-2 hover:bg-gray-50 border-b border-gray-100 cursor-pointer";
+        label.innerHTML = `
+            <input type="checkbox" value="${user.id}" class="manual-target-checkbox h-4 w-4 text-indigo-600 border-gray-300 rounded mr-2">
+            <span class="text-sm text-gray-700">${user.displayName || user.name || "名称未設定"}</span>
+        `;
+        messageManualList.appendChild(label);
+    });
+
+    // 送信ボタンのハンドラ設定
+    messageSendBtn.onclick = () => {
+        const title = messageTitleInput.value.trim();
+        const body = messageBodyInput.value.trim();
+        if (!title || !body) {
+            alert("タイトルと本文を入力してください。");
+            return;
+        }
+
+        const targetType = Array.from(messageTargetRadios).find(r => r.checked)?.value;
+        let targetIds = [];
+
+        if (targetType === "individual") {
+            targetIds = [messageUserSelect.value];
+        } else if (targetType === "working") {
+            targetIds = workingUserIds;
+        } else if (targetType === "manual") {
+            const checkboxes = messageManualList.querySelectorAll(".manual-target-checkbox:checked");
+            checkboxes.forEach(cb => targetIds.push(cb.value));
+        }
+
+        if (targetIds.length === 0) {
+            alert("送信対象が選択されていません。");
+            return;
+        }
+
+        // コールバック実行
+        onSendCallback(targetIds, title, body);
+        closeMessageModal();
+    };
+
+    showModal(messageModal);
+}
+
+export function closeMessageModal() {
+    closeModal(messageModal);
+}
+
+// UI表示切り替えヘルパー
+function updateTargetUI(type) {
+    // 全て隠す
+    messageTargetIndividualContainer.classList.add("hidden");
+    messageTargetWorkingInfo.parentElement.classList.add("hidden");
+    messageTargetManualContainer.classList.add("hidden");
+
+    // 選択されたものだけ表示
+    if (type === "individual") {
+        messageTargetIndividualContainer.classList.remove("hidden");
+    } else if (type === "working") {
+        messageTargetWorkingInfo.parentElement.classList.remove("hidden");
+    } else if (type === "manual") {
+        messageTargetManualContainer.classList.remove("hidden");
+    }
 }
