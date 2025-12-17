@@ -1,8 +1,8 @@
 // js/views/client/clientUI.js
 
 import { allTaskObjects, userDisplayPreferences, userId, db, escapeHtml } from "../../main.js";
-// ★修正: collection, query, orderBy, limit, getDocs を追加インポート
-import { doc, setDoc, updateDoc, collection, query, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+// ★修正: onSnapshot, where, writeBatch を追加インポート
+import { doc, setDoc, updateDoc, collection, query, orderBy, limit, getDocs, onSnapshot, where, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { getCurrentTask, getCurrentGoalId } from "./timer.js";
 
 // --- DOM Elements ---
@@ -24,7 +24,6 @@ export function setupClientUI() {
     renderTaskOptions();
     renderTaskDisplaySettings();
     setupWordOfTheDayListener();
-    // ★追加: メッセージ履歴ボタンを配置
     injectMessageHistoryButton();
 }
 
@@ -398,9 +397,9 @@ export function injectMessageHistoryButton() {
     headerDiv.className = "flex justify-end mb-4";
     
     headerDiv.innerHTML = `
-        <button id="open-messages-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2 text-sm">
+        <button id="open-messages-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2 text-sm transition-colors duration-300">
             <span>📨 届いたメッセージ</span>
-            <span id="unread-badge" class="hidden bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">New</span>
+            <span id="unread-badge" class="hidden bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full border border-white">New</span>
         </button>
     `;
 
@@ -409,6 +408,43 @@ export function injectMessageHistoryButton() {
 
     // イベントリスナー
     document.getElementById("open-messages-btn").addEventListener("click", showMessageHistoryModal);
+
+    // ★追加: 未読メッセージを監視してボタンを強調する
+    listenForUnreadMessages();
+}
+
+// ★追加: 未読メッセージ監視ロジック
+function listenForUnreadMessages() {
+    if (!userId) return;
+    
+    const q = query(
+        collection(db, "user_profiles", userId, "messages"),
+        where("read", "==", false)
+    );
+
+    // リアルタイムで未読数を監視
+    onSnapshot(q, (snapshot) => {
+        const btn = document.getElementById("open-messages-btn");
+        const badge = document.getElementById("unread-badge");
+        
+        if (!btn || !badge) return;
+
+        const count = snapshot.size;
+        if (count > 0) {
+            // 未読あり: 赤バッジ表示、ボタンをオレンジにして点滅させる
+            badge.textContent = count > 99 ? "99+" : count;
+            badge.classList.remove("hidden");
+            
+            btn.classList.add("animate-pulse", "bg-orange-600", "hover:bg-orange-700");
+            btn.classList.remove("bg-indigo-600", "hover:bg-indigo-700");
+        } else {
+            // 未読なし: バッジ非表示、ボタンを元の青色に戻す
+            badge.classList.add("hidden");
+            
+            btn.classList.remove("animate-pulse", "bg-orange-600", "hover:bg-orange-700");
+            btn.classList.add("bg-indigo-600", "hover:bg-indigo-700");
+        }
+    });
 }
 
 /**
@@ -419,6 +455,9 @@ async function showMessageHistoryModal() {
         alert("ユーザーIDが見つかりません。再ログインしてください。");
         return;
     }
+
+    // ★追加: 開いた瞬間に未読を既読にする
+    markMessagesAsRead();
 
     // モーダルのHTML作成（動的生成）
     const modalHtml = `
@@ -471,11 +510,19 @@ async function showMessageHistoryModal() {
                 const dateObj = data.createdAt ? new Date(data.createdAt) : new Date();
                 const dateStr = dateObj.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
                 
+                // 未読だったものは少し強調する（またはNewバッジをつける）
+                const isUnread = data.read === false;
+                const borderClass = isUnread ? "border-orange-300 bg-orange-50" : "border-gray-200 bg-gray-50";
+                const newBadge = isUnread ? `<span class="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full ml-2">New</span>` : "";
+
                 const item = document.createElement("div");
-                item.className = "bg-gray-50 p-4 rounded-lg border border-gray-200 hover:bg-indigo-50 transition";
+                item.className = `p-4 rounded-lg border ${borderClass} hover:shadow-sm transition`;
                 item.innerHTML = `
                     <div class="flex justify-between items-start mb-2">
-                        <span class="font-bold text-indigo-700 text-sm">${escapeHtml(data.title || '管理者メッセージ')}</span>
+                        <div class="flex items-center">
+                            <span class="font-bold text-indigo-700 text-sm">${escapeHtml(data.title || '管理者メッセージ')}</span>
+                            ${newBadge}
+                        </div>
                         <span class="text-xs text-gray-400">${dateStr}</span>
                     </div>
                     <p class="text-gray-700 text-sm whitespace-pre-wrap leading-relaxed">${escapeHtml(data.body || data.content || '')}</p>
@@ -489,5 +536,30 @@ async function showMessageHistoryModal() {
         if(listContainer) {
             listContainer.innerHTML = '<p class="text-red-500 text-center py-4">履歴の読み込みに失敗しました。<br>ネットワーク接続を確認してください。</p>';
         }
+    }
+}
+
+// ★追加: 未読メッセージを既読にする処理
+async function markMessagesAsRead() {
+    try {
+        const q = query(
+            collection(db, "user_profiles", userId, "messages"),
+            where("read", "==", false)
+        );
+        
+        const snapshot = await getDocs(q);
+        if (snapshot.empty) return;
+
+        const batch = writeBatch(db);
+        snapshot.docs.forEach(doc => {
+            batch.update(doc.ref, { read: true });
+        });
+        
+        await batch.commit();
+        console.log(`${snapshot.size} messages marked as read.`);
+        
+        // 既読にした直後だとonSnapshotが反応してボタンの強調が消えるはず
+    } catch (error) {
+        console.error("Error marking messages as read:", error);
     }
 }
