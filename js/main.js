@@ -3,7 +3,7 @@
 import { db, isFirebaseConfigValid } from './firebase.js';
 import { checkOktaAuthentication, handleOktaLogout } from './okta.js';
 import { doc, onSnapshot, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
+import { initMessaging, listenForMessages } from './fcm.js';
 import { initializeModeSelectionView, setupModeSelectionEventListeners } from './views/modeSelection.js';
 import { initializeTaskSettingsView, setupTaskSettingsEventListeners } from './views/taskSettings.js';
 import { initializeHostView, cleanupHostView, setupHostEventListeners } from './views/host/host.js';
@@ -368,6 +368,16 @@ async function handleAdminLogin() {
     } catch (error) {
         errorEl.textContent = "パスワードの確認中にエラーが発生しました。";
     }
+}
+
+export async function startAppAfterLogin() {
+    console.log("Authentication successful. Starting data sync...");
+    
+    // ★追加: 通知の初期化
+    initMessaging();
+    listenForMessages();
+
+    await listenForTasks();
 }
 
 export { db, escapeHtml, getJSTDateString };
