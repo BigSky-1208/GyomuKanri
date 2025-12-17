@@ -168,8 +168,6 @@ export function updateUIForActiveTask() {
     }
     
     if (changeWarningMessage) changeWarningMessage.classList.add("hidden");
-    // ★追加: 点滅アニメーションも削除する
-    if (startBtn) startBtn.classList.remove("animate-pulse-scale");
 
     const taskSelect = document.getElementById("task-select");
     const goalSelect = document.getElementById("goal-select");
@@ -218,9 +216,7 @@ function resetClientState() {
 }
 
 function setupMidnightTimer() {
-    // ★変更: Workerと競合するため、クライアント側の自動停止は無効化
-    console.log("深夜自動停止はWorkerに任せるため、クライアント側では何もしません"); 
-    /* if (midnightStopTimer) {
+    if (midnightStopTimer) {
         clearTimeout(midnightStopTimer);
         midnightStopTimer = null;
     }
@@ -248,7 +244,6 @@ function setupMidnightTimer() {
             }
         }, timeUntilMidnight);
     }
-    */
 }
 
 function startTimerLoop() {
@@ -532,10 +527,6 @@ async function stopCurrentTaskCore(isLeaving, forcedEndTime = null, taskDataOver
                 memo
             });
             console.log("✅ 保存成功");
-
-            // ★追加: ログ保存が成功したので、一時保存していたメモを削除する
-            localStorage.removeItem("tempTaskMemo");
-
         } catch (e) {
             console.error("❌ Firestore保存エラー:", e);
         }
