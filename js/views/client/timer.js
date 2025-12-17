@@ -16,7 +16,7 @@ let preBreakTask = null;
 let midnightStopTimer = null; 
 let hasContributedToCurrentGoal = false;
 
-// ★追加: 手動操作中かどうかを判定するフラグ（通知抑制用）
+// 手動操作中かどうかを判定するフラグ（通知抑制用）
 let isManualStateChange = false;
 
 // リスナー解除関数
@@ -65,7 +65,7 @@ export async function restoreClientState() {
         const newIsWorking = data ? data.isWorking : false;
         const newTask = (data && data.currentTask !== undefined) ? data.currentTask : null;
 
-        // ★修正: 手動操作中(!isManualStateChange)の場合のみ通知判定を行う
+        // 手動操作中(!isManualStateChange)の場合のみ通知判定を行う
         if (!isManualStateChange && currentTask && startTime) { // 現在稼働中の場合のみチェック
             if (newIsWorking) {
                 // 稼働継続中だが、タスクが「休憩」に変わった場合
@@ -115,10 +115,23 @@ export async function restoreClientState() {
             currentGoalTitle = data.currentGoalTitle || null;
             preBreakTask = data.preBreakTask || null;
             
-            // 初回読み込み時の通知抑制＆カウンター初期化
+            // 初回読み込み時の通知カウンター初期化（★修正箇所：リロード時のズレ補正）
             const elapsed = Math.floor((now - startTime) / 1000);
-            if (lastBreakNotificationTime === 0) lastBreakNotificationTime = elapsed;
-            if (lastEncouragementTime === 0) lastEncouragementTime = elapsed;
+
+            // 1. 休憩通知（30分固定）の補正
+            const breakInterval = 1800; // 30分
+            if (lastBreakNotificationTime === 0) {
+                // 現在の経過時間から「直近の30分ごとのタイミング」を逆算してセット
+                lastBreakNotificationTime = Math.floor(elapsed / breakInterval) * breakInterval;
+            }
+
+            // 2. 継続通知（ユーザー設定）の補正
+            const intervalMinutes = userDisplayPreferences?.notificationIntervalMinutes || 5;
+            const intervalSeconds = intervalMinutes * 60;
+            if (lastEncouragementTime === 0) {
+                // 現在の経過時間から「直近の設定間隔ごとのタイミング」を逆算してセット
+                lastEncouragementTime = Math.floor(elapsed / intervalSeconds) * intervalSeconds;
+            }
 
             updateUIForActiveTask();
             startTimerLoop();
@@ -260,19 +273,40 @@ function startTimerLoop() {
         const elapsed = Math.floor((now - startTime) / 1000);
         if (timerDisplay) timerDisplay.textContent = formatDuration(elapsed);
 
+        // 休憩通知（30分経過）
         if (currentTask === "休憩" && elapsed > 0) {
-            if (elapsed - lastBreakNotificationTime >= 1800) {
+            // ※ここも同様にズレ補正を入れておくと親切です
+            const breakInterval = 1800;
+            if (elapsed - lastBreakNotificationTime >= breakInterval) {
+                const expectedNextBreak = lastBreakNotificationTime + breakInterval;
+                if (elapsed - expectedNextBreak > breakInterval) {
+                    lastBreakNotificationTime = Math.floor(elapsed / breakInterval) * breakInterval;
+                } else {
+                    lastBreakNotificationTime = expectedNextBreak;
+                }
                 triggerBreakNotification(elapsed);
-                lastBreakNotificationTime = elapsed;
             }
         }
 
+        // 継続通知（★修正箇所：スリープ復帰等のズレ補正）
         if (userDisplayPreferences && userDisplayPreferences.notificationIntervalMinutes > 0) {
             const intervalSeconds = userDisplayPreferences.notificationIntervalMinutes * 60;
             if (elapsed > 0) {
                 if (elapsed - lastEncouragementTime >= intervalSeconds) {
+                    // 本来通知すべきだった時間（リズムを維持）
+                    const expectedNextTime = lastEncouragementTime + intervalSeconds;
+                    
+                    // スリープ等で時間が大きく飛んだ場合のガード
+                    // （例: 本来の予定時刻よりさらに間隔1回分以上遅れている場合）
+                    if (elapsed - expectedNextTime > intervalSeconds) {
+                        // 強制的に直近の間隔タイミングに合わせる
+                        lastEncouragementTime = Math.floor(elapsed / intervalSeconds) * intervalSeconds;
+                    } else {
+                        // 多少の遅れなら、リズムを維持するために予定時刻をセット
+                        lastEncouragementTime = expectedNextTime;
+                    }
+
                     triggerEncouragementNotification(elapsed, "breather", currentTask);
-                    lastEncouragementTime = elapsed;
                 }
             }
         }
@@ -427,7 +461,7 @@ async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = nul
     updateUIForActiveTask();
     startTimerLoop();
 
-    // ★修正: 手動操作フラグをON
+    // 手動操作フラグをON
     isManualStateChange = true;
 
     const statusRef = doc(db, "work_status", userId);
@@ -443,7 +477,7 @@ async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = nul
         preBreakTask: preBreakTask || null
     }, { merge: true });
 
-    // ★修正: 少し待ってから手動操作フラグをOFF（通知重複防止のため）
+    // 少し待ってから手動操作フラグをOFF（通知重複防止のため）
     setTimeout(() => { isManualStateChange = false; }, 500);
 
     listenForColleagues(newTask);
@@ -455,7 +489,7 @@ async function stopCurrentTask(isLeaving) {
     await stopCurrentTaskCore(isLeaving);
 
     if (isLeaving) {
-        // ★修正: 手動操作フラグをON
+        // 手動操作フラグをON
         isManualStateChange = true;
 
         // 2. 次にFirestore上のステータスを更新する
@@ -466,7 +500,7 @@ async function stopCurrentTask(isLeaving) {
         // 3. 最後にローカルの状態をリセット（表示をクリア）する
         resetClientState();
 
-        // ★修正: 少し待ってから手動操作フラグをOFF
+        // 少し待ってから手動操作フラグをOFF
         setTimeout(() => { isManualStateChange = false; }, 500);
     }
 }
