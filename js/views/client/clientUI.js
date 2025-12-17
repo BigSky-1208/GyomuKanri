@@ -1,7 +1,8 @@
 // js/views/client/clientUI.js
 
 import { allTaskObjects, userDisplayPreferences, userId, db, escapeHtml } from "../../main.js";
-import { doc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+// ★修正: collection, query, orderBy, limit, getDocs を追加インポート
+import { doc, setDoc, updateDoc, collection, query, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { getCurrentTask, getCurrentGoalId } from "./timer.js";
 
 // --- DOM Elements ---
@@ -23,6 +24,8 @@ export function setupClientUI() {
     renderTaskOptions();
     renderTaskDisplaySettings();
     setupWordOfTheDayListener();
+    // ★追加: メッセージ履歴ボタンを配置
+    injectMessageHistoryButton();
 }
 
 /**
@@ -45,9 +48,6 @@ export function renderTaskOptions() {
         (task) =>
         (taskSelect.innerHTML += `<option value="${escapeHtml(task.name)}">${escapeHtml(task.name)}</option>`)
     );
-
-    // その他タスク（固定）があれば追加、なければリストに含まれているか確認
-    // ここではallTaskObjectsに含まれている前提で処理
 
     taskSelect.value = currentValue;
     updateTaskDisplaysForSelection();
@@ -221,7 +221,6 @@ export function updateTaskDisplaysForSelection() {
              otherTaskContainer.classList.remove("hidden");
              if(otherTaskInput) otherTaskInput.value = selectedTaskName.replace("その他_", "");
         }
-        // ドロップダウン上の表示を合わせる等の処理が必要なら追加
         return;
     }
 
@@ -240,8 +239,6 @@ export function updateTaskDisplaysForSelection() {
     // 工数（ゴール）表示
     const activeGoals = (selectedTask.goals || []).filter((g) => !g.isComplete);
     if (activeGoals.length > 0) {
-        // インデックスではなくIDをvalueとして設定するのが理想だが、timer.jsとの整合性維持のため
-        // 今回は元のロジックに従うか、IDがある場合はIDを使うようにする
         selectedTask.goals.forEach((goal) => {
             if (!goal.isComplete) {
                 const option = document.createElement("option");
@@ -300,7 +297,7 @@ export function checkIfWarningIsNeeded() {
     }
 }
 
-// ★追加: ステータスと場所の両方を受け取って表示
+// ステータスと場所の両方を受け取って表示
 export function updateTomuraStatusDisplay(data) {
     const statusEl = document.getElementById("tomura-status-display");
     if (!statusEl) return;
@@ -368,15 +365,11 @@ export function updateTomuraStatusDisplay(data) {
     statusEl.innerHTML = htmlContent;
 }
 
-// ★追加: 今日の一言リスナー設定
+// 今日の一言リスナー設定
 function setupWordOfTheDayListener() {
     const input = document.getElementById("word-of-the-day-input");
     if (!input || !userId) return;
 
-    // 現在の値をDBから取得して表示（初期化時）
-    // ※ timer.jsなどのrestoreClientStateで取得した値をinputに入れる処理が本来必要だが、
-    // ここでは簡易的に、ユーザーが入力したタイミングで保存する処理のみ実装
-    
     input.addEventListener("change", async (e) => {
         const val = e.target.value.trim();
         const statusRef = doc(db, "work_status", userId);
@@ -386,4 +379,115 @@ function setupWordOfTheDayListener() {
             console.error("Error updating word of the day:", err);
         }
     });
+}
+
+// --- ★追加: メッセージ履歴機能 ---
+
+/**
+ * メッセージ履歴ボタンを画面上部に注入する
+ */
+export function injectMessageHistoryButton() {
+    const container = document.getElementById("client-view");
+    if (!container) return;
+
+    // 重複防止
+    if (document.getElementById("open-messages-btn")) return;
+
+    // ヘッダー的な領域を作成
+    const headerDiv = document.createElement("div");
+    headerDiv.className = "flex justify-end mb-4";
+    
+    headerDiv.innerHTML = `
+        <button id="open-messages-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2 text-sm">
+            <span>📨 届いたメッセージ</span>
+            <span id="unread-badge" class="hidden bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">New</span>
+        </button>
+    `;
+
+    // コンテナの最初の要素の前に挿入（タイトルの上）
+    container.insertBefore(headerDiv, container.firstChild);
+
+    // イベントリスナー
+    document.getElementById("open-messages-btn").addEventListener("click", showMessageHistoryModal);
+}
+
+/**
+ * メッセージ履歴モーダルを表示
+ */
+async function showMessageHistoryModal() {
+    if (!userId) {
+        alert("ユーザーIDが見つかりません。再ログインしてください。");
+        return;
+    }
+
+    // モーダルのHTML作成（動的生成）
+    const modalHtml = `
+        <div class="p-6">
+            <h2 class="text-xl font-bold mb-4 text-gray-800 border-b pb-2">📩 メッセージ履歴</h2>
+            <div id="message-list-content" class="space-y-3 max-h-96 overflow-y-auto custom-scrollbar pr-2">
+                <p class="text-gray-500 text-center py-4">読み込み中...</p>
+            </div>
+            <div class="mt-6 flex justify-end">
+                <button id="close-msg-modal" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded shadow">閉じる</button>
+            </div>
+        </div>
+    `;
+
+    // オーバーレイ作成
+    const modalOverlay = document.createElement("div");
+    modalOverlay.id = "message-history-modal";
+    modalOverlay.className = "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4";
+    modalOverlay.innerHTML = `<div class="bg-white rounded-xl shadow-lg w-full max-w-lg animate-fade-in-up">${modalHtml}</div>`;
+    
+    document.body.appendChild(modalOverlay);
+
+    // 閉じる処理
+    const closeModal = () => {
+        document.body.removeChild(modalOverlay);
+    };
+
+    document.getElementById("close-msg-modal").addEventListener("click", closeModal);
+    modalOverlay.addEventListener("click", (e) => {
+        if (e.target === modalOverlay) closeModal();
+    });
+
+    // データの取得 (user_profiles/{uid}/messages サブコレクションを想定)
+    try {
+        const q = query(
+            collection(db, "user_profiles", userId, "messages"),
+            orderBy("createdAt", "desc"),
+            limit(20)
+        );
+        
+        const snapshot = await getDocs(q);
+        const listContainer = document.getElementById("message-list-content");
+        
+        if (snapshot.empty) {
+            listContainer.innerHTML = '<p class="text-gray-500 text-center py-4">メッセージはありません。</p>';
+        } else {
+            listContainer.innerHTML = "";
+            snapshot.forEach(docSnap => {
+                const data = docSnap.data();
+                const dateObj = data.createdAt ? new Date(data.createdAt) : new Date();
+                const dateStr = dateObj.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                
+                const item = document.createElement("div");
+                item.className = "bg-gray-50 p-4 rounded-lg border border-gray-200 hover:bg-indigo-50 transition";
+                item.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="font-bold text-indigo-700 text-sm">${escapeHtml(data.title || '管理者メッセージ')}</span>
+                        <span class="text-xs text-gray-400">${dateStr}</span>
+                    </div>
+                    <p class="text-gray-700 text-sm whitespace-pre-wrap leading-relaxed">${escapeHtml(data.body || data.content || '')}</p>
+                `;
+                listContainer.appendChild(item);
+            });
+        }
+    } catch (error) {
+        console.error("履歴取得エラー:", error);
+        const listContainer = document.getElementById("message-list-content");
+        if(listContainer) {
+            listContainer.innerHTML = '<p class="text-red-500 text-center py-4">履歴の読み込みに失敗しました。<br>ネットワーク接続を確認してください。</p>';
+        }
+    }
 }
