@@ -60,13 +60,6 @@ export async function initializeClientView() {
     
     // 前の画面のリスナーを停止
     stopColleaguesListener();
-
-    // ★追加: 保存されていた書きかけのメモがあれば復元する
-    const memoInput = document.getElementById("task-memo-input");
-    const savedMemo = localStorage.getItem("tempTaskMemo");
-    if (memoInput && savedMemo) {
-        memoInput.value = savedMemo;
-    }
 }
 
 /**
@@ -162,12 +155,6 @@ export function setupClientEventListeners() {
 
     // Help Button
     helpButton?.addEventListener('click', () => showHelpModal('client'));
-
-    // ★追加: メモ入力時にリアルタイムでlocalStorageに保存する
-    const memoInput = document.getElementById("task-memo-input");
-    memoInput?.addEventListener("input", (e) => {
-        localStorage.setItem("tempTaskMemo", e.target.value);
-    });
 
     console.log("Client View event listeners set up complete.");
 }
