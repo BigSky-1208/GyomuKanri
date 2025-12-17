@@ -353,7 +353,7 @@ async function executeSendMessage(targetIds, title, bodyContent) {
         await Promise.all(writePromises);
 
         // ★WorkerのURLを確認 (末尾 /send-message)
-        const WORKER_URL = "https://gyomu-timer-worker.bigsky-1208.workers.dev/send-message"; 
+        const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev/send-message"; 
         
         let errorReport = [];
         let successTotal = 0;
