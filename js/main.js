@@ -99,11 +99,6 @@ async function initialize() {
     }
 }
 
-export async function startAppAfterLogin() {
-    console.log("Authentication successful. Starting data sync...");
-    await listenForTasks();
-}
-
 function displayInitializationError(message) {
     const container = document.getElementById("app-container");
     const oktaContainer = document.getElementById("okta-signin-widget-container");
