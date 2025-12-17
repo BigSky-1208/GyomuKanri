@@ -6,8 +6,17 @@ import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/fireb
 // timer.js から操作関数をインポート
 import { handleStartClick, handleStopClick, handleBreakClick, restoreClientState as restoreTimerState } from "./timer.js";
 import { listenForUserReservations, handleSaveBreakReservation, handleSetStopReservation, handleCancelStopReservation, deleteReservation } from "./reservations.js";
-// ★修正: updateTomuraStatusDisplay を追加インポート
-import { handleTaskSelectionChange, handleGoalSelectionChange, handleDisplaySettingChange, renderTaskOptions, renderTaskDisplaySettings, updateTomuraStatusDisplay } from "./clientUI.js";
+
+// ★修正: injectMessageHistoryButton を追加インポート
+import { 
+    handleTaskSelectionChange, 
+    handleGoalSelectionChange, 
+    handleDisplaySettingChange, 
+    renderTaskOptions, 
+    renderTaskDisplaySettings, 
+    updateTomuraStatusDisplay,
+    injectMessageHistoryButton 
+} from "./clientUI.js";
 
 // clientActions.js からは handleFixCheckout のみをインポート
 import { handleFixCheckout } from "./clientActions.js";
@@ -55,6 +64,9 @@ export async function initializeClientView() {
     
     renderTaskOptions();
     renderTaskDisplaySettings(); 
+    
+    // ★追加: メッセージボタンを画面に注入
+    injectMessageHistoryButton();
     
     listenForTomuraStatus();
     
@@ -184,7 +196,7 @@ function listenForTomuraStatus() {
             }
         }
         
-        // ★修正: clientUI.js の表示更新関数を使用
+        // 表示更新
         updateTomuraStatusDisplay(statusData);
 
     }, (error) => {
