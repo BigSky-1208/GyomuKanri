@@ -1,4 +1,5 @@
 // js/views/host/host.js
+// 全文を上書きしてください
 
 import { db, showView, VIEWS } from "../../main.js"; 
 import { doc, setDoc, onSnapshot, collection, query, where, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -17,19 +18,16 @@ const userListContainer = document.getElementById("summary-list");
 const helpButton = document.querySelector('#host-view .help-btn');
 const tomuraStatusRadios = document.querySelectorAll('input[name="tomura-status"]');
 
-// ★追加: 既存の「戸村さんステータス」の中に勤務地選択を挿入する関数
+// 既存の「戸村さんステータス」UI注入
 function injectTomuraLocationUI() {
     if (document.getElementById("tomura-location-container")) return;
 
     const statusRadio = document.querySelector('#host-view input[name="tomura-status"]');
-    
     if (statusRadio) {
         const radioGroupParent = statusRadio.parentElement.parentElement; 
-
         if (radioGroupParent) {
             const wrapper = document.createElement("div");
             wrapper.id = "tomura-location-container";
-            
             wrapper.innerHTML = `
                 <div class="flex gap-4">
                     <label class="flex items-center cursor-pointer hover:bg-gray-50 p-1 rounded transition">
@@ -43,19 +41,16 @@ function injectTomuraLocationUI() {
                 </div>
             `;
             radioGroupParent.insertBefore(wrapper, statusRadio.parentElement);
-
             const radios = wrapper.querySelectorAll('input[name="tomura-location"]');
-            radios.forEach(radio => {
-                radio.addEventListener("change", handleTomuraLocationChange);
-            });
+            radios.forEach(radio => radio.addEventListener("change", handleTomuraLocationChange));
         }
     }
 }
 
+// 承認ボタン注入
 function injectApprovalButton() {
     if (document.getElementById("view-approval-container")) return;
     const referenceBtn = document.getElementById("view-report-btn");
-    
     if (referenceBtn) {
         const buttonGroup = referenceBtn.parentElement;
         const container = document.createElement("div");
@@ -65,7 +60,6 @@ function injectApprovalButton() {
         const btn = document.createElement("button");
         btn.id = "view-approval-btn";
         btn.className = "w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center gap-3 transition duration-150 ease-in-out";
-        
         btn.innerHTML = `
             <span>📩 業務時間申請を確認・承認する</span>
             <span id="approval-badge" class="bg-white text-orange-600 text-xs font-bold px-3 py-1 rounded-full hidden border border-orange-600">0</span>
@@ -91,14 +85,11 @@ function injectApprovalButton() {
                 }
             }
         });
-    } else {
-        console.warn("injectApprovalButton: Reference button 'view-report-btn' not found.");
     }
 }
 
 export function initializeHostView() {
     console.log("Initializing Host View...");
-    
     injectTomuraLocationUI();
     injectApprovalButton();
     injectMessageFeature(); 
@@ -116,7 +107,6 @@ export function cleanupHostView() {
 
 export function setupHostEventListeners() {
     console.log("Setting up Host View event listeners...");
-
     backButton?.addEventListener("click", () => showView(VIEWS.MODE_SELECTION));
     viewProgressButton?.addEventListener("click", () => {
         window.isProgressViewReadOnly = false; 
@@ -126,16 +116,9 @@ export function setupHostEventListeners() {
     exportExcelButton?.addEventListener("click", openExportExcelModal); 
     deleteAllLogsButton?.addEventListener("click", handleDeleteAllLogs); 
 
-    tomuraStatusRadios.forEach((radio) => {
-        radio.addEventListener("change", handleTomuraStatusChange);
-    });
-
-    userListContainer?.addEventListener("click", (event) => {
-        handleUserDetailClick(event.target);
-    });
-
+    tomuraStatusRadios.forEach((radio) => radio.addEventListener("change", handleTomuraStatusChange));
+    userListContainer?.addEventListener("click", (event) => handleUserDetailClick(event.target));
     helpButton?.addEventListener('click', () => showHelpModal('host'));
-    console.log("Host View event listeners set up complete.");
 }
 
 async function handleTomuraStatusChange(event) {
@@ -143,10 +126,7 @@ async function handleTomuraStatusChange(event) {
     const statusRef = doc(db, "settings", "tomura_status");
     const todayStr = new Date().toISOString().split("T")[0]; 
     try {
-        await setDoc(statusRef, {
-            status: newStatus,
-            date: todayStr, 
-        }, { merge: true }); 
+        await setDoc(statusRef, { status: newStatus, date: todayStr }, { merge: true }); 
     } catch (error) {
         console.error("Error updating Tomura status:", error);
     }
@@ -157,10 +137,7 @@ async function handleTomuraLocationChange(event) {
     const statusRef = doc(db, "settings", "tomura_status");
     const todayStr = new Date().toISOString().split("T")[0]; 
     try {
-        await setDoc(statusRef, {
-            location: newLocation,
-            date: todayStr, 
-        }, { merge: true }); 
+        await setDoc(statusRef, { location: newLocation, date: todayStr }, { merge: true }); 
     } catch (error) {
         console.error("Error updating Tomura location:", error);
     }
@@ -182,25 +159,22 @@ function listenForTomuraStatus() {
         } else {
              if (!docSnap.exists() || docSnap.data().date !== todayStr) {
                 setDoc(statusRef, { 
-                    status: defaultStatus, 
-                    location: defaultLocation, 
-                    date: todayStr 
+                    status: defaultStatus, location: defaultLocation, date: todayStr 
                 }, { merge: true }).catch(console.error);
              }
         }
         
         const currentRadio = document.querySelector(`input[name="tomura-status"][value="${statusToSet}"]`);
         if (currentRadio) currentRadio.checked = true;
-
         const locationRadio = document.querySelector(`input[name="tomura-location"][value="${locationToSet}"]`);
         if (locationRadio) locationRadio.checked = true;
-
     }, console.error);
 }
 
-// ★追加: メッセージモーダルと送信ボタンを注入する関数
+// --- メッセージ機能の実装 ---
+
+// ★修正: HTMLテンプレートに「業務選択用プルダウン」を追加
 function injectMessageFeature() {
-    // 1. モーダルHTMLの注入
     if (!document.getElementById("message-modal")) {
         const modalHtml = `
         <div id="message-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
@@ -220,7 +194,8 @@ function injectMessageFeature() {
                     </div>
 
                     <div class="hidden bg-blue-50 p-3 rounded text-blue-800 text-sm mb-2">
-                        <span id="message-target-working-info"></span>
+                        <div class="mb-2"><span id="message-target-working-info"></span></div>
+                        <select id="message-working-task-select" class="w-full p-2 border border-blue-200 rounded bg-white text-gray-700 font-medium"></select>
                     </div>
 
                     <div id="message-target-manual-container" class="hidden border rounded max-h-32 overflow-y-auto p-2 bg-gray-50">
@@ -249,11 +224,9 @@ function injectMessageFeature() {
         document.body.insertAdjacentHTML('beforeend', modalHtml);
     }
 
-    // 2. 送信ボタンの注入 (承認ボタンの上)
     const approvalContainer = document.getElementById("view-approval-container");
     if (approvalContainer && !document.getElementById("open-message-modal-btn")) {
         const msgBtnContainer = document.createElement("div");
-        // ★変更: mt-6 を追加して間隔を広げました
         msgBtnContainer.className = "mb-4 mt-6 w-full"; 
         msgBtnContainer.innerHTML = `
             <button id="open-message-modal-btn" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center gap-2 transition duration-150">
@@ -266,11 +239,10 @@ function injectMessageFeature() {
     }
 }
 
-// ★追加: モーダルを開く処理（データの準備）
+// ★修正: タスクごとにユーザーを集計してモーダルに渡す
 async function handleOpenMessageModal() {
     console.log("メッセージボタンがクリックされました。");
 
-    // モーダル関数が読み込まれているかチェック
     if (typeof openMessageModal !== 'function') {
         alert("エラー: メッセージ機能の読み込みに失敗しました。\n(modal.js に openMessageModal が実装されていない可能性があります)");
         return;
@@ -281,12 +253,37 @@ async function handleOpenMessageModal() {
         const usersSnap = await getDocs(collection(db, "user_profiles"));
         const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // 2. 現在稼働中ユーザーのID取得
+        // 2. 現在稼働中ユーザーの取得とタスク別集計
         const activeLogsSnap = await getDocs(query(collection(db, "work_logs"), where("status", "==", "active")));
-        const workingUserIds = [...new Set(activeLogsSnap.docs.map(d => d.data().userId))];
+        
+        const workingData = {
+            all: [],     // 全員のIDリスト
+            byTask: {}   // タスク名ごとのIDリスト { "業務A": [id1, id2], ... }
+        };
 
-        // 3. モーダルオープン
-        openMessageModal(allUsers, workingUserIds, executeSendMessage);
+        activeLogsSnap.docs.forEach(doc => {
+            const data = doc.data();
+            const uid = data.userId;
+            const taskName = data.taskName || "不明な業務";
+
+            // 全員リストに追加
+            workingData.all.push(uid);
+
+            // タスク別リストに追加
+            if (!workingData.byTask[taskName]) {
+                workingData.byTask[taskName] = [];
+            }
+            workingData.byTask[taskName].push(uid);
+        });
+
+        // IDの重複排除
+        workingData.all = [...new Set(workingData.all)];
+        Object.keys(workingData.byTask).forEach(key => {
+            workingData.byTask[key] = [...new Set(workingData.byTask[key])];
+        });
+
+        // 3. モーダルオープン (workingDataオブジェクトを渡す)
+        openMessageModal(allUsers, workingData, executeSendMessage);
 
     } catch (error) {
         console.error("データ取得エラー:", error);
@@ -294,7 +291,6 @@ async function handleOpenMessageModal() {
     }
 }
 
-// ★追加: 送信実行処理
 async function executeSendMessage(targetIds, title, bodyContent) {
     if (!targetIds || targetIds.length === 0) return;
 
@@ -302,7 +298,6 @@ async function executeSendMessage(targetIds, title, bodyContent) {
     if (!confirm(confirmMsg)) return;
 
     try {
-        // 1. 履歴の保存
         const timestamp = new Date().toISOString();
         const writePromises = targetIds.map(uid => {
             return addDoc(collection(db, "user_profiles", uid, "messages"), {
@@ -315,10 +310,7 @@ async function executeSendMessage(targetIds, title, bodyContent) {
         });
         await Promise.all(writePromises);
 
-        // 2. 通知の送信 (Cloudflare Workers)
-        // ※環境に合わせてURLを変更してください
         const WORKER_URL = "https://gyomu-timer-worker.bigsky-1208.workers.dev/send-message"; 
-        
         targetIds.forEach(uid => {
             fetch(WORKER_URL, {
                 method: "POST",
