@@ -199,9 +199,8 @@ function listenForTomuraStatus() {
 
 // --- メッセージ機能の実装 ---
 
-// ★修正: 常に新しいHTML構造（業務選択プルダウン付き）を確実に適用する
 function injectMessageFeature() {
-    // 古いモーダルがあれば削除して作り直す（これでHTML構造の更新を確実に反映）
+    // 古いモーダルがあれば削除して作り直す
     const existingModal = document.getElementById("message-modal");
     if (existingModal) {
         existingModal.remove();
@@ -271,7 +270,7 @@ function injectMessageFeature() {
     }
 }
 
-// ★修正: 稼働データをタスクごとに集計してモーダルに渡す
+// ★修正: ダッシュボードと同じデータ元（work_status）から稼働状況を取得する
 async function handleOpenMessageModal() {
     console.log("メッセージボタンがクリックされました。");
 
@@ -286,27 +285,37 @@ async function handleOpenMessageModal() {
         const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
         // 2. 現在稼働中ユーザーのID取得とタスク別集計
-        const activeLogsSnap = await getDocs(query(collection(db, "work_logs"), where("status", "==", "active")));
+        // ★変更点: work_logsではなくwork_statusを参照（ダッシュボードと同じ）
+        const statusSnap = await getDocs(collection(db, "work_status"));
         
-        // データを { "業務A": [uid1, uid2], "業務B": [uid3] } の形に整理
         const workingData = {
             all: [], // 全稼働者ID
             byTask: {} // タスク名ごとのIDリスト
         };
 
-        activeLogsSnap.docs.forEach(doc => {
+        statusSnap.forEach(doc => {
             const data = doc.data();
-            const uid = data.userId;
-            const taskName = data.taskName || "不明な業務"; // タスク名
+            
+            // isWorkingがtrueの人だけ抽出
+            if (data.isWorking) {
+                const uid = doc.id; // ドキュメントIDがユーザーID
+                let taskName = data.currentTask || "不明な業務"; 
 
-            // 全体リストに追加
-            workingData.all.push(uid);
+                // 「その他_XXX」の場合、XXXだけを表示用にするか、そのままにするか
+                // ここでは分かりやすく「その他」プレフィックスを削除
+                if (taskName.startsWith("その他_")) {
+                    taskName = taskName.replace("その他_", "");
+                }
 
-            // タスク別リストに追加
-            if (!workingData.byTask[taskName]) {
-                workingData.byTask[taskName] = [];
+                // 全体リストに追加
+                workingData.all.push(uid);
+
+                // タスク別リストに追加
+                if (!workingData.byTask[taskName]) {
+                    workingData.byTask[taskName] = [];
+                }
+                workingData.byTask[taskName].push(uid);
             }
-            workingData.byTask[taskName].push(uid);
         });
 
         // 重複排除
@@ -315,7 +324,7 @@ async function handleOpenMessageModal() {
             workingData.byTask[key] = [...new Set(workingData.byTask[key])];
         });
 
-        // 3. モーダルオープン (workingDataを渡す)
+        // 3. モーダルオープン
         openMessageModal(allUsers, workingData, executeSendMessage);
 
     } catch (error) {
@@ -331,7 +340,6 @@ async function executeSendMessage(targetIds, title, bodyContent) {
     if (!confirm(confirmMsg)) return;
 
     try {
-        // 1. 履歴の保存
         const timestamp = new Date().toISOString();
         const writePromises = targetIds.map(uid => {
             return addDoc(collection(db, "user_profiles", uid, "messages"), {
@@ -344,8 +352,7 @@ async function executeSendMessage(targetIds, title, bodyContent) {
         });
         await Promise.all(writePromises);
 
-        // 2. 通知の送信 (Cloudflare Workers)
-        // ★ご自身の環境のURLになっているか確認してください
+        // ★WorkerのURLを確認してください
         const WORKER_URL = "https://gyomu-timer-worker.bigsky-1208.workers.dev/send-message"; 
         
         targetIds.forEach(uid => {
