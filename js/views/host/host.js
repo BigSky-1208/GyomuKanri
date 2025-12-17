@@ -1,7 +1,6 @@
 // js/views/host/host.js
 
 import { db, showView, VIEWS } from "../../main.js"; 
-// ★修正: インポートを整理・統合
 import { doc, setDoc, onSnapshot, collection, query, where, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { openMessageModal, showHelpModal } from "../../components/modal.js"; 
 import { openExportExcelModal } from "../../excelExport.js"; 
@@ -20,15 +19,11 @@ const tomuraStatusRadios = document.querySelectorAll('input[name="tomura-status"
 
 // ★追加: 既存の「戸村さんステータス」の中に勤務地選択を挿入する関数
 function injectTomuraLocationUI() {
-    // 重複作成防止
     if (document.getElementById("tomura-location-container")) return;
 
-    // 既存のステータスラジオボタンの一つを探す
     const statusRadio = document.querySelector('#host-view input[name="tomura-status"]');
     
-    // ステータスボタンが見つかれば、その親要素（コンテナ）の中に挿入する
     if (statusRadio) {
-        // ラジオボタンを囲んでいるdiv（親要素）を取得
         const radioGroupParent = statusRadio.parentElement.parentElement; 
 
         if (radioGroupParent) {
@@ -47,11 +42,8 @@ function injectTomuraLocationUI() {
                     </label>
                 </div>
             `;
-
-            // 既存のステータスボタン群の「直前」に挿入（これで同じ枠内に入ります）
             radioGroupParent.insertBefore(wrapper, statusRadio.parentElement);
 
-            // イベントリスナー登録
             const radios = wrapper.querySelectorAll('input[name="tomura-location"]');
             radios.forEach(radio => {
                 radio.addEventListener("change", handleTomuraLocationChange);
@@ -107,10 +99,9 @@ function injectApprovalButton() {
 export function initializeHostView() {
     console.log("Initializing Host View...");
     
-    // ★UI注入（勤務場所を先に追加）
     injectTomuraLocationUI();
     injectApprovalButton();
-    injectMessageFeature(); // ★ここに追加
+    injectMessageFeature(); 
 
     startListeningForStatusUpdates(); 
     startListeningForUsers();      
@@ -161,7 +152,6 @@ async function handleTomuraStatusChange(event) {
     }
 }
 
-// ★追加: 勤務場所変更用ハンドラ
 async function handleTomuraLocationChange(event) {
     const newLocation = event.target.value;
     const statusRef = doc(db, "settings", "tomura_status");
@@ -180,30 +170,28 @@ function listenForTomuraStatus() {
     const statusRef = doc(db, "settings", "tomura_status");
     const todayStr = new Date().toISOString().split("T")[0];
     const defaultStatus = "声掛けNG"; 
-    const defaultLocation = "出社"; // ★追加
+    const defaultLocation = "出社"; 
 
     onSnapshot(statusRef, async (docSnap) => {
         let statusToSet = defaultStatus;
-        let locationToSet = defaultLocation; // ★追加
+        let locationToSet = defaultLocation; 
 
         if (docSnap.exists() && docSnap.data().date === todayStr) {
             statusToSet = docSnap.data().status || defaultStatus;
-            locationToSet = docSnap.data().location || defaultLocation; // ★追加
+            locationToSet = docSnap.data().location || defaultLocation; 
         } else {
              if (!docSnap.exists() || docSnap.data().date !== todayStr) {
                 setDoc(statusRef, { 
                     status: defaultStatus, 
-                    location: defaultLocation, // ★追加
+                    location: defaultLocation, 
                     date: todayStr 
                 }, { merge: true }).catch(console.error);
              }
         }
         
-        // ステータスの反映
         const currentRadio = document.querySelector(`input[name="tomura-status"][value="${statusToSet}"]`);
         if (currentRadio) currentRadio.checked = true;
 
-        // ★追加: 勤務場所の反映
         const locationRadio = document.querySelector(`input[name="tomura-location"][value="${locationToSet}"]`);
         if (locationRadio) locationRadio.checked = true;
 
@@ -212,7 +200,7 @@ function listenForTomuraStatus() {
 
 // ★追加: メッセージモーダルと送信ボタンを注入する関数
 function injectMessageFeature() {
-    // 1. モーダルHTMLの注入 (body直下などに追加)
+    // 1. モーダルHTMLの注入
     if (!document.getElementById("message-modal")) {
         const modalHtml = `
         <div id="message-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
@@ -265,28 +253,26 @@ function injectMessageFeature() {
     const approvalContainer = document.getElementById("view-approval-container");
     if (approvalContainer && !document.getElementById("open-message-modal-btn")) {
         const msgBtnContainer = document.createElement("div");
-        // ★修正: mb-4 mt-6 で上下の間隔を確保
-        msgBtnContainer.className = "mb-4 mt-8 w-full"; 
+        // ★変更: mt-6 を追加して間隔を広げました
+        msgBtnContainer.className = "mb-4 mt-6 w-full"; 
         msgBtnContainer.innerHTML = `
             <button id="open-message-modal-btn" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center gap-2 transition duration-150">
                 📢 メッセージを作成・送信する
             </button>
         `;
-        // 承認ボタンの前に挿入
         approvalContainer.parentNode.insertBefore(msgBtnContainer, approvalContainer);
 
-        // イベントリスナー
         document.getElementById("open-message-modal-btn").addEventListener("click", handleOpenMessageModal);
     }
 }
 
 // ★追加: モーダルを開く処理（データの準備）
 async function handleOpenMessageModal() {
-    console.log("Opening message modal...");
+    console.log("メッセージボタンがクリックされました。");
 
-    // モーダル機能のロード確認
+    // モーダル関数が読み込まれているかチェック
     if (typeof openMessageModal !== 'function') {
-        alert("エラー: modal.js が正しく読み込まれていません。\njs/components/modal.js の openMessageModal が実装されているか確認してください。");
+        alert("エラー: メッセージ機能の読み込みに失敗しました。\n(modal.js に openMessageModal が実装されていない可能性があります)");
         return;
     }
 
@@ -296,9 +282,7 @@ async function handleOpenMessageModal() {
         const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
         // 2. 現在稼働中ユーザーのID取得
-        // "work_logs" コレクションで status == "active" なものを探す
         const activeLogsSnap = await getDocs(query(collection(db, "work_logs"), where("status", "==", "active")));
-        // 重複を除去してIDリスト作成
         const workingUserIds = [...new Set(activeLogsSnap.docs.map(d => d.data().userId))];
 
         // 3. モーダルオープン
@@ -318,8 +302,7 @@ async function executeSendMessage(targetIds, title, bodyContent) {
     if (!confirm(confirmMsg)) return;
 
     try {
-        // 1. 各ユーザーのFirestoreにメッセージ履歴を書き込む
-        // (これにより、クライアント側で「届いたメッセージ」として表示される)
+        // 1. 履歴の保存
         const timestamp = new Date().toISOString();
         const writePromises = targetIds.map(uid => {
             return addDoc(collection(db, "user_profiles", uid, "messages"), {
@@ -332,12 +315,10 @@ async function executeSendMessage(targetIds, title, bodyContent) {
         });
         await Promise.all(writePromises);
 
-        // 2. Cloudflare Workersへ通知リクエスト送信
-        // ※Workers側が単一IDしか受け取れない場合を考慮し、ループで送る（人数が少なければこれで十分）
-        // WorkersのエンドポイントURL (環境に合わせて変更してください)
+        // 2. 通知の送信 (Cloudflare Workers)
+        // ※環境に合わせてURLを変更してください
         const WORKER_URL = "https://gyomu-timer-worker.bigsky-1208.workers.dev/send-message"; 
         
-        // 通知送信は非同期で裏で行う（完了を待たずにUIを開放しても良いが、今回はログ出すため待つ）
         targetIds.forEach(uid => {
             fetch(WORKER_URL, {
                 method: "POST",
