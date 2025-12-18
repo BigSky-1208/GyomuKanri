@@ -13,6 +13,7 @@ import { initializeReportView, cleanupReportView, setupReportEventListeners } fr
 import { initializeProgressView, setupProgressEventListeners } from './views/progress/progress.js';
 import { initializeArchiveView, setupArchiveEventListeners } from './views/archive.js';
 const LAST_VIEW_KEY = "gyomu_timer_last_view";
+import { checkAndRestoreMiniDisplay } from './views/client/miniDisplay.js';
 
 import { initializeApprovalView, cleanupApprovalView } from './views/host/approval.js';
 
@@ -101,19 +102,17 @@ async function initialize() {
             // ① まずFCM等の初期設定を行う
             await startAppAfterLogin();
 
-            // ② ★追加：保存されたビューがあるか確認して復元
+// ★追加：ミニ表示の復元（CLIENTビューの場合のみ、または常に）
             const savedViewJson = localStorage.getItem(LAST_VIEW_KEY);
             if (savedViewJson) {
-                try {
-                    const { name, params } = JSON.parse(savedViewJson);
-                    console.log(`保存されたビューを復元します: ${name}`);
-                    showView(name, params);
-                } catch (e) {
-                    console.error("保存されたビューの解析に失敗しました:", e);
-                    showView(VIEWS.MODE_SELECTION);
+                const { name, params } = JSON.parse(savedViewJson);
+                showView(name, params);
+                
+                // 従業員画面（CLIENT）を使っていた場合、ミニ表示もチェック
+                if (name === VIEWS.CLIENT) {
+                    checkAndRestoreMiniDisplay();
                 }
             } else {
-                // 保存がなければ通常のモード選択へ
                 showView(VIEWS.MODE_SELECTION);
             }
         });
