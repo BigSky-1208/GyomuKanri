@@ -370,7 +370,7 @@ export async function startAppAfterLogin() {
     console.log("FCM初期化を開始します...");
     
     // ★追加: 通知の初期化
-    initMessaging();
+    initMessaging(userId);
     listenForMessages();
 
     await listenForTasks();
