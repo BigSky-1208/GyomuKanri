@@ -193,6 +193,7 @@ async function handleOktaLoginSuccess() {
 export async function handleOktaLogout() {
     // (変更なしのため省略)
     // ...以前のコードのまま...
+    localStorage.removeItem(LAST_VIEW_KEY);
     const widgetContainer = document.getElementById('okta-signin-widget-container');
     const appContainer = document.getElementById('app-container');
 
