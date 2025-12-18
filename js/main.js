@@ -367,6 +367,7 @@ async function handleAdminLogin() {
 
 export async function startAppAfterLogin() {
     console.log("Authentication successful. Starting data sync...");
+    console.log("FCM初期化を開始します...");
     
     // ★追加: 通知の初期化
     initMessaging();
