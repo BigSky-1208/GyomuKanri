@@ -270,39 +270,40 @@ function injectMessageFeature() {
     }
 }
 
-// ★修正: ダッシュボードと同じデータ元（work_status）から稼働状況を取得する
+// js/views/host/host.js 内の handleOpenMessageModal を差し替え
+
 async function handleOpenMessageModal() {
-    console.log("メッセージボタンがクリックされました。");
+    console.log("メッセージモーダルを開きます...");
 
     if (typeof openMessageModal !== 'function') {
-        alert("エラー: メッセージ機能の読み込みに失敗しました。\n(modal.js に openMessageModal が実装されていない可能性があります)");
+        alert("エラー: モーダル機能が読み込めていません。");
         return;
     }
 
     try {
-        // 1. 全ユーザー情報の取得
+        // 1. 全ユーザー情報の取得 (手動選択用)
         const usersSnap = await getDocs(collection(db, "user_profiles"));
-        const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const allUsers = usersSnap.docs.map(d => ({ 
+            id: d.id, 
+            displayName: d.data().displayName || d.data().name || "名称未設定" 
+        })).sort((a, b) => a.displayName.localeCompare(b.displayName, "ja"));
 
-        // 2. 現在稼働中ユーザーのID取得とタスク別集計
-        // ★変更点: work_logsではなくwork_statusを参照（ダッシュボードと同じ）
+        // 2. 現在の稼働状況を取得 (業務中選択用)
         const statusSnap = await getDocs(collection(db, "work_status"));
         
         const workingData = {
-            all: [], // 全稼働者ID
-            byTask: {} // タスク名ごとのIDリスト
+            all: [],     // 全稼働者ID
+            byTask: {}   // 業務名ごとのIDリスト { "業務A": [id1, id2], ... }
         };
 
         statusSnap.forEach(doc => {
             const data = doc.data();
-            
-            // isWorkingがtrueの人だけ抽出
-            if (data.isWorking) {
-                const uid = doc.id; // ドキュメントIDがユーザーID
-                let taskName = data.currentTask || "不明な業務"; 
+            // 休憩中ではなく、稼働フラグが立っている人
+            if (data.isWorking && data.currentTask && data.currentTask !== "休憩") {
+                const uid = doc.id;
+                let taskName = data.currentTask;
 
-                // 「その他_XXX」の場合、XXXだけを表示用にするか、そのままにするか
-                // ここでは分かりやすく「その他」プレフィックスを削除
+                // 「その他_XXX」を「その他」としてまとめる、またはそのまま扱う
                 if (taskName.startsWith("その他_")) {
                     taskName = taskName.replace("その他_", "");
                 }
@@ -310,7 +311,7 @@ async function handleOpenMessageModal() {
                 // 全体リストに追加
                 workingData.all.push(uid);
 
-                // タスク別リストに追加
+                // 業務別リストに追加
                 if (!workingData.byTask[taskName]) {
                     workingData.byTask[taskName] = [];
                 }
@@ -318,18 +319,13 @@ async function handleOpenMessageModal() {
             }
         });
 
-        // 重複排除
-        workingData.all = [...new Set(workingData.all)];
-        Object.keys(workingData.byTask).forEach(key => {
-            workingData.byTask[key] = [...new Set(workingData.byTask[key])];
-        });
-
-        // 3. モーダルオープン
+        // 3. モーダルを開く
+        // openMessageModal(全ユーザーリスト, 稼働状況データ, 送信実行関数)
         openMessageModal(allUsers, workingData, executeSendMessage);
 
     } catch (error) {
         console.error("データ取得エラー:", error);
-        alert("ユーザー情報の取得に失敗しました:\n" + error.message);
+        alert("送信先データの取得に失敗しました。");
     }
 }
 
