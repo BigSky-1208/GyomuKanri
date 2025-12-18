@@ -404,16 +404,33 @@ export async function startAppAfterLogin() {
 }
 
 function setupVisibilityReload() {
+    // 1. ブラウザによって「破棄（休止）」されていたかどうかのフラグを確認
+    // document.wasDiscarded は休止状態から戻った時のみ true になります
+    if (document.wasDiscarded) {
+        console.log("このタブは休止状態から復帰しました。リロードします。");
+        window.location.reload();
+        return;
+    }
+
+    // 2. フォールバック（wasDiscardedが未対応のブラウザや、長時間放置対策）
+    // 最後に操作してから一定時間（例：30分）以上経過してタブに戻った場合のみリロードする
+    let lastActiveTime = Date.now();
+
     document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") {
-            console.log("タブがアクティブになったため、最新状態にリロードします...");
-            // 少しだけ待機してからリロード（ブラウザの休止解除待ち）
-            setTimeout(() => {
+            const idleDuration = Date.now() - lastActiveTime;
+            const THIRTY_MINUTES = 50 * 60 * 1000;
+
+            if (idleDuration > THIRTY_MINUTES) {
+                console.log("長期間非アクティブだったため、最新状態にリロードします...");
                 window.location.reload();
-            }, 500);
+            }
+        } else {
+            // タブを離れた時刻を記録
+            lastActiveTime = Date.now();
         }
     });
 }
-
+    
 export { db, escapeHtml, getJSTDateString };
 document.addEventListener("DOMContentLoaded", initialize);
