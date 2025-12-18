@@ -12,6 +12,7 @@ import { initializePersonalDetailView, cleanupPersonalDetailView, setupPersonalD
 import { initializeReportView, cleanupReportView, setupReportEventListeners } from './views/report.js';
 import { initializeProgressView, setupProgressEventListeners } from './views/progress/progress.js';
 import { initializeArchiveView, setupArchiveEventListeners } from './views/archive.js';
+const LAST_VIEW_KEY = "gyomu_timer_last_view";
 
 import { initializeApprovalView, cleanupApprovalView } from './views/host/approval.js';
 
@@ -80,6 +81,10 @@ function injectApprovalViewHTML() {
 
 async function initialize() {
     console.log("Initializing application...");
+    
+    // ★追加：タブ復帰リロードの監視開始
+    setupVisibilityReload();
+
     const appContainer = document.getElementById('app-container');
 
     if (!isFirebaseConfigValid()) {
@@ -88,17 +93,35 @@ async function initialize() {
     }
     
     injectApprovalViewHTML();
-
     setupGlobalEventListeners();
 
     try {
-        await checkOktaAuthentication(startAppAfterLogin);
+        // Okta認証チェック。認証成功時に startAppAfterLogin を呼ぶように設定
+        await checkOktaAuthentication(async () => {
+            // ① まずFCM等の初期設定を行う
+            await startAppAfterLogin();
+
+            // ② ★追加：保存されたビューがあるか確認して復元
+            const savedViewJson = localStorage.getItem(LAST_VIEW_KEY);
+            if (savedViewJson) {
+                try {
+                    const { name, params } = JSON.parse(savedViewJson);
+                    console.log(`保存されたビューを復元します: ${name}`);
+                    showView(name, params);
+                } catch (e) {
+                    console.error("保存されたビューの解析に失敗しました:", e);
+                    showView(VIEWS.MODE_SELECTION);
+                }
+            } else {
+                // 保存がなければ通常のモード選択へ
+                showView(VIEWS.MODE_SELECTION);
+            }
+        });
     } catch(error) {
         console.error("Okta Authentication Check Failed:", error);
         displayInitializationError("認証処理中にエラーが発生しました。");
     }
 }
-
 function displayInitializationError(message) {
     const container = document.getElementById("app-container");
     const oktaContainer = document.getElementById("okta-signin-widget-container");
@@ -147,6 +170,11 @@ export function showView(viewId, data = {}) {
     const targetViewElement = document.getElementById(viewId);
     const appContainer = document.getElementById('app-container');
 
+    // ★追加：現在のビューを保存（ログイン後の主要な画面のみ）
+if ([VIEWS.CLIENT, VIEWS.HOST, VIEWS.PROGRESS, VIEWS.REPORT, VIEWS.APPROVAL].includes(viewId)) {
+        localStorage.setItem(LAST_VIEW_KEY, JSON.stringify({ name: viewId, params: data }));
+    }
+    
     if (!targetViewElement) {
         if (viewId === VIEWS.OKTA_WIDGET) {
             const oktaContainer = document.getElementById(VIEWS.OKTA_WIDGET);
@@ -374,6 +402,18 @@ export async function startAppAfterLogin() {
     listenForMessages();
 
     await listenForTasks();
+}
+
+function setupVisibilityReload() {
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+            console.log("タブがアクティブになったため、最新状態にリロードします...");
+            // 少しだけ待機してからリロード（ブラウザの休止解除待ち）
+            setTimeout(() => {
+                window.location.reload();
+            }, 500);
+        }
+    });
 }
 
 export { db, escapeHtml, getJSTDateString };
