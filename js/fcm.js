@@ -1,15 +1,8 @@
 // js/fcm.js
 
-import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
-import { app, db, auth } from "./firebase.js";
-import { doc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { fcmConfig, firebaseConfig } from "./config.js";
-
-const messaging = getMessaging(app);
-const VAPID_KEY = fcmConfig.vapidKey;
-
-export async function initMessaging() {
-    console.log("initMessaging 関数が呼ばれました");
+// 引数に passedUserId を追加
+export async function initMessaging(passedUserId) {
+    console.log("initMessaging 関数が呼ばれました。ID:", passedUserId);
 
     try {
         const permission = await Notification.requestPermission();
@@ -30,37 +23,32 @@ export async function initMessaging() {
         if (token) {
             console.log('★FCM Token 取得成功:', token);
 
-            // ★修正: Firebaseの認証状態が確定するのを待つ、または現在のユーザーを確認
-            const saveToken = async (user) => {
-                if (user) {
-                    const userRef = doc(db, "user_profiles", user.uid);
-                    await updateDoc(userRef, {
-                        fcmTokens: arrayUnion(token)
-                    });
-                    console.log("Firestoreにトークンを保存しました:", user.uid);
-                }
+            // 保存用関数
+            const saveTokenToFirestore = async (uid) => {
+                const userRef = doc(db, "user_profiles", uid);
+                await updateDoc(userRef, {
+                    fcmTokens: arrayUnion(token)
+                });
+                console.log("Firestoreにトークンを保存しました:", uid);
             };
 
-            if (auth.currentUser) {
-                // すでにログイン済みなら即保存
-                await saveToken(auth.currentUser);
-            } else {
-                // まだなら、ログイン状態が変わるのを待って保存
+            // 1. まず引数で渡されたIDがあればそれを使う
+            if (passedUserId) {
+                await saveTokenToFirestore(passedUserId);
+            } 
+            // 2. なければ現在の Auth 状態を確認する
+            else if (auth.currentUser) {
+                await saveTokenToFirestore(auth.currentUser.uid);
+            } 
+            // 3. それでもなければ待機する
+            else {
                 console.log("Auth状態の確定を待っています...");
                 auth.onAuthStateChanged(async (user) => {
-                    if (user) await saveToken(user);
+                    if (user) await saveTokenToFirestore(user.uid);
                 });
             }
         }
     } catch (error) {
         console.error('FCM初期化中にエラーが発生しました:', error);
     }
-}
-
-export function listenForMessages() {
-    onMessage(messaging, (payload) => {
-        console.log('フォアグラウンド通知受信:', payload);
-        const { title, body } = payload.notification;
-        new Notification(title, { body });
-    });
 }
