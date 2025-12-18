@@ -273,7 +273,7 @@ function injectMessageFeature() {
 // js/views/host/host.js 内の handleOpenMessageModal を差し替え
 
 async function handleOpenMessageModal() {
-    console.log("メッセージモーダルを開きます...");
+    console.log("メッセージモーダルを起動します...");
 
     if (typeof openMessageModal !== 'function') {
         alert("エラー: モーダル機能が読み込めていません。");
@@ -282,36 +282,37 @@ async function handleOpenMessageModal() {
 
     try {
         // 1. 全ユーザー情報の取得 (手動選択用)
+        // doc.id (英数字のUID) を確実に ID としてセットします
         const usersSnap = await getDocs(collection(db, "user_profiles"));
-        const allUsers = usersSnap.docs.map(d => ({ 
-            id: d.id, 
-            displayName: d.data().displayName || d.data().name || "名称未設定" 
-        })).sort((a, b) => a.displayName.localeCompare(b.displayName, "ja"));
+        const allUsers = usersSnap.docs.map(doc => {
+            const data = doc.id === doc.data().name ? {} : doc.data(); // 安全策
+            return {
+                id: doc.id, // ★ここが 2rsTr... のようなUIDになる
+                displayName: data.displayName || data.name || "名称未設定"
+            };
+        }).sort((a, b) => a.displayName.localeCompare(b.displayName, "ja"));
 
-        // 2. 現在の稼働状況を取得 (業務中選択用)
+        // 2. 現在の稼働状況を取得 (業務別送信用)
         const statusSnap = await getDocs(collection(db, "work_status"));
         
         const workingData = {
             all: [],     // 全稼働者ID
-            byTask: {}   // 業務名ごとのIDリスト { "業務A": [id1, id2], ... }
+            byTask: {}   // 業務名ごとのIDリスト
         };
 
         statusSnap.forEach(doc => {
             const data = doc.data();
-            // 休憩中ではなく、稼働フラグが立っている人
+            // 稼働中かつ休憩中でない
             if (data.isWorking && data.currentTask && data.currentTask !== "休憩") {
-                const uid = doc.id;
+                const uid = doc.id; // ★ドキュメントID = ユーザーUID
                 let taskName = data.currentTask;
 
-                // 「その他_XXX」を「その他」としてまとめる、またはそのまま扱う
                 if (taskName.startsWith("その他_")) {
                     taskName = taskName.replace("その他_", "");
                 }
 
-                // 全体リストに追加
                 workingData.all.push(uid);
 
-                // 業務別リストに追加
                 if (!workingData.byTask[taskName]) {
                     workingData.byTask[taskName] = [];
                 }
@@ -319,8 +320,8 @@ async function handleOpenMessageModal() {
             }
         });
 
-        // 3. モーダルを開く
-        // openMessageModal(全ユーザーリスト, 稼働状況データ, 送信実行関数)
+        // 3. モーダルを表示
+        // ここで渡す allUsers の各要素の 'id' が UID であることが重要です
         openMessageModal(allUsers, workingData, executeSendMessage);
 
     } catch (error) {
