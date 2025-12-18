@@ -331,13 +331,24 @@ async function handleOpenMessageModal() {
 }
 
 async function executeSendMessage(targetIds, title, bodyContent) {
-    if (!targetIds || targetIds.length === 0) return;
+    if (!targetIds || targetIds.length === 0) {
+        console.error("【送信エラー】送信対象のIDリストが空です。");
+        return;
+    }
+
+    // ★ログ1: 送信直前の全IDリストを表示
+    console.log("🚀 メッセージ送信リクエスト:", {
+        送信人数: targetIds.length,
+        対象IDリスト: targetIds,
+        タイトル: title
+    });
 
     const confirmMsg = `${targetIds.length}名にメッセージを送信しますか？`;
     if (!confirm(confirmMsg)) return;
 
     try {
         const timestamp = new Date().toISOString();
+        // 履歴保存処理...
         const writePromises = targetIds.map(uid => {
             return addDoc(collection(db, "user_profiles", uid, "messages"), {
                 title: title,
@@ -349,7 +360,6 @@ async function executeSendMessage(targetIds, title, bodyContent) {
         });
         await Promise.all(writePromises);
 
-        // ★WorkerのURLを確認 (末尾 /send-message)
         const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev/send-message"; 
         
         let errorReport = [];
@@ -357,6 +367,9 @@ async function executeSendMessage(targetIds, title, bodyContent) {
 
         const sendPromises = targetIds.map(async (uid) => {
             try {
+                // ★ログ2: 各ユーザーへの送信開始
+                console.log(`--- [送信中] UID: ${uid} ---`);
+
                 const response = await fetch(WORKER_URL, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -368,19 +381,20 @@ async function executeSendMessage(targetIds, title, bodyContent) {
                 });
 
                 const result = await response.json();
+                
+                // ★ログ3: Workerからの生レスポンスを表示
+                console.log(`--- [Worker応答] UID: ${uid} ---`, result);
 
                 if (!result.success) {
-                    // エラー詳細があれば追加
-                    const msg = result.error || (result.errors ? result.errors.join(", ") : "不明なエラー");
-                    errorReport.push(`${uid}: ${msg}`);
+                    const msg = result.error || "詳細不明のエラー";
+                    // ★追加: Workerが探しに行ったパスやエラー詳細があれば表示
+                    const debugInfo = result.debug ? ` | Debug: ${result.debug}` : "";
+                    errorReport.push(`${uid}: ${msg}${debugInfo}`);
                 } else {
                     successTotal += result.sent || 0;
-                    // 一部失敗している場合
-                    if (result.errors && result.errors.length > 0) {
-                        errorReport.push(`${uid}: ${result.errors.join(", ")}`);
-                    }
                 }
             } catch (e) {
+                console.error(`--- [通信エラー] UID: ${uid} ---`, e);
                 errorReport.push(`${uid}: 通信エラー ${e.message}`);
             }
         });
@@ -388,13 +402,13 @@ async function executeSendMessage(targetIds, title, bodyContent) {
         await Promise.all(sendPromises);
 
         if (errorReport.length > 0) {
-            alert(`【送信結果】\n成功: ${successTotal}件\n失敗/警告: ${errorReport.length}件\n\n詳細:\n${errorReport.join("\n")}`);
+            alert(`【送信結果レポート】\n成功: ${successTotal}件\nエラー: ${errorReport.length}件\n\n詳細はブラウザのコンソール(F12)を確認してください。`);
         } else {
-            alert(`送信完了！\n${successTotal}件の通知を送信しました。`);
+            alert(`送信完了！\n${successTotal}名に通知を送りました。`);
         }
 
     } catch (error) {
-        console.error("送信エラー:", error);
-        alert("送信処理中にエラーが発生しました。");
+        console.error("全体処理エラー:", error);
+        alert("処理中に予期せぬエラーが発生しました。");
     }
 }
