@@ -79,7 +79,7 @@ export function setupTaskSettingsEventListeners() {
     console.log("Task Settings event listeners set up complete.");
 }
 
-function renderTaskEditor() {
+export function renderTaskEditor() {
     if (!taskListEditor || !addTaskForm) {
         console.error("Task editor elements not found.");
         return;
