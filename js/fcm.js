@@ -52,3 +52,17 @@ export async function initMessaging(passedUserId) {
         console.error('FCM初期化中にエラーが発生しました:', error);
     }
 }
+
+// ★修正: 関数の前に export を必ずつけてください
+export function listenForMessages() {
+    onMessage(messaging, (payload) => {
+        console.log('フォアグラウンド通知受信:', payload);
+        const { title, body } = payload.notification;
+        
+        // ブラウザ通知を表示
+        new Notification(title, { 
+            body: body,
+            icon: "/512.png" 
+        });
+    });
+}
