@@ -13,7 +13,6 @@ import { initializeReportView, cleanupReportView, setupReportEventListeners } fr
 import { initializeProgressView, setupProgressEventListeners } from './views/progress/progress.js';
 import { initializeArchiveView, setupArchiveEventListeners } from './views/archive.js';
 const LAST_VIEW_KEY = "gyomu_timer_last_view";
-import { checkAndRestoreMiniDisplay } from './views/client/miniDisplay.js';
 
 import { initializeApprovalView, cleanupApprovalView } from './views/host/approval.js';
 
@@ -110,7 +109,6 @@ async function initialize() {
                 
                 // 従業員画面（CLIENT）を使っていた場合、ミニ表示もチェック
                 if (name === VIEWS.CLIENT) {
-                    checkAndRestoreMiniDisplay();
                 }
             } else {
                 showView(VIEWS.MODE_SELECTION);
