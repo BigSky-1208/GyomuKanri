@@ -3,8 +3,14 @@
 import { showView, VIEWS, db, userName } from "../../main.js";
 import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// timer.js から操作関数をインポート
-import { handleStartClick, handleStopClick, handleBreakClick, restoreClientState as restoreTimerState } from "./timer.js";
+// timer.js から操作関数をインポート (stopStatusListenerを追加)
+import { 
+    handleStartClick, 
+    handleStopClick, 
+    handleBreakClick, 
+    restoreClientState as restoreTimerState,
+    stopStatusListener 
+} from "./timer.js";
 import { listenForUserReservations, handleSaveBreakReservation, handleSetStopReservation, handleCancelStopReservation, deleteReservation } from "./reservations.js";
 
 // ★修正: injectMessageHistoryButton を追加インポート
@@ -55,10 +61,33 @@ const helpButton = document.querySelector('#client-view .help-btn');
 let tomuraStatusUnsubscribe = null;
 
 /**
+ * 【追加】クライアント画面を離れる際、または初期化前のクリーンアップ処理
+ */
+export function cleanupClientView() {
+    console.log("Cleaning up Client View listeners...");
+    
+    // 1. 戸村さんのステータス監視を止める
+    if (tomuraStatusUnsubscribe) {
+        tomuraStatusUnsubscribe();
+        tomuraStatusUnsubscribe = null;
+    }
+    
+    // 2. 同僚の監視を止める
+    stopColleaguesListener();
+    
+    // 3. タイマー関連の監視（ステータス監視やループ）を止める
+    stopStatusListener();
+}
+
+/**
  * クライアント画面の初期化
  */
 export async function initializeClientView() {
     console.log("Initializing Client View...");
+    
+    // ★追加: 以前のリスナーが残っている場合に備えて掃除を行う
+    cleanupClientView();
+
     await restoreTimerState();
     listenForUserReservations();
     
