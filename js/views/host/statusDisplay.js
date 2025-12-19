@@ -1,30 +1,23 @@
 // js/views/host/statusDisplay.js
 
-import { db } from "../../main.js"; 
-// WorkerのURL（実際のURLに合わせて調整してください）
+import { db } from "../../main.js";
+import { updateStatusesCache } from "./userManagement.js"; // キャッシュ更新用関数をインポート
+
+// WorkerのURL
 const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev";
 
 let statusInterval = null;
 
-/**
- * D1から全ユーザーの最新ステータスを取得し、UIを更新する
- */
 export function startListeningForStatusUpdates() {
-    // すでに動いている場合は一度止める（二重起動防止）
     stopListeningForStatusUpdates();
-
     console.log("D1からのステータス監視を開始します（ポーリング方式）");
-
+    
     // 初回実行
     fetchAndRefreshStatus();
-
     // 5秒おきに実行
     statusInterval = setInterval(fetchAndRefreshStatus, 5000);
 }
 
-/**
- * 監視を停止する
- */
 export function stopListeningForStatusUpdates() {
     if (statusInterval) {
         console.log("ステータス監視を停止しました");
@@ -33,9 +26,6 @@ export function stopListeningForStatusUpdates() {
     }
 }
 
-/**
- * Worker APIからデータを取得してUIを書き換える内部関数
- */
 async function fetchAndRefreshStatus() {
     try {
         const response = await fetch(`${WORKER_URL}/get-all-status`);
@@ -43,33 +33,46 @@ async function fetchAndRefreshStatus() {
 
         const statusData = await response.json();
         
-        // UI更新関数を呼び出す（引数はD1から届いた配列データ）
+        // 1. userManagement.js のキャッシュを更新（新規描画時に反映されるように）
+        updateStatusesCache(statusData);
+
+        // 2. 現在表示されているDOM要素を直接更新（ピコピコ動かす）
         updateStatusUI(statusData);
     } catch (error) {
         console.error("D1ステータス同期エラー:", error);
     }
 }
 
-/**
- * 取得したデータに基づいてHTML要素を更新する
- */
 function updateStatusUI(statusArray) {
     statusArray.forEach(userStatus => {
-        // 例: user-card-2rsTr... のようなIDの要素を探して色や文字を変える
-        const userCard = document.getElementById(`user-card-${userStatus.userId}`);
-        if (!userCard) return;
+        // ★修正: userManagement.js で付与したID 'user-row-{userId}' を探す
+        const userRow = document.getElementById(`user-row-${userStatus.userId}`);
+        
+        if (!userRow) return;
 
-        const statusBadge = userCard.querySelector(".status-badge");
-        const taskText = userCard.querySelector(".current-task");
+        const statusBadge = userRow.querySelector(".status-badge");
+        const taskText = userRow.querySelector(".current-task");
 
         if (userStatus.isWorking === 1) {
-            statusBadge.textContent = "稼働中";
-            statusBadge.className = "status-badge bg-green-500 text-white px-2 py-1 rounded-full text-xs";
-            taskText.textContent = userStatus.currentTask || "業務中";
+            // 稼働中
+            if (statusBadge) {
+                statusBadge.textContent = "稼働中";
+                // クラスを上書きして緑色にする
+                statusBadge.className = "status-badge inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800";
+            }
+            if (taskText) {
+                taskText.textContent = userStatus.currentTask || "業務中";
+            }
         } else {
-            statusBadge.textContent = "停止中";
-            statusBadge.className = "status-badge bg-gray-400 text-white px-2 py-1 rounded-full text-xs";
-            taskText.textContent = "---";
+            // 停止中
+            if (statusBadge) {
+                statusBadge.textContent = "未稼働";
+                // クラスを上書きしてグレーにする
+                statusBadge.className = "status-badge inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800";
+            }
+            if (taskText) {
+                taskText.textContent = "---";
+            }
         }
     });
 }
@@ -89,7 +92,6 @@ export async function forceStopUser(userId) {
         const result = await response.json();
         if (result.success) {
             alert("ユーザーを停止しました。");
-            // 即座にUIを更新するために再取得
             fetchAndRefreshStatus();
         }
     } catch (error) {
