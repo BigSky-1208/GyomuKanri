@@ -1,6 +1,7 @@
 // js/okta.js
-// ★修正: startAppAfterLogin のインポートを削除します
-import { db, setUserId, setUserName, setAuthLevel, showView, VIEWS, listenForDisplayPreferences, updateGlobalTaskObjects } from './main.js'; 
+
+// ★修正: インポート名を fetchDisplayPreferences に変更
+import { db, setUserId, setUserName, setAuthLevel, showView, VIEWS, fetchDisplayPreferences, updateGlobalTaskObjects } from './main.js'; 
 import { checkForCheckoutCorrection } from './utils.js'; 
 import { collection, query, where, getDocs, doc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { oktaConfig } from "./config.js";
@@ -15,7 +16,6 @@ const SCOPES = ['openid', 'profile', 'email', 'groups'];
 let oktaAuthClient;
 let signInWidget;
 
-// ★追加: ログイン成功時に実行するコールバック関数を保存する変数
 let onLoginSuccessCallback = null;
 
 function initializeOkta() {
@@ -56,7 +56,6 @@ function initializeOkta() {
     return true;
 }
 
-// ★修正: コールバック関数を受け取るように引数を追加
 export function renderSignInWidget(successCallback) {
     if (successCallback) onLoginSuccessCallback = successCallback;
 
@@ -87,7 +86,6 @@ export function renderSignInWidget(successCallback) {
     });
 }
 
-// ★修正: コールバック関数を受け取るように引数を追加
 export async function checkOktaAuthentication(successCallback) {
     console.log("Checking Okta authentication status...");
     if (successCallback) onLoginSuccessCallback = successCallback;
@@ -107,7 +105,6 @@ export async function checkOktaAuthentication(successCallback) {
         if (isAuthenticated) {
             await handleOktaLoginSuccess();
         } else {
-            // ★引数を渡す
             renderSignInWidget(successCallback);
         }
     } catch (error) {
@@ -169,14 +166,15 @@ async function handleOktaLoginSuccess() {
         await setDoc(statusRef, { userName: appUserName, onlineStatus: true, userId: appUserId }, { merge: true });
 
         await checkForCheckoutCorrection(appUserId);
-        listenForDisplayPreferences();
+        
+        // ★修正: 監視用関数ではなく、取得用関数を呼ぶ
+        await fetchDisplayPreferences();
 
         const widgetContainer = document.getElementById('okta-signin-widget-container');
         const appContainer = document.getElementById('app-container');
         if (widgetContainer) widgetContainer.classList.add('hidden');
         if (appContainer) appContainer.classList.remove('hidden');
 
-        // ★修正: ここで保存しておいたコールバックを実行
         if (onLoginSuccessCallback) {
             console.log("Executing post-login callback...");
             onLoginSuccessCallback();
@@ -191,8 +189,7 @@ async function handleOktaLoginSuccess() {
 }
 
 export async function handleOktaLogout() {
-    // (変更なしのため省略)
-    // ...以前のコードのまま...
+    const LAST_VIEW_KEY = "gyomu_timer_last_view";
     localStorage.removeItem(LAST_VIEW_KEY);
     const widgetContainer = document.getElementById('okta-signin-widget-container');
     const appContainer = document.getElementById('app-container');
@@ -218,7 +215,6 @@ export async function handleOktaLogout() {
         if (appContainer) appContainer.classList.add('hidden');
         if (widgetContainer) widgetContainer.classList.remove('hidden');
         
-        // ★ログアウト時はコールバックなしでウィジェットを表示
         renderSignInWidget(null);
     }
 }
