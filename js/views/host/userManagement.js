@@ -1,7 +1,8 @@
 // js/views/host/userManagement.js
 
 import { db, showView, VIEWS } from "../../main.js";
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, query, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+// ★修正: setDoc をインポートに追加
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, query, getDocs, writeBatch, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { showConfirmationModal, hideConfirmationModal, closeModal } from "../../components/modal.js";
 
 // --- Module State ---
@@ -12,19 +13,16 @@ let currentStatuses = []; // ステータス情報を保持するキャッシュ
 
 /**
  * ステータス情報のキャッシュを更新する (statusDisplay.jsから呼ばれる)
- * これにより、ユーザーリストに「稼働中」などの状態を表示できる
  */
 export function updateStatusesCache(newStatuses) {
     currentStatuses = newStatuses;
-    // リストが表示中であれば再描画したいが、頻繁な更新を避けるため
-    // ここではデータ更新のみ行い、次のonSnapshotや操作時に反映される形、
-    // または必要に応じて再描画ロジックを入れる。
-    // 今回は簡易的に、コンテナがあれば再描画を試みる実装にします。
+    // リストが既に表示されている場合、再描画して最新ステータスを反映
     const container = document.getElementById("summary-list");
     if (container && userListUnsubscribe) {
-        // ※データ(users)を保持していないため、厳密な再描画はFirestoreのキャッシュ再取得が必要。
-        // ここでは複雑さを避けるため、変数の更新のみとし、ユーザー追加/変更のタイミングで反映させます。
-        // もし即時反映が必要なら、usersデータもモジュール変数に保持する必要があります。
+        // 簡易的な再反映: 現在のDOMに対してクラス操作を行う手もあるが、
+        // ここでは安全に statusDisplay.js 側の更新処理に任せるか、
+        // もし即時反映したいならここで renderUserList を呼ぶ方法もある。
+        // 今回は statusDisplay.js が主導でDOMを書き換えるため、ここはキャッシュ更新のみでOK。
     }
 }
 
@@ -33,7 +31,6 @@ export function updateStatusesCache(newStatuses) {
  */
 export function startListeningForUsers() {
     console.log("Starting user list listener...");
-    // host.jsでイベント委譲している対象IDは "summary-list"
     const userListContainer = document.getElementById("summary-list");
     
     if (!userListContainer) {
@@ -65,19 +62,14 @@ export function stopListeningForUsers() {
 }
 
 /**
- * ユーザー詳細画面への遷移処理 (host.jsのイベント委譲から呼ばれる)
+ * ユーザー詳細画面への遷移処理
  */
 export function handleUserDetailClick(target) {
-    // クリックされた要素が .view-detail-link を持っているか、その内側かを確認
-    const link = target.closest(".view-detail-link"); // 名前部分にクラスを付与想定
-    
-    // または、削除ボタンなどの特定アクション以外を行クリックとみなす場合
-    // ここでは .user-detail-trigger クラス（renderUserListで付与）を確認
     const trigger = target.closest(".user-detail-trigger");
 
     if (trigger) {
         const userId = trigger.dataset.id;
-        const userName = trigger.dataset.name; // data-name属性が必要
+        const userName = trigger.dataset.name;
         if (userId) {
             console.log(`Navigating to details for ${userName} (${userId})`);
             showView(VIEWS.PERSONAL_DETAIL, { userId: userId, userName: userName });
@@ -86,11 +78,10 @@ export function handleUserDetailClick(target) {
 }
 
 /**
- * 新規ユーザー追加処理 (モーダルから呼ばれる)
+ * 新規ユーザー追加処理
  */
 export async function handleAddNewUser() {
-    const nameInput = document.getElementById("add-user-modal-name-input"); // IDはadd-user-modalに合わせる
-    // もし古いHTMLのID(new-user-name)を使う場合はそちらもチェック
+    const nameInput = document.getElementById("add-user-modal-name-input");
     const nameInputFallback = document.getElementById("new-user-name");
     
     const input = nameInput || nameInputFallback;
@@ -103,22 +94,17 @@ export async function handleAddNewUser() {
     const name = input.value.trim();
 
     try {
-        // Authenticationとの連携がない簡易版のため、Firestoreにドキュメント追加のみ
-        // IDを指定して作成するか、自動IDか。ここでは要件に合わせて自動IDまたはタイムスタンプID
         const newUserId = "user_" + Date.now();
-        await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js")
-            .then(({ setDoc, doc }) => {
-                 setDoc(doc(db, "user_profiles", newUserId), {
-                    displayName: name,
-                    role: "client", // デフォルト
-                    createdAt: new Date().toISOString()
-                });
-            });
+        // ★修正: 上でインポートした setDoc を使用
+        await setDoc(doc(db, "user_profiles", newUserId), {
+            displayName: name,
+            role: "client",
+            createdAt: new Date().toISOString()
+        });
 
         input.value = "";
         console.log(`User ${name} added.`);
         
-        // モーダルを閉じる
         const modal = document.getElementById("add-user-modal");
         if(modal) closeModal(modal);
 
@@ -131,7 +117,7 @@ export async function handleAddNewUser() {
 }
 
 /**
- * 全ログ削除処理 (管理者アクション)
+ * 全ログ削除処理
  */
 export async function handleDeleteAllLogs() {
     showConfirmationModal(
@@ -140,7 +126,6 @@ export async function handleDeleteAllLogs() {
             hideConfirmationModal();
             try {
                 console.log("Deleting all work logs...");
-                // クライアントサイドでの一括削除（件数が多いと失敗する可能性があるため注意）
                 const q = query(collection(db, "work_logs"));
                 const snapshot = await getDocs(q);
 
@@ -149,12 +134,21 @@ export async function handleDeleteAllLogs() {
                     return;
                 }
 
-                const batch = writeBatch(db);
-                snapshot.docs.forEach((doc) => {
-                    batch.delete(doc.ref);
-                });
+                // FirestoreのBatchは一度に500件までなので分割処理
+                const BATCH_SIZE = 450;
+                const chunks = [];
+                for (let i = 0; i < snapshot.docs.length; i += BATCH_SIZE) {
+                    chunks.push(snapshot.docs.slice(i, i + BATCH_SIZE));
+                }
+
+                for (const chunk of chunks) {
+                    const batch = writeBatch(db);
+                    chunk.forEach((doc) => {
+                        batch.delete(doc.ref);
+                    });
+                    await batch.commit();
+                }
                 
-                await batch.commit();
                 alert("全業務記録を削除しました。");
 
             } catch (error) {
@@ -165,13 +159,11 @@ export async function handleDeleteAllLogs() {
     );
 }
 
-
 // --- Internal Helper Functions ---
 
 function renderUserList(users, container) {
     if (!container) return;
     
-    // 名前順にソート
     users.sort((a, b) => (a.displayName || a.name || "").localeCompare((b.displayName || b.name || ""), "ja"));
 
     let html = `
@@ -181,6 +173,7 @@ function renderUserList(users, container) {
                 <tr>
                     <th class="py-2 px-3 border-b text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">名前</th>
                     <th class="py-2 px-3 border-b text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">状態</th>
+                    <th class="py-2 px-3 border-b text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">現在の業務</th>
                     <th class="py-2 px-3 border-b text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">権限</th>
                     <th class="py-2 px-3 border-b text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">操作</th>
                 </tr>
@@ -189,18 +182,20 @@ function renderUserList(users, container) {
     `;
 
     users.forEach(user => {
-        // プロパティ名のゆらぎ吸収 (displayName or name)
         const userName = user.displayName || user.name || "名称未設定";
         
-        // 現在の稼働ステータスを確認 (updateStatusesCacheで更新された情報を使用)
-        // statusDisplay.jsから渡されるstatusオブジェクトのIDはuserIdと一致している前提
-        const status = currentStatuses.find(s => s.id === user.id);
-        const isWorking = status ? status.isWorking : false;
-        const statusBadge = isWorking ? 
-            `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">稼働中</span>` : 
-            `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">未稼働</span>`;
+        // currentStatusesから情報を探す
+        const status = currentStatuses.find(s => s.userId === user.id); // ※プロパティ名をuserIdに合わせる
+        const isWorking = status ? (status.isWorking === 1) : false;
+        const currentTask = status ? (status.currentTask || "---") : "---";
 
-        // 権限設定
+        // ★重要: statusDisplay.js が探せるようにクラス名を付与
+        const statusBadgeClass = isWorking 
+            ? "status-badge inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"
+            : "status-badge inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800";
+        
+        const statusText = isWorking ? "稼働中" : "未稼働";
+
         const currentRole = user.role || 'client';
         const roleOptions = `
             <select class="role-select text-xs border border-gray-300 rounded p-1 bg-white focus:ring-indigo-500 focus:border-indigo-500" data-id="${user.id}">
@@ -210,13 +205,17 @@ function renderUserList(users, container) {
             </select>
         `;
 
+        // ★重要: TRタグにIDを付与 (user-row-{userId})
         html += `
-            <tr class="hover:bg-gray-50 transition">
+            <tr id="user-row-${user.id}" class="hover:bg-gray-50 transition">
                 <td class="py-2 px-3 text-sm font-medium text-gray-900 whitespace-nowrap cursor-pointer user-detail-trigger" data-id="${user.id}" data-name="${escapeHtml(userName)}">
                     ${escapeHtml(userName)}
                 </td>
                 <td class="py-2 px-3 text-sm">
-                    ${statusBadge}
+                    <span class="${statusBadgeClass}">${statusText}</span>
+                </td>
+                <td class="py-2 px-3 text-sm text-gray-600 current-task">
+                    ${escapeHtml(currentTask)}
                 </td>
                 <td class="py-2 px-3 text-sm">
                     ${roleOptions}
@@ -231,9 +230,7 @@ function renderUserList(users, container) {
     html += `</tbody></table></div>`;
     container.innerHTML = html;
 
-    // イベントリスナー設定 (innerHTML書き換え後のため毎回設定)
-    
-    // 1. 権限変更
+    // イベントリスナー設定
     container.querySelectorAll(".role-select").forEach(select => {
         select.addEventListener("change", async (e) => {
             const userId = e.target.dataset.id;
@@ -248,7 +245,6 @@ function renderUserList(users, container) {
         });
     });
 
-    // 2. 削除ボタン
     container.querySelectorAll(".delete-user-btn").forEach(btn => {
         btn.addEventListener("click", (e) => {
             const userId = e.target.dataset.id;
@@ -281,5 +277,5 @@ function escapeHtml(unsafe) {
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+        .replace(/"/g, "&#039;");
 }
