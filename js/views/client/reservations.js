@@ -90,6 +90,12 @@ export async function handleSaveBreakReservation() {
             })
         });
         await listenForUserReservations();
+
+        // 2. ★追加: 保存が成功したらモーダルを閉じる
+        if (modal) {
+            modal.classList.add("hidden");
+        }
+        
     } catch (error) {
         console.error("保存エラー:", error);
     }
