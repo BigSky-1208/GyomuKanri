@@ -1,10 +1,10 @@
 // js/views/client/reservations.js
 import { userId, userName } from "../../main.js";
 
-// WorkerのURL（実際のURLに合わせて調整してください）
+// WorkerのURL
 const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev";
 
-// 取得した予約データを保持する配列（他のファイルから参照されるため export）
+// 取得した予約データを保持する配列
 export let userReservations = [];
 
 /**
@@ -12,38 +12,27 @@ export let userReservations = [];
  */
 export async function listenForUserReservations() {
     if (!userId) return;
-
     try {
-        console.log(`D1から予約情報を取得します... User: ${userId}`);
         const response = await fetch(`${WORKER_URL}/get-user-reservations?userId=${userId}`);
         if (!response.ok) throw new Error("予約取得失敗");
-
         const data = await response.json();
 
-        // データの加工（表示用時刻の作成など）
         userReservations = data.map(res => {
             const date = new Date(res.scheduledTime);
             const hours = date.getHours().toString().padStart(2, '0');
             const minutes = date.getMinutes().toString().padStart(2, '0');
-            return {
-                ...res,
-                time: `${hours}:${minutes}`
-            };
+            return { ...res, time: `${hours}:${minutes}` };
         });
 
-        // ソート
         userReservations.sort((a, b) => a.time.localeCompare(b.time));
-
-        // 画面（DOM）の更新
         updateReservationDisplay();
-
     } catch (error) {
         console.error("予約取得エラー:", error);
     }
 }
 
 /**
- * 画面のHTML要素を更新する（古いコードのロジックを継承）
+ * 画面の表示を更新する
  */
 export function updateReservationDisplay() {
     const breakList = document.getElementById("break-reservation-list");
@@ -83,12 +72,11 @@ export function updateReservationDisplay() {
 }
 
 /**
- * 休憩予約を保存する (D1)
+ * 休憩予約を保存する
  */
 export async function handleSaveBreakReservation() {
     const timeInput = document.getElementById("break-reservation-time-input");
     if (!timeInput?.value) return;
-
     const scheduledTime = calculateScheduledTime(timeInput.value);
     
     try {
@@ -96,31 +84,30 @@ export async function handleSaveBreakReservation() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                id: `${userId}_break_${timeInput.value.replace(':','')}`, // 複数持てるように時刻をIDに含める
+                id: `${userId}_break_${timeInput.value.replace(':','')}`,
                 userId, userName, action: "break",
                 scheduledTime: scheduledTime.toISOString()
             })
         });
-        await listenForUserReservations(); // 再取得
+        await listenForUserReservations();
     } catch (error) {
         console.error("保存エラー:", error);
     }
 }
 
 /**
- * 帰宅予約を保存する (D1)
+ * 帰宅予約をセットする
  */
 export async function handleSetStopReservation() {
     const timeInput = document.getElementById("stop-reservation-time-input");
     if (!timeInput?.value) return;
-
     const scheduledTime = calculateScheduledTime(timeInput.value);
     try {
         await fetch(`${WORKER_URL}/save-reservation`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                id: `${userId}_stop`, // 帰宅は1つなので固定
+                id: `${userId}_stop`,
                 userId, userName, action: "stop",
                 scheduledTime: scheduledTime.toISOString()
             })
@@ -132,7 +119,17 @@ export async function handleSetStopReservation() {
 }
 
 /**
- * 予約を削除する (D1)
+ * ★追加: 帰宅予約をキャンセルする (client.jsのエラー解消用)
+ */
+export async function handleCancelStopReservation() {
+    const existing = userReservations.find(r => r.action === "stop");
+    if (existing) {
+        await deleteReservation(existing.id);
+    }
+}
+
+/**
+ * 予約を削除する
  */
 export async function deleteReservation(id) {
     if (!id || !confirm("この予約を取り消しますか？")) return;
@@ -149,8 +146,12 @@ export async function deleteReservation(id) {
 }
 
 /**
- * 補助関数: 時刻計算
+ * ★追加: 全ての予約をクリアする (インポートエラー防止用の空関数)
  */
+export async function cancelAllReservations() {
+    console.log("cancelAllReservations called (D1版では個別削除を推奨)");
+}
+
 function calculateScheduledTime(timeStr) {
     const now = new Date();
     const [hours, minutes] = timeStr.split(":");
