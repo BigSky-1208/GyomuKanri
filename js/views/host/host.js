@@ -165,36 +165,26 @@ async function handleTomuraLocationChange(event) {
     }
 }
 
-function listenForTomuraStatus() {
+async function listenForTomuraStatus() {
     const statusRef = doc(db, "settings", "tomura_status");
     const todayStr = new Date().toISOString().split("T")[0];
-    const defaultStatus = "声掛けNG"; 
-    const defaultLocation = "出社"; 
 
-    onSnapshot(statusRef, async (docSnap) => {
-        let statusToSet = defaultStatus;
-        let locationToSet = defaultLocation; 
+    // 1. 監視を始める前に、一度だけチェックして必要なら初期化する
+    const docSnap = await getDoc(statusRef);
+    if (!docSnap.exists() || docSnap.data().date !== todayStr) {
+        await setDoc(statusRef, { 
+            status: "声掛けNG", 
+            location: "出社", 
+            date: todayStr 
+        }, { merge: true });
+    }
 
-        if (docSnap.exists() && docSnap.data().date === todayStr) {
-            statusToSet = docSnap.data().status || defaultStatus;
-            locationToSet = docSnap.data().location || defaultLocation; 
-        } else {
-             if (!docSnap.exists() || docSnap.data().date !== todayStr) {
-                setDoc(statusRef, { 
-                    status: defaultStatus, 
-                    location: defaultLocation, 
-                    date: todayStr 
-                }, { merge: true }).catch(console.error);
-             }
-        }
-        
-        const currentRadio = document.querySelector(`input[name="tomura-status"][value="${statusToSet}"]`);
-        if (currentRadio) currentRadio.checked = true;
-
-        const locationRadio = document.querySelector(`input[name="tomura-location"][value="${locationToSet}"]`);
-        if (locationRadio) locationRadio.checked = true;
-
-    }, console.error);
+    // 2. その後で純粋な「監視のみ」を行う
+    onSnapshot(statusRef, (snapshot) => {
+        // ここでは UI の更新だけを行い、絶対に setDoc/updateDoc を書かない
+        const data = snapshot.data();
+        updateUI(data);
+    });
 }
 
 // --- メッセージ機能の実装 ---
