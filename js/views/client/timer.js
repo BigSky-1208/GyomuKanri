@@ -20,6 +20,13 @@ let hasContributedToCurrentGoal = false;
 const LOCAL_STATUS_KEY = "gyomu_timer_current_status";
 const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev"; // あなたのWorker URL
 
+// --- DOM Elements (ここが抜けていました) ---
+const timerDisplay = document.getElementById("timer-display");
+const currentTaskDisplay = document.getElementById("current-task-display");
+const startBtn = document.getElementById("start-btn");
+const breakBtn = document.getElementById("break-btn");
+const changeWarningMessage = document.getElementById("change-warning-message");
+
 // --- Exported Getters/Setters ---
 export const getCurrentTask = () => currentTask;
 export const getCurrentGoalId = () => currentGoalId;
