@@ -32,10 +32,10 @@ async function fetchAndRefreshStatus() {
 
         const statusData = await response.json();
         
-        // 1. userManagement.js のキャッシュを更新（新規描画時に反映されるように）
+        // 1. userManagement.js のキャッシュを更新
         updateStatusesCache(statusData);
 
-        // 2. 現在表示されている画面（UI）を更新
+        // 2. 画面の更新
         updateStatusUI(statusData);
     } catch (error) {
         console.error("D1ステータス同期エラー:", error);
@@ -47,15 +47,12 @@ function updateStatusUI(statusArray) {
     // ① 下のテーブル（アカウントリスト）の状態更新
     // ----------------------------------------------------
     statusArray.forEach(userStatus => {
-        // userManagement.js で生成された行ID 'user-row-{userId}' を探す
         const userRow = document.getElementById(`user-row-${userStatus.userId}`);
-        
         if (!userRow) return;
 
         const statusBadge = userRow.querySelector(".status-badge");
         const taskText = userRow.querySelector(".current-task");
 
-        // 稼働中かどうかで表示を切り替え
         if (userStatus.isWorking === 1) {
             // 稼働中
             if (statusBadge) {
@@ -83,36 +80,63 @@ function updateStatusUI(statusArray) {
     const statusListContainer = document.getElementById("status-list");
     const summaryListContainer = document.getElementById("task-summary-list");
 
-    // 要素が存在する場合のみ実行
     if (statusListContainer) {
         // 稼働中のユーザーだけを抽出
         const workingUsers = statusArray.filter(u => u.isWorking === 1);
 
-        // A. 人数サマリーの表示
+        // ★追加: 業務ごとの人数を集計する
+        const taskCounts = {};
+        workingUsers.forEach(u => {
+            const task = u.currentTask || "その他";
+            taskCounts[task] = (taskCounts[task] || 0) + 1;
+        });
+
+        // A. サマリー表示（合計人数 ＋ 業務別内訳）
         if (summaryListContainer) {
-            summaryListContainer.innerHTML = `
-                <div class="flex items-center justify-between p-2">
+            let summaryHtml = `
+                <div class="flex items-center justify-between border-b pb-2 mb-2">
                     <span class="font-bold text-gray-700">現在稼働中:</span>
                     <span class="text-2xl font-bold text-green-600">${workingUsers.length} <span class="text-sm text-gray-500">名</span></span>
                 </div>
             `;
+
+            // 業務別内訳を表示 (ここが今回追加した「どの業務に何人いるか」の部分です)
+            if (workingUsers.length > 0) {
+                summaryHtml += `<div class="flex flex-wrap gap-2">`;
+                Object.entries(taskCounts).forEach(([taskName, count]) => {
+                    summaryHtml += `
+                        <span class="inline-flex items-center px-2 py-1 rounded text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                            ${escapeHtml(taskName)}: ${count}名
+                        </span>
+                    `;
+                });
+                summaryHtml += `</div>`;
+            } else {
+                summaryHtml += `<div class="text-xs text-gray-400">現在稼働している業務はありません</div>`;
+            }
+
+            summaryListContainer.innerHTML = summaryHtml;
         }
 
-        // B. 稼働中ユーザーのカードリスト表示
+        // B. リスト表示（業務ごとに並び替えて表示）
         if (workingUsers.length === 0) {
             statusListContainer.innerHTML = `
                 <div class="text-center py-8 text-gray-400">
                     <p>現在稼働中の人はいません</p>
                 </div>`;
         } else {
-            // ユーザーごとにカードHTMLを生成
+            // 見やすいように業務名順にソート
+            workingUsers.sort((a, b) => {
+                const taskA = a.currentTask || "";
+                const taskB = b.currentTask || "";
+                return taskA.localeCompare(taskB, "ja");
+            });
+
             let html = '';
             workingUsers.forEach(u => {
-                // 名前がない場合はIDを表示
                 const displayName = u.userName || `User (${u.userId.slice(0,4)}...)`;
                 const taskName = u.currentTask || '業務中';
 
-                // デザイン: 白背景のカード、右側に緑の丸ポチ
                 html += `
                 <div class="bg-white border border-gray-200 p-3 rounded-lg shadow-sm flex justify-between items-center mb-2 hover:bg-gray-50 transition">
                     <div>
@@ -137,6 +161,17 @@ function updateStatusUI(statusArray) {
     }
 }
 
+// XSS対策用エスケープ関数
+function escapeHtml(unsafe) {
+    if (typeof unsafe !== 'string') return '';
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 export async function forceStopUser(userId) {
     if (!confirm("このユーザーの業務を強制停止しますか？")) return;
 
@@ -158,15 +193,4 @@ export async function forceStopUser(userId) {
         console.error("強制停止エラー:", error);
         alert("エラーが発生しました。");
     }
-}
-
-// XSS対策用エスケープ関数
-function escapeHtml(unsafe) {
-    if (typeof unsafe !== 'string') return '';
-    return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
 }
