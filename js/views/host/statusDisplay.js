@@ -28,18 +28,24 @@ export function stopListeningForStatusUpdates() {
 
 async function fetchAndRefreshStatus() {
     try {
+        // console.log("【Status】① ステータス取得通信開始..."); // 定期実行でうるさい場合はコメントアウト可
+
         const response = await fetch(`${WORKER_URL}/get-all-status`);
-        if (!response.ok) throw new Error("ステータス取得失敗");
+        if (!response.ok) throw new Error("ステータス取得失敗: " + response.status);
 
         const statusData = await response.json();
         
-        // 1. userManagement.js のキャッシュを更新（新規描画時に反映されるように）
+        // console.log("【Status】② データ取得成功:", statusData); // データが取れているか確認
+
+        // 1. キャッシュ更新
         updateStatusesCache(statusData);
 
-        // 2. 現在表示されているDOM要素を直接更新（ピコピコ動かす）
+        // 2. 画面更新
+        // ここでエラーが出ると、ステータス表示が変わりません
         updateStatusUI(statusData);
+        
     } catch (error) {
-        console.error("D1ステータス同期エラー:", error);
+        console.error("【Status】D1ステータス同期エラー:", error);
     }
 }
 
