@@ -232,3 +232,26 @@ function listenForTomuraStatus() {
         console.error("Error listening for Tomura's status:", error);
     });
 }
+
+/**
+ * D1のステータスを手動で更新する関数
+ */
+async function syncStatusToD1(isWorking, taskName) {
+    const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev";
+    try {
+        await fetch(`${WORKER_URL}/update-status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userId: userId,           // main.js からインポート
+                userName: userName,       // main.js からインポート
+                isWorking: isWorking ? 1 : 0,
+                currentTask: taskName || null,
+                startTime: new Date().toISOString()
+            })
+        });
+        console.log("D1ステータスを同期しました");
+    } catch (error) {
+        console.error("D1同期失敗:", error);
+    }
+}
