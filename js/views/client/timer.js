@@ -402,7 +402,7 @@ async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = nul
     startTime = forcedStartTime || new Date();
     hasContributedToCurrentGoal = false;
     
-    // ローカルストレージに即時保存
+    // ローカルストレージとFirestoreの更新 (既存)
     const statusToSave = {
         currentTask, currentGoalId, currentGoalTitle, startTime,
         isWorking: true, preBreakTask: preBreakTask || null
@@ -417,6 +417,25 @@ async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = nul
         ...statusToSave,
         userId, userName, onlineStatus: true
     }, { merge: true });
+
+    // --- 【追加】D1のステータスも同期する ---
+    const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev";
+    try {
+        await fetch(`${WORKER_URL}/update-status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userId: userId,
+                userName: userName,
+                isWorking: 1,
+                currentTask: newTask,
+                startTime: startTime.toISOString()
+            })
+        });
+    } catch (e) {
+        console.error("D1 Sync Error:", e);
+    }
+    // ------------------------------------
 
     listenForColleagues(currentTask);
     setupMidnightTimer();
