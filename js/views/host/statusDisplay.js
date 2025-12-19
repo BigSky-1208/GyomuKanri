@@ -8,6 +8,7 @@ import { updateStatusesCache } from "./userManagement.js";
 // --- Module State ---
 let statusListenerUnsubscribe = null;
 let hostViewIntervals = [];
+let statusInterval = null;
 
 // --- DOM Element references ---
 const statusListContainer = document.getElementById("status-list");
@@ -17,50 +18,21 @@ const taskSummaryContainer = document.getElementById("task-summary-list");
  * 監視を開始する（host.jsから呼ばれる）
  */
 export function startListeningForStatusUpdates() {
-    stopListeningForStatusUpdates();
-
-    if (!statusListContainer || !taskSummaryContainer) {
-        console.error("Host view status display elements not found.");
-        return;
-    }
-
-    console.log("Starting listener for work status updates...");
-
-    // 稼働状況の監視
-    const q = query(collection(db, `work_status`));
-
-    statusListenerUnsubscribe = onSnapshot(q, (snapshot) => {
-        // 更新のたびにタイマーをリセット
-        hostViewIntervals.forEach(clearInterval);
-        hostViewIntervals = [];
-        
-        // コンテナのクリア
-        statusListContainer.innerHTML = "";
-        taskSummaryContainer.innerHTML = "";
-
-        // データの取得
-        const currentAllStatuses = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-
-        // ユーザー管理モジュールへ最新情報を渡す
-        updateStatusesCache(currentAllStatuses);
-
-        // 稼働中のユーザーのみフィルタリング
-        const workingClientsData = currentAllStatuses.filter(
-            (data) => data.isWorking && data.userName 
-        );
-
-        if (workingClientsData.length === 0) {
-            statusListContainer.innerHTML = '<p class="text-gray-500">稼働中の従業員はいません。</p>';
-            taskSummaryContainer.innerHTML = '<p class="text-gray-500">稼働中の業務はありません。</p>';
-        } else {
-            renderTaskSummary(workingClientsData); 
-            renderWorkingClientList(workingClientsData); 
+    // 従来の onSnapshot を削除し、一定間隔で Worker から最新情報を取得する
+    statusInterval = setInterval(async () => {
+        try {
+            const response = await fetch(`${WORKER_URL}/get-all-status`);
+            const statusData = await response.json();
+            // 取得したデータで UI を更新する（既存の UI 更新関数を呼ぶ）
+            updateStatusUI(statusData);
+        } catch (error) {
+            console.error("ステータス取得エラー:", error);
         }
+    }, 5000); // 5秒ごとに最新の状態を確認
+}
 
-    }, (error) => {
-        console.error("Error listening for status updates:", error);
-        statusListContainer.innerHTML = '<p class="text-red-500">ステータスの読み込み中にエラーが発生しました。</p>';
-    });
+export function stopListeningForStatusUpdates() {
+    if (statusInterval) clearInterval(statusInterval);
 }
 
 /**
