@@ -97,21 +97,32 @@ async function initialize() {
 
     try {
         // Okta認証チェック。認証成功時に startAppAfterLogin を呼ぶように設定
-        await checkOktaAuthentication(async () => {
+await checkOktaAuthentication(async () => {
             // ① まずFCM等の初期設定を行う
             await startAppAfterLogin();
 
-// ★追加：ミニ表示の復元（CLIENTビューの場合のみ、または常に）
-            const savedViewJson = localStorage.getItem(LAST_VIEW_KEY);
-            if (savedViewJson) {
-                const { name, params } = JSON.parse(savedViewJson);
-                showView(name, params);
+            // ★追加: その日初めてのログイン判定
+            const today = getJSTDateString(new Date()); // utils.jsからインポート済みの関数を使用
+            const lastLoginDate = localStorage.getItem("last_login_date");
+
+            if (lastLoginDate !== today) {
+                // その日初めてのログイン、または日付が変わっている場合
+                console.log("本日最初のログインです。モード選択画面を表示します。");
                 
-                // 従業員画面（CLIENT）を使っていた場合、ミニ表示もチェック
-                if (name === VIEWS.CLIENT) {
-                }
-            } else {
+                // 日付を更新
+                localStorage.setItem("last_login_date", today);
+                
+                // 強制的にモード選択画面へ
                 showView(VIEWS.MODE_SELECTION);
+            } else {
+                // 同日内の再アクセス、またはリロードの場合
+                const savedViewJson = localStorage.getItem(LAST_VIEW_KEY);
+                if (savedViewJson) {
+                    const { name, params } = JSON.parse(savedViewJson);
+                    showView(name, params);
+                } else {
+                    showView(VIEWS.MODE_SELECTION);
+                }
             }
         });
     } catch(error) {
