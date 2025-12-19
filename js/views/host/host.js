@@ -1,7 +1,7 @@
 // js/views/host/host.js
 
 import { db, showView, VIEWS } from "../../main.js"; 
-import { doc, setDoc, onSnapshot, collection, query, where, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getDoc, doc, onSnapshot, updateDoc, setDoc, collection, getDocs, query, where, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { openMessageModal, showHelpModal } from "../../components/modal.js"; 
 import { openExportExcelModal } from "../../excelExport.js"; 
 
