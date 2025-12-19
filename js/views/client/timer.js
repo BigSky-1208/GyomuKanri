@@ -1,7 +1,7 @@
-// js/views/client/timer.js - ストップウォッチ機能と状態管理
+// js/views/client/timer.js - ストップウォッチ機能と状態管理（最適化版）
 
 import { db, userId, userName, showView, VIEWS, userDisplayPreferences } from "../../main.js";
-import { doc, updateDoc, getDoc, setDoc, Timestamp, addDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, updateDoc, getDoc, setDoc, Timestamp, addDoc, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { formatDuration, getJSTDateString } from "../../utils.js";
 import { listenForColleagues, stopColleaguesListener } from "./colleagues.js";
 import { triggerEncouragementNotification, triggerReservationNotification, triggerBreakNotification } from "../../components/notification.js";
@@ -16,11 +16,11 @@ let preBreakTask = null;
 let midnightStopTimer = null; 
 let hasContributedToCurrentGoal = false;
 
+// ローカル保存用のキー
+const LOCAL_STATUS_KEY = "gyomu_timer_current_status";
+
 // 手動操作中かどうかを判定するフラグ（通知抑制用）
 let isManualStateChange = false;
-
-// リスナー解除関数
-let statusUnsubscribe = null;
 
 // 通知カウンター
 let lastBreakNotificationTime = 0; 
@@ -47,113 +47,111 @@ export function getHasContributed() {
 }
 
 /**
- * Firestoreの状態をリアルタイムで監視・復元する
+ * 【最適化版】
+ * ローカルストレージを優先し、データがない場合のみFirestoreから1回取得して状態を復元する
  */
 export async function restoreClientState() {
     if (!userId) return;
 
-    if (statusUnsubscribe) {
-        statusUnsubscribe();
-        statusUnsubscribe = null;
+    let data = null;
+
+    // 1. まずローカルストレージから復元を試みる
+    const savedStatus = localStorage.getItem(LOCAL_STATUS_KEY);
+    if (savedStatus) {
+        try {
+            data = JSON.parse(savedStatus);
+            // 文字列化された日付をDateオブジェクトに戻す
+            if (data.startTime) data.startTime = new Date(data.startTime);
+            console.log("Status restored from localStorage.");
+        } catch (e) {
+            console.error("Failed to parse local status:", e);
+        }
     }
 
-    const statusRef = doc(db, "work_status", userId);
-
-    statusUnsubscribe = onSnapshot(statusRef, async (docSnap) => {
-        // データが存在するか確認
-        const data = docSnap.exists() ? docSnap.data() : null;
-        const newIsWorking = data ? data.isWorking : false;
-        const newTask = (data && data.currentTask !== undefined) ? data.currentTask : null;
-
-        // 手動操作中(!isManualStateChange)の場合のみ通知判定を行う
-        if (!isManualStateChange && currentTask && startTime) { // 現在稼働中の場合のみチェック
-            if (newIsWorking) {
-                // 稼働継続中だが、タスクが「休憩」に変わった場合
-                if (currentTask !== "休憩" && newTask === "休憩") {
-                    triggerReservationNotification("休憩");
+    // 2. ローカルになければFirestoreから1回だけ取得（getDoc）
+    if (!data || !data.isWorking) {
+        console.log("No local status found. Fetching from Firestore (getDoc)...");
+        const statusRef = doc(db, "work_status", userId);
+        try {
+            const docSnap = await getDoc(statusRef);
+            if (docSnap.exists()) {
+                const fsData = docSnap.data();
+                if (fsData.isWorking) {
+                    data = fsData;
+                    if (data.startTime) data.startTime = data.startTime.toDate(); // Timestamp -> Date
+                    // 次回リロードのためにローカルにも保存
+                    localStorage.setItem(LOCAL_STATUS_KEY, JSON.stringify(data));
                 }
-            } else {
-                // 稼働中だったのに、未稼働（帰宅）になった場合
-                triggerReservationNotification("帰宅");
             }
+        } catch (error) {
+            console.error("Error fetching work status:", error);
         }
+    }
 
-        if (newIsWorking) {
-            const localStartTime = data.startTime ? data.startTime.toDate() : new Date();
-            const now = new Date();
+    // 3. 取得したデータがあればUIに反映
+    if (data && data.isWorking) {
+        const now = new Date();
+        const localStartTime = data.startTime || now;
 
-            // 日付跨ぎチェック
-            const startTimeStr = getJSTDateString(localStartTime);
-            const todayStr = getJSTDateString(now);
+        // 日付跨ぎチェック
+        const startTimeStr = getJSTDateString(localStartTime);
+        const todayStr = getJSTDateString(now);
 
-            if (startTimeStr !== todayStr) {
-                const endOfStartTimeDay = new Date(localStartTime);
-                endOfStartTimeDay.setHours(23, 59, 59, 999);
-                
-                await stopCurrentTaskCore(true, endOfStartTimeDay, {
-                    task: data.currentTask,
-                    goalId: data.currentGoalId,
-                    goalTitle: data.currentGoalTitle,
-                    startTime: localStartTime,
-                    memo: "（自動退勤処理）"
-                });
-                await updateDoc(statusRef, { needsCheckoutCorrection: true });
-                
-                const { checkForCheckoutCorrection } = await import("../../utils.js");
-                checkForCheckoutCorrection(userId);
-                
-                resetClientState();
-                return;
-            }
-
-            // 状態同期
-            startTime = localStartTime;
-            currentTask = (data.currentTask !== undefined) ? data.currentTask : null;
-            localStorage.setItem('currentTaskName', currentTask);
-
-            currentGoalId = data.currentGoalId || null;
-            currentGoalTitle = data.currentGoalTitle || null;
-            preBreakTask = data.preBreakTask || null;
+        if (startTimeStr !== todayStr) {
+            console.log("Data is from a previous day. Triggering auto-checkout.");
+            const endOfStartTimeDay = new Date(localStartTime);
+            endOfStartTimeDay.setHours(23, 59, 59, 999);
             
-            // 初回読み込み時の通知カウンター初期化（★修正箇所：リロード時のズレ補正）
-            const elapsed = Math.floor((now - startTime) / 1000);
+            await stopCurrentTaskCore(true, endOfStartTimeDay, {
+                task: data.currentTask,
+                goalId: data.currentGoalId,
+                goalTitle: data.currentGoalTitle,
+                startTime: localStartTime,
+                memo: "（自動退勤処理）"
+            });
 
-            // 1. 休憩通知（30分固定）の補正
-            const breakInterval = 1800; // 30分
-            if (lastBreakNotificationTime === 0) {
-                // 現在の経過時間から「直近の30分ごとのタイミング」を逆算してセット
-                lastBreakNotificationTime = Math.floor(elapsed / breakInterval) * breakInterval;
-            }
-
-            // 2. 継続通知（ユーザー設定）の補正
-            const intervalMinutes = userDisplayPreferences?.notificationIntervalMinutes || 5;
-            const intervalSeconds = intervalMinutes * 60;
-            if (lastEncouragementTime === 0) {
-                // 現在の経過時間から「直近の設定間隔ごとのタイミング」を逆算してセット
-                lastEncouragementTime = Math.floor(elapsed / intervalSeconds) * intervalSeconds;
-            }
-
-            updateUIForActiveTask();
-            startTimerLoop();
-            listenForColleagues(currentTask);
-            setupMidnightTimer();
-
-        } else {
+            // ★追加: Firebase側に修正が必要なフラグを立てる
+            const statusRef = doc(db, "work_status", userId);
+            await updateDoc(statusRef, { needsCheckoutCorrection: true });
+            
+            // ★追加: ユーティリティを呼んでダイアログ等を表示する
+            const { checkForCheckoutCorrection } = await import("../../utils.js");
+            checkForCheckoutCorrection(userId);
+            
+            localStorage.removeItem(LOCAL_STATUS_KEY);
             resetClientState();
+            return;
         }
-    }, (error) => {
-        console.error("Error listening to work status:", error);
-    });
+
+        // 変数への適用
+        startTime = localStartTime;
+        currentTask = data.currentTask || null;
+        currentGoalId = data.currentGoalId || null;
+        currentGoalTitle = data.currentGoalTitle || null;
+        preBreakTask = data.preBreakTask || null;
+
+        // 通知カウンターのズレ補正
+        const elapsed = Math.floor((now - startTime) / 1000);
+        const breakInterval = 1800;
+        lastBreakNotificationTime = Math.floor(elapsed / breakInterval) * breakInterval;
+        
+        const intervalMinutes = userDisplayPreferences?.notificationIntervalMinutes || 5;
+        const intervalSeconds = intervalMinutes * 60;
+        lastEncouragementTime = Math.floor(elapsed / intervalSeconds) * intervalSeconds;
+
+        updateUIForActiveTask();
+        startTimerLoop();
+        listenForColleagues(currentTask);
+        setupMidnightTimer();
+    } else {
+        resetClientState();
+    }
 }
 
 /**
- * リスナー停止用
+ * リスナー停止用（常時監視しなくなったので主にループ停止用）
  */
 export function stopStatusListener() {
-    if (statusUnsubscribe) {
-        statusUnsubscribe();
-        statusUnsubscribe = null;
-    }
     stopTimerLoop();
 }
 
@@ -199,6 +197,8 @@ export function updateUIForActiveTask() {
 
 function resetClientState() {
     stopTimerLoop();
+    localStorage.removeItem(LOCAL_STATUS_KEY);
+
     currentTask = null;
     currentGoalId = null;
     currentGoalTitle = null;
@@ -253,6 +253,7 @@ function setupMidnightTimer() {
                 const statusRef = doc(db, "work_status", userId);
                 await updateDoc(statusRef, { needsCheckoutCorrection: true });
                 
+                localStorage.removeItem(LOCAL_STATUS_KEY);
                 triggerReservationNotification("帰宅（深夜自動停止）");
             }
         }, timeUntilMidnight);
@@ -275,37 +276,19 @@ function startTimerLoop() {
 
         // 休憩通知（30分経過）
         if (currentTask === "休憩" && elapsed > 0) {
-            // ※ここも同様にズレ補正を入れておくと親切です
             const breakInterval = 1800;
             if (elapsed - lastBreakNotificationTime >= breakInterval) {
-                const expectedNextBreak = lastBreakNotificationTime + breakInterval;
-                if (elapsed - expectedNextBreak > breakInterval) {
-                    lastBreakNotificationTime = Math.floor(elapsed / breakInterval) * breakInterval;
-                } else {
-                    lastBreakNotificationTime = expectedNextBreak;
-                }
+                lastBreakNotificationTime = Math.floor(elapsed / breakInterval) * breakInterval;
                 triggerBreakNotification(elapsed);
             }
         }
 
-        // 継続通知（★修正箇所：スリープ復帰等のズレ補正）
+        // 継続通知
         if (userDisplayPreferences && userDisplayPreferences.notificationIntervalMinutes > 0) {
             const intervalSeconds = userDisplayPreferences.notificationIntervalMinutes * 60;
             if (elapsed > 0) {
                 if (elapsed - lastEncouragementTime >= intervalSeconds) {
-                    // 本来通知すべきだった時間（リズムを維持）
-                    const expectedNextTime = lastEncouragementTime + intervalSeconds;
-                    
-                    // スリープ等で時間が大きく飛んだ場合のガード
-                    // （例: 本来の予定時刻よりさらに間隔1回分以上遅れている場合）
-                    if (elapsed - expectedNextTime > intervalSeconds) {
-                        // 強制的に直近の間隔タイミングに合わせる
-                        lastEncouragementTime = Math.floor(elapsed / intervalSeconds) * intervalSeconds;
-                    } else {
-                        // 多少の遅れなら、リズムを維持するために予定時刻をセット
-                        lastEncouragementTime = expectedNextTime;
-                    }
-
+                    lastEncouragementTime = Math.floor(elapsed / intervalSeconds) * intervalSeconds;
                     triggerEncouragementNotification(elapsed, "breather", currentTask);
                 }
             }
@@ -332,7 +315,6 @@ export async function handleStartClick() {
     }
     if (newTask === "休憩") {
         alert("休憩は「休憩開始」ボタンを使用してください。");
-        taskSelect.value = currentTask || "";
         return;
     }
 
@@ -378,10 +360,6 @@ export async function handleStopClick(isAuto = false) {
     }
 
     await stopCurrentTask(true);
-    
-    if (isAuto) {
-        triggerReservationNotification("帰宅");
-    }
 }
 
 export async function handleBreakClick(isAuto = false) {
@@ -390,6 +368,7 @@ export async function handleBreakClick(isAuto = false) {
         await cancelAllReservations();
     }
 
+    // 1回取得に変更して状態チェック
     const statusRef = doc(db, "work_status", userId);
     const docSnap = await getDoc(statusRef);
     if (!docSnap.exists() || !docSnap.data().isWorking) return;
@@ -398,47 +377,17 @@ export async function handleBreakClick(isAuto = false) {
     const currentDbTask = statusData.currentTask;
 
     if (currentDbTask === "休憩") {
-        // 休憩終了
         await stopCurrentTask(false);
         const taskToReturnTo = statusData.preBreakTask;
         resetClientState(); 
 
         if (taskToReturnTo && taskToReturnTo.task) {
             await startTask(taskToReturnTo.task, taskToReturnTo.goalId, taskToReturnTo.goalTitle);
-        } else {
-            console.log("No valid pre-break task found. Resetting status.");
-            await updateDoc(statusRef, { isWorking: false, currentTask: null });
         }
     } else {
-        // 休憩開始
-        if (currentGoalId && !hasContributedToCurrentGoal) {
-            const { showConfirmationModal, hideConfirmationModal } = await import("../../components/modal.js");
-            showConfirmationModal(
-                `「${currentGoalTitle}」の進捗(件数)が入力されていません。\n休憩に入りますか？`,
-                async () => {
-                    hideConfirmationModal();
-                    preBreakTask = {
-                        task: currentTask,
-                        goalId: currentGoalId,
-                        goalTitle: currentGoalTitle
-                    };
-                    await stopCurrentTaskCore(false);
-                    await startTask("休憩", null, null);
-                    if (isAuto) triggerReservationNotification("休憩");
-                },
-                hideConfirmationModal
-            );
-            return;
-        }
-
-        preBreakTask = {
-            task: currentTask,
-            goalId: currentGoalId,
-            goalTitle: currentGoalTitle
-        };
+        preBreakTask = { task: currentTask, goalId: currentGoalId, goalTitle: currentGoalTitle };
         await stopCurrentTaskCore(false);
         await startTask("休憩", null, null);
-        if (isAuto) triggerReservationNotification("休憩");
     }
 }
 
@@ -447,61 +396,41 @@ export async function handleBreakClick(isAuto = false) {
 async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = null) {
     if (!userId) return;
 
-    if (newTask === undefined) {
-        console.warn("startTask called with undefined task. Defaulting to null.");
-        newTask = null;
-    }
-
     currentTask = newTask;
     currentGoalId = newGoalId || null;
     currentGoalTitle = newGoalTitle || null;
     startTime = forcedStartTime || new Date();
     hasContributedToCurrentGoal = false;
     
+    // ローカルストレージに即時保存
+    const statusToSave = {
+        currentTask, currentGoalId, currentGoalTitle, startTime,
+        isWorking: true, preBreakTask: preBreakTask || null
+    };
+    localStorage.setItem(LOCAL_STATUS_KEY, JSON.stringify(statusToSave));
+
     updateUIForActiveTask();
     startTimerLoop();
 
-    // 手動操作フラグをON
-    isManualStateChange = true;
-
     const statusRef = doc(db, "work_status", userId);
     await setDoc(statusRef, {
-        userId,
-        userName,
-        currentTask,
-        currentGoalId,
-        currentGoalTitle,
-        startTime,
-        isWorking: true,
-        onlineStatus: true,
-        preBreakTask: preBreakTask || null
+        ...statusToSave,
+        userId, userName, onlineStatus: true
     }, { merge: true });
 
-    // 少し待ってから手動操作フラグをOFF（通知重複防止のため）
-    setTimeout(() => { isManualStateChange = false; }, 500);
-
-    listenForColleagues(newTask);
+    listenForColleagues(currentTask);
     setupMidnightTimer();
 }
 
 async function stopCurrentTask(isLeaving) {
-    // 1. 変数が消される前に、まずログを保存する！
     await stopCurrentTaskCore(isLeaving);
 
     if (isLeaving) {
-        // 手動操作フラグをON
-        isManualStateChange = true;
-
-        // 2. 次にFirestore上のステータスを更新する
+        localStorage.removeItem(LOCAL_STATUS_KEY);
         if (userId) {
              await updateDoc(doc(db, "work_status", userId), { isWorking: false, currentTask: null });
         }
-        
-        // 3. 最後にローカルの状態をリセット（表示をクリア）する
         resetClientState();
-
-        // 少し待ってから手動操作フラグをOFF
-        setTimeout(() => { isManualStateChange = false; }, 500);
     }
 }
 
@@ -513,69 +442,31 @@ async function stopCurrentTaskCore(isLeaving, forcedEndTime = null, taskDataOver
     stopTimerLoop();
 
     const taskToLog = taskDataOverride?.task || currentTask;
-    const goalIdToLog = taskDataOverride?.goalId || currentGoalId;
-    const goalTitleToLog = taskDataOverride?.goalTitle || currentGoalTitle;
     const taskStartTime = taskDataOverride?.startTime || startTime;
-    let memo = taskDataOverride?.memo;
 
-    // --- デバッグログ ---
-    console.group("stopCurrentTaskCore Debug");
-    console.log("Attempting to save log...");
-    console.log("taskToLog:", taskToLog);
-    console.log("taskStartTime:", taskStartTime);
-    console.log("isLeaving:", isLeaving);
-    // -------------------
-
-    if (!taskStartTime || !taskToLog) {
-        console.error("❌ 保存中止: タスク名または開始時間がありません");
-        console.log("理由 -> taskToLog:", taskToLog, " taskStartTime:", taskStartTime);
-        console.groupEnd();
-        return;
-    }
+    if (!taskStartTime || !taskToLog) return;
 
     const endTime = forcedEndTime || new Date();
     const duration = Math.floor((endTime - taskStartTime) / 1000);
 
-    if (!memo) {
-        const memoInput = document.getElementById("task-memo-input");
-        if (memoInput) {
-            memo = memoInput.value.trim();
-            if (!isLeaving) memoInput.value = ""; 
-        } else {
-            memo = "";
-        }
-    }
+    let memo = taskDataOverride?.memo || document.getElementById("task-memo-input")?.value.trim() || "";
 
     if (duration > 0) {
         try {
             await addDoc(collection(db, "work_logs"), {
-                userId,
-                userName,
-                task: taskToLog,
-                goalId: goalIdToLog,
-                goalTitle: goalTitleToLog,
+                userId, userName, task: taskToLog,
+                goalId: taskDataOverride?.goalId || currentGoalId,
+                goalTitle: taskDataOverride?.goalTitle || currentGoalTitle,
                 date: getJSTDateString(taskStartTime),
-                duration,
-                startTime: taskStartTime,
-                endTime,
-                memo
+                duration, startTime: taskStartTime, endTime, memo
             });
-            console.log("✅ 保存成功");
+            console.log("Log saved successfully.");
         } catch (e) {
-            console.error("❌ Firestore保存エラー:", e);
+            console.error("Firestore save error:", e);
         }
-    } else {
-        console.warn("⚠️ 経過時間が0秒のため保存しませんでした");
     }
-    console.groupEnd();
 }
 
-// --- DEBUG UTILITY ---
 window.debugTimer = {
-    getStatus: () => {
-        console.log("=== Timer Internal Status ===");
-        console.log("currentTask:", currentTask);
-        console.log("startTime:", startTime);
-        return "Check completed";
-    }
+    getStatus: () => ({ currentTask, startTime, isWorking: !!startTime })
 };
