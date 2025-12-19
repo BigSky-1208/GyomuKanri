@@ -461,6 +461,23 @@ async function stopCurrentTaskCore(isLeaving, forcedEndTime = null, taskDataOver
                 duration, startTime: taskStartTime, endTime, memo
             });
             console.log("Log saved successfully.");
+
+            // ★追加: D1のステータスも「未稼働」に更新する
+const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev";
+await fetch(`${WORKER_URL}/update-status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+        userId: userId,
+        userName: userName,
+        isWorking: 0,           // 終了なので0
+        currentTask: null,      // タスクなし
+        startTime: null
+    })
+});
+console.log("D1ステータスを同期しました");
+
+            
         } catch (e) {
             console.error("Firestore save error:", e);
         }
