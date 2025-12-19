@@ -30,23 +30,44 @@ export function updateStatusesCache(newStatuses) {
  * ユーザーリストの監視を開始する
  */
 export function startListeningForUsers() {
-    console.log("Starting user list listener...");
+    console.log("【UserMng】① ユーザー監視機能を開始します");
+
     const userListContainer = document.getElementById("summary-list");
     
     if (!userListContainer) {
-        console.error("User list container (summary-list) not found.");
+        console.error("【UserMng】エラー: 表示先の要素(summary-list)が見つかりません。HTMLを確認してください。");
         return;
     }
 
-    userListContainer.innerHTML = '<p class="text-center text-gray-500 py-4">ユーザー情報を読み込み中...</p>';
+    userListContainer.innerHTML = '<p class="text-center text-gray-500 py-4">ユーザー情報を読み込み中... (データ取得待ち)</p>';
 
+    // コレクション参照の作成
+    console.log("【UserMng】② DB接続(user_profiles)を試みます...");
     const q = collection(db, "user_profiles");
+    
+    // データ監視の登録
     userListUnsubscribe = onSnapshot(q, (snapshot) => {
+        // ★ここが表示されない場合、DBからデータが返ってきていません
+        console.log(`【UserMng】③ データ受信成功！ ドキュメント数: ${snapshot.size}`);
+
+        if (snapshot.empty) {
+            console.warn("【UserMng】データが0件です。DBの user_profiles コレクションは空ではありませんか？");
+        }
+
         const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        renderUserList(users, userListContainer);
+        console.log("【UserMng】④ 取得データ中身:", users);
+
+        // 描画関数の呼び出し
+        try {
+            renderUserList(users, userListContainer);
+            console.log("【UserMng】⑤ 描画処理(renderUserList)が完了しました");
+        } catch (e) {
+            console.error("【UserMng】描画エラー: renderUserList内でエラーが発生しました", e);
+        }
+
     }, (error) => {
-        console.error("Error fetching user list:", error);
-        userListContainer.innerHTML = '<p class="text-center text-red-500 py-4">ユーザーリストの読み込みに失敗しました。</p>';
+        console.error("【UserMng】DB読み込みエラー:", error);
+        userListContainer.innerHTML = `<p class="text-center text-red-500 py-4">読み込みエラー: ${error.message}</p>`;
     });
 }
 
