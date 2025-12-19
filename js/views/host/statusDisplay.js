@@ -73,3 +73,27 @@ function updateStatusUI(statusArray) {
         }
     });
 }
+
+export async function forceStopUser(userId) {
+    if (!confirm("このユーザーの業務を強制停止しますか？")) return;
+
+    try {
+        const response = await fetch(`${WORKER_URL}/force-stop`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: userId })
+        });
+
+        if (!response.ok) throw new Error("強制停止に失敗しました");
+
+        const result = await response.json();
+        if (result.success) {
+            alert("ユーザーを停止しました。");
+            // 即座にUIを更新するために再取得
+            fetchAndRefreshStatus();
+        }
+    } catch (error) {
+        console.error("強制停止エラー:", error);
+        alert("エラーが発生しました。");
+    }
+}
