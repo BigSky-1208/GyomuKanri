@@ -16,11 +16,15 @@ let preBreakTask = null;
 let midnightStopTimer = null; 
 let hasContributedToCurrentGoal = false;
 
+// ★ここが抜けていました（通知用カウンター）
+let lastBreakNotificationTime = 0;
+let lastEncouragementTime = 0;
+
 // 定数
 const LOCAL_STATUS_KEY = "gyomu_timer_current_status";
 const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev"; // あなたのWorker URL
 
-// --- DOM Elements (ここが抜けていました) ---
+// --- DOM Elements ---
 const timerDisplay = document.getElementById("timer-display");
 const currentTaskDisplay = document.getElementById("current-task-display");
 const startBtn = document.getElementById("start-btn");
@@ -128,6 +132,15 @@ export async function restoreClientState() {
         currentGoalTitle = data.currentGoalTitle || null;
         preBreakTask = data.preBreakTask || null;
 
+        // 通知カウンターの復元（経過時間から計算）
+        const elapsed = Math.floor((now - startTime) / 1000);
+        const breakInterval = 1800;
+        lastBreakNotificationTime = Math.floor(elapsed / breakInterval) * breakInterval;
+        
+        const intervalMinutes = userDisplayPreferences?.notificationIntervalMinutes || 5;
+        const intervalSeconds = intervalMinutes * 60;
+        lastEncouragementTime = Math.floor(elapsed / intervalSeconds) * intervalSeconds;
+
         // UI更新・タイマー開始
         updateUIForActiveTask();
         startTimerLoop();
@@ -192,6 +205,7 @@ function resetClientState() {
     preBreakTask = null;
     hasContributedToCurrentGoal = false; 
     
+    // 変数のリセット
     lastBreakNotificationTime = 0;
     lastEncouragementTime = 0;
 
