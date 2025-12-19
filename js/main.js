@@ -2,12 +2,12 @@
 
 import { db, isFirebaseConfigValid } from './firebase.js';
 import { checkOktaAuthentication, handleOktaLogout } from './okta.js';
-import { doc, onSnapshot, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { initMessaging, listenForMessages } from './fcm.js';
 import { initializeModeSelectionView, setupModeSelectionEventListeners } from './views/modeSelection.js';
 import { initializeTaskSettingsView, setupTaskSettingsEventListeners } from './views/taskSettings.js';
 import { initializeHostView, cleanupHostView, setupHostEventListeners } from './views/host/host.js';
-import { initializeClientView, setupClientEventListeners } from './views/client/client.js';
+import { initializeClientView, cleanupClientView, setupClientEventListeners } from './views/client/client.js';
 import { initializePersonalDetailView, cleanupPersonalDetailView, setupPersonalDetailEventListeners } from './views/personalDetail/personalDetail.js';
 import { initializeReportView, cleanupReportView, setupReportEventListeners } from './views/report.js';
 import { initializeProgressView, setupProgressEventListeners } from './views/progress/progress.js';
@@ -27,7 +27,6 @@ export let allTaskObjects = [];
 export let userDisplayPreferences = { hiddenTasks: [] }; 
 export let viewHistory = []; 
 export let adminLoginDestination = null; 
-export let preferencesUnsubscribe = null; 
 
 export const VIEWS = {
     OKTA_WIDGET: "okta-signin-widget-container",
@@ -47,7 +46,7 @@ const viewLifecycle = {
     [VIEWS.MODE_SELECTION]: { init: initializeModeSelectionView },
     [VIEWS.TASK_SETTINGS]: { init: initializeTaskSettingsView },
     [VIEWS.HOST]: { init: initializeHostView, cleanup: cleanupHostView },
-    [VIEWS.CLIENT]: { init: initializeClientView },
+    [VIEWS.CLIENT]: { init: initializeClientView, cleanup: cleanupClientView }, // ★cleanupを追加
     [VIEWS.PERSONAL_DETAIL]: { init: initializePersonalDetailView, cleanup: cleanupPersonalDetailView },
     [VIEWS.REPORT]: { init: initializeReportView, cleanup: cleanupReportView },
     [VIEWS.PROGRESS]: { init: initializeProgressView },
@@ -55,12 +54,10 @@ const viewLifecycle = {
     [VIEWS.APPROVAL]: { init: initializeApprovalView, cleanup: cleanupApprovalView },
 };
 
-// ★修正: hidden クラスを削除しました
 function injectApprovalViewHTML() {
     if (document.getElementById(VIEWS.APPROVAL)) return;
     const div = document.createElement("div");
     div.id = VIEWS.APPROVAL;
-    // hidden を削除し、初期状態はCSSの .view で制御させる
     div.className = "view p-6 max-w-5xl mx-auto"; 
     div.innerHTML = `
         <div class="flex items-center justify-between mb-6">
@@ -73,7 +70,6 @@ function injectApprovalViewHTML() {
     `;
     document.getElementById("app-container").appendChild(div);
     
-    // イベントリスナーは要素作成直後に登録するのが確実
     document.getElementById("back-from-approval").addEventListener("click", () => {
         showView(VIEWS.HOST);
     });
@@ -81,8 +77,6 @@ function injectApprovalViewHTML() {
 
 async function initialize() {
     console.log("Initializing application...");
-    
-    // ★追加：タブ復帰リロードの監視開始
     setupVisibilityReload();
 
     const appContainer = document.getElementById('app-container');
@@ -96,26 +90,17 @@ async function initialize() {
     setupGlobalEventListeners();
 
     try {
-        // Okta認証チェック。認証成功時に startAppAfterLogin を呼ぶように設定
-await checkOktaAuthentication(async () => {
-            // ① まずFCM等の初期設定を行う
+        await checkOktaAuthentication(async () => {
             await startAppAfterLogin();
 
-            // ★追加: その日初めてのログイン判定
-            const today = getJSTDateString(new Date()); // utils.jsからインポート済みの関数を使用
+            const today = getJSTDateString(new Date());
             const lastLoginDate = localStorage.getItem("last_login_date");
 
             if (lastLoginDate !== today) {
-                // その日初めてのログイン、または日付が変わっている場合
                 console.log("本日最初のログインです。モード選択画面を表示します。");
-                
-                // 日付を更新
                 localStorage.setItem("last_login_date", today);
-                
-                // 強制的にモード選択画面へ
                 showView(VIEWS.MODE_SELECTION);
             } else {
-                // 同日内の再アクセス、またはリロードの場合
                 const savedViewJson = localStorage.getItem(LAST_VIEW_KEY);
                 if (savedViewJson) {
                     const { name, params } = JSON.parse(savedViewJson);
@@ -130,6 +115,7 @@ await checkOktaAuthentication(async () => {
         displayInitializationError("認証処理中にエラーが発生しました。");
     }
 }
+
 function displayInitializationError(message) {
     const container = document.getElementById("app-container");
     const oktaContainer = document.getElementById("okta-signin-widget-container");
@@ -142,13 +128,10 @@ function displayInitializationError(message) {
             <span class="block sm:inline">${escapeHtml(message)}</span>
         </div>`;
     }
-    console.error("Initialization Error:", message);
 }
 
 function setupGlobalEventListeners() {
-    console.log("Setting up global event listeners...");
     setupModalEventListeners();
-
     setupModeSelectionEventListeners();
     setupTaskSettingsEventListeners();
     setupHostEventListeners();
@@ -157,7 +140,6 @@ function setupGlobalEventListeners() {
     setupReportEventListeners();
     setupProgressEventListeners();
     setupArchiveEventListeners();
-
     setupExcelExportEventListeners();
 
     const adminPasswordSubmitBtn = document.getElementById("admin-password-submit-btn");
@@ -165,42 +147,19 @@ function setupGlobalEventListeners() {
     
     adminPasswordSubmitBtn?.addEventListener("click", handleAdminLogin);
     adminPasswordInput?.addEventListener('keypress', (event) => {
-         if (event.key === 'Enter') {
-             handleAdminLogin();
-         }
+         if (event.key === 'Enter') handleAdminLogin();
      });
-
-    console.log("Global event listeners set up complete.");
 }
 
 export function showView(viewId, data = {}) {
-    console.log(`Showing view: ${viewId}`, data);
     const targetViewElement = document.getElementById(viewId);
     const appContainer = document.getElementById('app-container');
 
-    // ★追加：現在のビューを保存（ログイン後の主要な画面のみ）
-if ([VIEWS.CLIENT, VIEWS.HOST, VIEWS.PROGRESS, VIEWS.REPORT, VIEWS.APPROVAL].includes(viewId)) {
+    if ([VIEWS.CLIENT, VIEWS.HOST, VIEWS.PROGRESS, VIEWS.REPORT, VIEWS.APPROVAL].includes(viewId)) {
         localStorage.setItem(LAST_VIEW_KEY, JSON.stringify({ name: viewId, params: data }));
     }
     
-    if (!targetViewElement) {
-        if (viewId === VIEWS.OKTA_WIDGET) {
-            const oktaContainer = document.getElementById(VIEWS.OKTA_WIDGET);
-            if(oktaContainer) {
-                appContainer?.classList.add('hidden');
-                document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
-                oktaContainer.classList.remove('hidden');
-            }
-            return;
-        } else {
-            console.error(`View element not found: ${viewId}`);
-            return;
-        }
-    }
-
-     const oktaContainer = document.getElementById(VIEWS.OKTA_WIDGET);
-     if(oktaContainer) oktaContainer.classList.add('hidden');
-     if(appContainer) appContainer.classList.remove('hidden');
+    if (!targetViewElement) return;
 
     const currentActiveViewElement = document.querySelector(".view.active-view");
     if (currentActiveViewElement && currentActiveViewElement.id !== viewId) {
@@ -217,7 +176,6 @@ if ([VIEWS.CLIENT, VIEWS.HOST, VIEWS.PROGRESS, VIEWS.REPORT, VIEWS.APPROVAL].inc
     }
 
     targetViewElement.classList.add("active-view");
-    // ★修正: 念のため hidden クラスがあれば強制的に削除する
     targetViewElement.classList.remove("hidden");
 
     const newLifecycle = viewLifecycle[viewId];
@@ -238,28 +196,19 @@ if ([VIEWS.CLIENT, VIEWS.HOST, VIEWS.PROGRESS, VIEWS.REPORT, VIEWS.APPROVAL].inc
 export function handleGoBack() {
     viewHistory.pop(); 
     const previousViewName = viewHistory[viewHistory.length - 1];
-
-    if (previousViewName) {
-        showView(previousViewName);
-    } else {
-        showView(VIEWS.MODE_SELECTION);
-        viewHistory = [VIEWS.MODE_SELECTION];
-    }
+    showView(previousViewName || VIEWS.MODE_SELECTION);
 }
 
-async function listenForTasks() {
+/**
+ * 【改善】業務マスターを1回だけ取得する
+ */
+async function fetchTasks() {
     const tasksRef = doc(db, "settings", "tasks");
-    let isFirstLoad = true;
-
-    onSnapshot(tasksRef, async (docSnap) => {
+    try {
+        const docSnap = await getDoc(tasksRef);
         if (docSnap.exists() && docSnap.data().list) {
-            const newTasks = docSnap.data().list;
-            updateGlobalTaskObjects(newTasks);
-
-            if (!isFirstLoad) {
-                 await refreshUIBasedOnTaskUpdate();
-            }
-        } else if (!docSnap.metadata.hasPendingWrites) {
+            updateGlobalTaskObjects(docSnap.data().list);
+        } else {
              const defaultTasks = [
                  { name: "資料作成", memo: "", goals: [] },
                  { name: "会議", memo: "", goals: [] },
@@ -267,16 +216,13 @@ async function listenForTasks() {
                  { name: "開発", memo: "", goals: [] },
                  { name: "休憩", memo: "", goals: [] },
              ];
-             try {
-                 await setDoc(tasksRef, { list: defaultTasks });
-                 updateGlobalTaskObjects(defaultTasks);
-                 await refreshUIBasedOnTaskUpdate();
-             } catch (error) {
-                 console.error("Error creating default tasks:", error);
-             }
+             await setDoc(tasksRef, { list: defaultTasks });
+             updateGlobalTaskObjects(defaultTasks);
         }
-        isFirstLoad = false;
-    });
+        await refreshUIBasedOnTaskUpdate();
+    } catch (error) {
+        console.error("Error fetching tasks:", error);
+    }
 }
 
 async function refreshUIBasedOnTaskUpdate() {
@@ -290,28 +236,24 @@ async function refreshUIBasedOnTaskUpdate() {
             renderTaskOptions();
             checkIfWarningIsNeeded();
         }
-        if (document.getElementById(VIEWS.TASK_SETTINGS)?.classList.contains('active-view')) {
-             renderTaskEditor();
-        }
-        if (document.getElementById(VIEWS.PROGRESS)?.classList.contains('active-view')) {
-            await initializeProgressView();
-        }
-        if (document.getElementById(VIEWS.ARCHIVE)?.classList.contains('active-view')) {
-            await initializeArchiveView();
-        }
+        if (document.getElementById(VIEWS.TASK_SETTINGS)?.classList.contains('active-view')) renderTaskEditor();
+        if (document.getElementById(VIEWS.PROGRESS)?.classList.contains('active-view')) await initializeProgressView();
+        if (document.getElementById(VIEWS.ARCHIVE)?.classList.contains('active-view')) await initializeArchiveView();
     } catch(error) { console.error(error); }
 }
 
-export function listenForDisplayPreferences() {
-    if (preferencesUnsubscribe) preferencesUnsubscribe();
+/**
+ * 【改善】表示設定を1回だけ取得する
+ */
+export async function fetchDisplayPreferences() {
     if (!userId) {
          userDisplayPreferences = { hiddenTasks: [], notificationIntervalMinutes: 0 };
-         preferencesUnsubscribe = null;
          refreshUIBasedOnPreferenceUpdate();
         return;
     }
     const prefRef = doc(db, `user_profiles/${userId}/preferences/display`);
-    preferencesUnsubscribe = onSnapshot(prefRef, (docSnap) => {
+    try {
+        const docSnap = await getDoc(prefRef);
         const defaults = { hiddenTasks: [], notificationIntervalMinutes: 0 };
         if (docSnap.exists()) {
             const data = docSnap.data();
@@ -321,12 +263,12 @@ export function listenForDisplayPreferences() {
             };
         } else {
             userDisplayPreferences = defaults;
-             if(!docSnap.exists() && !docSnap.metadata.hasPendingWrites) {
-                 setDoc(prefRef, userDisplayPreferences, { merge: true }).catch(console.error);
-             }
+            await setDoc(prefRef, userDisplayPreferences, { merge: true });
         }
         refreshUIBasedOnPreferenceUpdate();
-    });
+    } catch (error) {
+        console.error("Error fetching preferences:", error);
+    }
 }
 
 async function refreshUIBasedOnPreferenceUpdate() {
@@ -342,7 +284,7 @@ async function refreshUIBasedOnPreferenceUpdate() {
 export function setUserId(newUserId) {
     if (userId !== newUserId) {
         userId = newUserId;
-        listenForDisplayPreferences();
+        fetchDisplayPreferences(); // 監視から取得に変更
     }
 }
 export function setUserName(newName) {
@@ -362,12 +304,9 @@ export function updateGlobalTaskObjects(newTasks) {
             return processedGoal;
         })
     }));
-     if (JSON.stringify(allTaskObjects) !== JSON.stringify(processedTasks)) {
+    if (JSON.stringify(allTaskObjects) !== JSON.stringify(processedTasks)) {
         allTaskObjects = processedTasks;
     }
-}
-export function setAdminLoginDestination(viewId) {
-    adminLoginDestination = viewId;
 }
 
 async function handleAdminLogin() {
@@ -375,67 +314,43 @@ async function handleAdminLogin() {
     const errorEl = document.getElementById("admin-password-error");
     if (!input || !errorEl) return;
     const password = input.value;
-    errorEl.textContent = "";
-    if (!password) {
-        errorEl.textContent = "パスワードを入力してください。";
-        return;
-    }
     try {
         const passwordDoc = await getDoc(doc(db, "settings", "admin_password"));
         if (passwordDoc.exists() && passwordDoc.data().password === password) {
             setAuthLevel('admin'); 
             input.value = "";
             closeModal(adminPasswordView);
-            if (adminLoginDestination) {
-                showView(adminLoginDestination);
-                adminLoginDestination = null;
-            } else {
-                showView(VIEWS.HOST);
-            }
+            showView(adminLoginDestination || VIEWS.HOST);
+            adminLoginDestination = null;
         } else {
             errorEl.textContent = "パスワードが違います。";
             input.select();
         }
     } catch (error) {
-        errorEl.textContent = "パスワードの確認中にエラーが発生しました。";
+        errorEl.textContent = "確認中にエラーが発生しました。";
     }
 }
 
 export async function startAppAfterLogin() {
-    console.log("Authentication successful. Starting data sync...");
-    console.log("FCM初期化を開始します...");
-    
-    // ★追加: 通知の初期化
     initMessaging(userId);
     listenForMessages();
 
-    await listenForTasks();
+    // 【改善】監視を止め、初期化時に1回だけ取得する
+    await fetchTasks();
+    await fetchDisplayPreferences();
 }
 
 function setupVisibilityReload() {
-    // 1. ブラウザによって「破棄（休止）」されていたかどうかのフラグを確認
-    // document.wasDiscarded は休止状態から戻った時のみ true になります
     if (document.wasDiscarded) {
-        console.log("このタブは休止状態から復帰しました。リロードします。");
         window.location.reload();
         return;
     }
-
-    // 2. フォールバック（wasDiscardedが未対応のブラウザや、長時間放置対策）
-    // 最後に操作してから一定時間（例：30分）以上経過してタブに戻った場合のみリロードする
     let lastActiveTime = Date.now();
-
     document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") {
             const idleDuration = Date.now() - lastActiveTime;
-            const THIRTY_MINUTES = 50 * 60 * 1000;
-
-            if (idleDuration > THIRTY_MINUTES) {
-                console.log("長期間非アクティブだったため、最新状態にリロードします...");
-                window.location.reload();
-            }
+            if (idleDuration > 30 * 60 * 1000) window.location.reload();
         } else {
-            // タブを離れた時刻を記録
             lastActiveTime = Date.now();
         }
     });
