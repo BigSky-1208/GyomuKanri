@@ -1,0 +1,6 @@
+# wrangler.toml
+
+[[d1_databases]]
+binding = "DB"  # ★ここが "DB" になっている必要があります（大文字小文字も一致）
+database_name = "gyomu-db" # あなたが作成したD1のデータベース名
+database_id = "c20b8cde-a7d9-450e-a2d9-c4804943f33c" # D1の管理画面にあるIDをここに貼る
