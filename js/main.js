@@ -1,4 +1,4 @@
-// js/main.js
+// js/main.js - アプリケーションのメインロジック（最適化版）
 
 import { db, isFirebaseConfigValid } from './firebase.js';
 import { checkOktaAuthentication, handleOktaLogout } from './okta.js';
@@ -7,6 +7,7 @@ import { initMessaging, listenForMessages } from './fcm.js';
 import { initializeModeSelectionView, setupModeSelectionEventListeners } from './views/modeSelection.js';
 import { initializeTaskSettingsView, setupTaskSettingsEventListeners } from './views/taskSettings.js';
 import { initializeHostView, cleanupHostView, setupHostEventListeners } from './views/host/host.js';
+// ★修正: cleanupClientView をインポートに追加
 import { initializeClientView, cleanupClientView, setupClientEventListeners } from './views/client/client.js';
 import { initializePersonalDetailView, cleanupPersonalDetailView, setupPersonalDetailEventListeners } from './views/personalDetail/personalDetail.js';
 import { initializeReportView, cleanupReportView, setupReportEventListeners } from './views/report.js';
@@ -42,11 +43,13 @@ export const VIEWS = {
     APPROVAL: "approval-view", 
 };
 
+// ビューのライフサイクル管理
 const viewLifecycle = {
     [VIEWS.MODE_SELECTION]: { init: initializeModeSelectionView },
     [VIEWS.TASK_SETTINGS]: { init: initializeTaskSettingsView },
     [VIEWS.HOST]: { init: initializeHostView, cleanup: cleanupHostView },
-    [VIEWS.CLIENT]: { init: initializeClientView, cleanup: cleanupClientView }, // ★cleanupを追加
+    // ★修正: CLIENTビューに cleanup を追加して通信のリークを防ぐ
+    [VIEWS.CLIENT]: { init: initializeClientView, cleanup: cleanupClientView }, 
     [VIEWS.PERSONAL_DETAIL]: { init: initializePersonalDetailView, cleanup: cleanupPersonalDetailView },
     [VIEWS.REPORT]: { init: initializeReportView, cleanup: cleanupReportView },
     [VIEWS.PROGRESS]: { init: initializeProgressView },
@@ -152,6 +155,7 @@ function setupGlobalEventListeners() {
 }
 
 export function showView(viewId, data = {}) {
+    console.log(`Showing view: ${viewId}`, data);
     const targetViewElement = document.getElementById(viewId);
     const appContainer = document.getElementById('app-container');
 
@@ -200,7 +204,7 @@ export function handleGoBack() {
 }
 
 /**
- * 【改善】業務マスターを1回だけ取得する
+ * 【改善】業務マスターを1回だけ取得する（onSnapshotを廃止）
  */
 async function fetchTasks() {
     const tasksRef = doc(db, "settings", "tasks");
@@ -243,7 +247,7 @@ async function refreshUIBasedOnTaskUpdate() {
 }
 
 /**
- * 【改善】表示設定を1回だけ取得する
+ * 【改善】表示設定を1回だけ取得する（onSnapshotを廃止）
  */
 export async function fetchDisplayPreferences() {
     if (!userId) {
@@ -284,7 +288,7 @@ async function refreshUIBasedOnPreferenceUpdate() {
 export function setUserId(newUserId) {
     if (userId !== newUserId) {
         userId = newUserId;
-        fetchDisplayPreferences(); // 監視から取得に変更
+        fetchDisplayPreferences(); // 監視から1回取得に変更
     }
 }
 export function setUserName(newName) {
@@ -314,6 +318,11 @@ async function handleAdminLogin() {
     const errorEl = document.getElementById("admin-password-error");
     if (!input || !errorEl) return;
     const password = input.value;
+    errorEl.textContent = "";
+    if (!password) {
+        errorEl.textContent = "パスワードを入力してください。";
+        return;
+    }
     try {
         const passwordDoc = await getDoc(doc(db, "settings", "admin_password"));
         if (passwordDoc.exists() && passwordDoc.data().password === password) {
@@ -332,10 +341,11 @@ async function handleAdminLogin() {
 }
 
 export async function startAppAfterLogin() {
+    console.log("Authentication successful. Starting data sync...");
     initMessaging(userId);
     listenForMessages();
 
-    // 【改善】監視を止め、初期化時に1回だけ取得する
+    // 【改善】常時監視を止め、初期化時に1回だけ取得する
     await fetchTasks();
     await fetchDisplayPreferences();
 }
