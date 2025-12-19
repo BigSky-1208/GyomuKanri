@@ -1,7 +1,8 @@
 // js/views/host/host.js
 
 import { db, showView, VIEWS } from "../../main.js"; 
-import { getDoc, doc, onSnapshot, updateDoc, setDoc, collection, getDocs, query, where, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+// ★修正1: getDoc をインポートに追加
+import { doc, setDoc, onSnapshot, collection, query, where, getDocs, addDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { openMessageModal, showHelpModal } from "../../components/modal.js"; 
 import { openExportExcelModal } from "../../excelExport.js"; 
 
@@ -165,25 +166,46 @@ async function handleTomuraLocationChange(event) {
     }
 }
 
+// ★修正2: updateUI 関数を追加（これが不足していました）
+function updateUI(data) {
+    if (!data) return;
+
+    // ステータスのラジオボタン更新
+    if (data.status) {
+        const radio = document.querySelector(`input[name="tomura-status"][value="${data.status}"]`);
+        if (radio) radio.checked = true;
+    }
+
+    // 場所のラジオボタン更新
+    if (data.location) {
+        const radio = document.querySelector(`input[name="tomura-location"][value="${data.location}"]`);
+        if (radio) radio.checked = true;
+    }
+}
+
 async function listenForTomuraStatus() {
     const statusRef = doc(db, "settings", "tomura_status");
     const todayStr = new Date().toISOString().split("T")[0];
 
     // 1. 監視を始める前に、一度だけチェックして必要なら初期化する
-    const docSnap = await getDoc(statusRef);
-    if (!docSnap.exists() || docSnap.data().date !== todayStr) {
-        await setDoc(statusRef, { 
-            status: "声掛けNG", 
-            location: "出社", 
-            date: todayStr 
-        }, { merge: true });
+    try {
+        // getDocは上でimportしたので動作します
+        const docSnap = await getDoc(statusRef);
+        if (!docSnap.exists() || docSnap.data().date !== todayStr) {
+            await setDoc(statusRef, { 
+                status: "声掛けNG", 
+                location: "出社", 
+                date: todayStr 
+            }, { merge: true });
+        }
+    } catch (e) {
+        console.error("Error initializing Tomura status:", e);
     }
 
     // 2. その後で純粋な「監視のみ」を行う
     onSnapshot(statusRef, (snapshot) => {
-        // ここでは UI の更新だけを行い、絶対に setDoc/updateDoc を書かない
         const data = snapshot.data();
-        updateUI(data);
+        updateUI(data); // 定義したupdateUI関数を呼び出し
     });
 }
 
@@ -260,8 +282,6 @@ function injectMessageFeature() {
     }
 }
 
-// js/views/host/host.js 内の handleOpenMessageModal を差し替え
-
 async function handleOpenMessageModal() {
     console.log("メッセージモーダルを起動します...");
 
@@ -271,30 +291,26 @@ async function handleOpenMessageModal() {
     }
 
     try {
-        // 1. 全ユーザー情報の取得 (手動選択用)
-        // doc.id (英数字のUID) を確実に ID としてセットします
         const usersSnap = await getDocs(collection(db, "user_profiles"));
         const allUsers = usersSnap.docs.map(doc => {
-            const data = doc.id === doc.data().name ? {} : doc.data(); // 安全策
+            const data = doc.id === doc.data().name ? {} : doc.data(); 
             return {
-                id: doc.id, // ★ここが 2rsTr... のようなUIDになる
+                id: doc.id, 
                 displayName: data.displayName || data.name || "名称未設定"
             };
         }).sort((a, b) => a.displayName.localeCompare(b.displayName, "ja"));
 
-        // 2. 現在の稼働状況を取得 (業務別送信用)
         const statusSnap = await getDocs(collection(db, "work_status"));
         
         const workingData = {
-            all: [],     // 全稼働者ID
-            byTask: {}   // 業務名ごとのIDリスト
+            all: [],     
+            byTask: {}   
         };
 
         statusSnap.forEach(doc => {
             const data = doc.data();
-            // 稼働中かつ休憩中でない
             if (data.isWorking && data.currentTask && data.currentTask !== "休憩") {
-                const uid = doc.id; // ★ドキュメントID = ユーザーUID
+                const uid = doc.id; 
                 let taskName = data.currentTask;
 
                 if (taskName.startsWith("その他_")) {
@@ -310,8 +326,6 @@ async function handleOpenMessageModal() {
             }
         });
 
-        // 3. モーダルを表示
-        // ここで渡す allUsers の各要素の 'id' が UID であることが重要です
         openMessageModal(allUsers, workingData, executeSendMessage);
 
     } catch (error) {
@@ -326,7 +340,6 @@ async function executeSendMessage(targetIds, title, bodyContent) {
         return;
     }
 
-    // ★ログ1: 送信直前の全IDリストを表示
     console.log("🚀 メッセージ送信リクエスト:", {
         送信人数: targetIds.length,
         対象IDリスト: targetIds,
@@ -338,7 +351,6 @@ async function executeSendMessage(targetIds, title, bodyContent) {
 
     try {
         const timestamp = new Date().toISOString();
-        // 履歴保存処理...
         const writePromises = targetIds.map(uid => {
             return addDoc(collection(db, "user_profiles", uid, "messages"), {
                 title: title,
@@ -357,7 +369,6 @@ async function executeSendMessage(targetIds, title, bodyContent) {
 
         const sendPromises = targetIds.map(async (uid) => {
             try {
-                // ★ログ2: 各ユーザーへの送信開始
                 console.log(`--- [送信中] UID: ${uid} ---`);
 
                 const response = await fetch(WORKER_URL, {
@@ -371,13 +382,10 @@ async function executeSendMessage(targetIds, title, bodyContent) {
                 });
 
                 const result = await response.json();
-                
-                // ★ログ3: Workerからの生レスポンスを表示
                 console.log(`--- [Worker応答] UID: ${uid} ---`, result);
 
                 if (!result.success) {
                     const msg = result.error || "詳細不明のエラー";
-                    // ★追加: Workerが探しに行ったパスやエラー詳細があれば表示
                     const debugInfo = result.debug ? ` | Debug: ${result.debug}` : "";
                     errorReport.push(`${uid}: ${msg}${debugInfo}`);
                 } else {
