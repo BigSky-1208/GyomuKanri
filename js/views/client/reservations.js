@@ -76,7 +76,11 @@ export function updateReservationDisplay() {
  */
 export async function handleSaveBreakReservation() {
     const timeInput = document.getElementById("break-reservation-time-input");
+    // ★ここで「modal」という名前で要素を捕まえます
+    const modal = document.getElementById("break-reservation-modal"); 
+    
     if (!timeInput?.value) return;
+
     const scheduledTime = calculateScheduledTime(timeInput.value);
     
     try {
@@ -85,17 +89,24 @@ export async function handleSaveBreakReservation() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 id: `${userId}_break_${timeInput.value.replace(':','')}`,
-                userId, userName, action: "break",
+                userId, 
+                userName, 
+                action: "break",
                 scheduledTime: scheduledTime.toISOString()
             })
         });
+
+        // 保存後にリストを更新
         await listenForUserReservations();
 
-        // 2. ★追加: 保存が成功したらモーダルを閉じる
+        // ★ここで modal を使って画面を閉じます
         if (modal) {
             modal.classList.add("hidden");
         }
         
+        // 入力欄をリセット
+        timeInput.value = "";
+
     } catch (error) {
         console.error("保存エラー:", error);
     }
