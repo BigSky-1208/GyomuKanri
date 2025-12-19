@@ -1,9 +1,10 @@
 // js/views/client/client.js
 
-import { showView, VIEWS, db, userName } from "../../main.js";
+// ★修正: userId を追加インポート（自分の監視に必要）
+import { showView, VIEWS, db, userName, userId } from "../../main.js";
 import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// timer.js から操作関数をインポート (stopStatusListenerを追加)
+// timer.js から操作関数をインポート
 import { 
     handleStartClick, 
     handleStopClick, 
@@ -11,9 +12,9 @@ import {
     restoreClientState as restoreTimerState,
     stopStatusListener 
 } from "./timer.js";
+
 import { listenForUserReservations, handleSaveBreakReservation, handleSetStopReservation, handleCancelStopReservation, deleteReservation } from "./reservations.js";
 
-// ★修正: injectMessageHistoryButton を追加インポート
 import { 
     handleTaskSelectionChange, 
     handleGoalSelectionChange, 
@@ -24,9 +25,7 @@ import {
     injectMessageHistoryButton 
 } from "./clientUI.js";
 
-// clientActions.js からは handleFixCheckout のみをインポート
 import { handleFixCheckout } from "./clientActions.js";
-
 import { toggleMiniDisplay } from "./miniDisplay.js";
 import { openBreakReservationModal, fixCheckoutModal, showHelpModal } from "../../components/modal.js";
 import { stopColleaguesListener } from "./colleagues.js";
@@ -57,11 +56,12 @@ const fixCheckoutSaveBtn = document.getElementById("fix-checkout-save-btn");
 // Help Button
 const helpButton = document.querySelector('#client-view .help-btn');
 
-// 戸村さんステータス用リスナー解除関数
+// リスナー解除用変数
 let tomuraStatusUnsubscribe = null;
+let myStatusUnsubscribe = null; // ★追加: 自分のステータス監視用
 
 /**
- * 【追加】クライアント画面を離れる際、または初期化前のクリーンアップ処理
+ * クライアント画面を離れる際、または初期化前のクリーンアップ処理
  */
 export function cleanupClientView() {
     console.log("Cleaning up Client View listeners...");
@@ -71,11 +71,17 @@ export function cleanupClientView() {
         tomuraStatusUnsubscribe();
         tomuraStatusUnsubscribe = null;
     }
+
+    // 2. ★追加: 自分自身のステータス監視を止める
+    if (myStatusUnsubscribe) {
+        myStatusUnsubscribe();
+        myStatusUnsubscribe = null;
+    }
     
-    // 2. 同僚の監視を止める
+    // 3. 同僚の監視を止める
     stopColleaguesListener();
     
-    // 3. タイマー関連の監視（ステータス監視やループ）を止める
+    // 4. タイマー関連の監視（ステータス監視やループ）を止める
     stopStatusListener();
 }
 
@@ -85,16 +91,19 @@ export function cleanupClientView() {
 export async function initializeClientView() {
     console.log("Initializing Client View...");
     
-    // ★追加: 以前のリスナーが残っている場合に備えて掃除を行う
+    // 以前のリスナーが残っている場合に備えて掃除を行う
     cleanupClientView();
 
     await restoreTimerState();
+
+    // ★追加: 自分自身のステータス変化を監視開始 (自動切り替えに必須)
+    listenForMyStatus();
+
     listenForUserReservations();
     
     renderTaskOptions();
     renderTaskDisplaySettings(); 
     
-    // ★追加: メッセージボタンを画面に注入
     injectMessageHistoryButton();
     
     listenForTomuraStatus();
@@ -104,12 +113,33 @@ export async function initializeClientView() {
 }
 
 /**
+ * ★追加: 自分自身のステータスをリアルタイム監視する関数
+ * Workerが裏でステータスを変更した際に、画面を即座に同期させます。
+ */
+function listenForMyStatus() {
+    if (!userId) return;
+    
+    if (myStatusUnsubscribe) {
+        myStatusUnsubscribe();
+    }
+
+    // Firestoreの自分のドキュメントを監視
+    myStatusUnsubscribe = onSnapshot(doc(db, "work_status", userId), (docSnap) => {
+        // データが変更されたら、timer.js の状態復元関数を呼んで画面を同期
+        // （自分が操作した時も発火しますが、restoreTimerStateは冪等なので問題ありません）
+        restoreTimerState();
+    }, (error) => {
+        console.error("Error listening to my status:", error);
+    });
+}
+
+/**
  * イベントリスナーの設定
  */
 export function setupClientEventListeners() {
     console.log("Setting up Client View event listeners...");
 
-    // Timer control buttons (timer.jsの関数を使用)
+    // Timer control buttons
     startBtn?.addEventListener("click", handleStartClick);
     stopBtn?.addEventListener("click", () => handleStopClick(false));
     breakBtn?.addEventListener("click", () => handleBreakClick(false));
@@ -173,7 +203,6 @@ export function setupClientEventListeners() {
             const cancelBtn = fixCheckoutModal.querySelector("#fix-checkout-cancel-btn");
             const descP = fixCheckoutModal.querySelector("p");
 
-            // 手動オープンのためキャンセルボタンを表示
             if (cancelBtn) cancelBtn.style.display = "inline-block";
 
             if (descP) {
@@ -213,45 +242,20 @@ function listenForTomuraStatus() {
     tomuraStatusUnsubscribe = onSnapshot(statusRef, (docSnap) => {
         let statusData = {
             status: "声掛けNG",
-            location: "" // デフォルト
+            location: ""
         };
 
         if (docSnap.exists()) {
             const data = docSnap.data();
-            // 日付が今日の場合のみ有効
             if (data.date === todayStr) {
                 statusData.status = data.status || "声掛けNG";
-                statusData.location = data.location || ""; // 場所情報を取得
+                statusData.location = data.location || "";
             }
         }
         
-        // 表示更新
         updateTomuraStatusDisplay(statusData);
 
     }, (error) => {
         console.error("Error listening for Tomura's status:", error);
     });
-}
-
-/**
- * D1のステータスを手動で更新する関数
- */
-async function syncStatusToD1(isWorking, taskName) {
-    const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev";
-    try {
-        await fetch(`${WORKER_URL}/update-status`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                userId: userId,           // main.js からインポート
-                userName: userName,       // main.js からインポート
-                isWorking: isWorking ? 1 : 0,
-                currentTask: taskName || null,
-                startTime: new Date().toISOString()
-            })
-        });
-        console.log("D1ステータスを同期しました");
-    } catch (error) {
-        console.error("D1同期失敗:", error);
-    }
 }
