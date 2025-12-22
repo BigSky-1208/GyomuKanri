@@ -213,38 +213,34 @@ function startTimerLoop() {
         if (timerDisplay) timerDisplay.textContent = formatDuration(elapsed);
 
         // --- 【マージ】★追加: 予約の即時実行チェック ---
-const nowIso = new Date().toISOString();
-        if (activeReservations.length > 0) {
+        const nowIso = now.toISOString();
+        
+        if (typeof activeReservations !== 'undefined' && activeReservations.length > 0) {
             const dueReservation = activeReservations.find(res => 
                 res.status === 'reserved' && res.scheduledTime <= nowIso
             );
 
             if (dueReservation) {
-                console.log("予約実行時間です:", dueReservation.action);
-                // 二重実行防止
+                console.log("予約実行時間になりました:", dueReservation.action);
+                // 二重実行を防ぐため、即座にメモリ上のリストから削除
                 activeReservations = activeReservations.filter(r => r.id !== dueReservation.id);
                 
-                // ★重要: ブラウザ側の状態を強制的にDBに合わせる
                 if (dueReservation.action === 'break') {
-                    // 休憩開始
-                    localStorage.setItem("isWorking", "1");
+                    // ★LocalStorageも更新して画面表示のズレを防ぐ
                     localStorage.setItem("currentTask", "休憩");
-                    localStorage.setItem("currentGoal", ""); // 休憩中は工数なし
-                    // UIを即座に更新
-                    updateUIForActiveTask();
-                    // 必要ならトリガーを呼ぶ
-                    await handleBreakClick(true); 
+                    localStorage.setItem("currentGoal", ""); 
+                    await handleBreakClick(true); // 自動実行として休憩開始
                 } else if (dueReservation.action === 'stop') {
-                    // 終了処理
-                    localStorage.removeItem("isWorking");
-                    localStorage.removeItem("currentTask");
-                    resetClientState();
-                    await handleStopClick(true);
+                    await handleStopClick(true);  // 自動実行として終了
                 }
+                
+                // 実行後に最新のリストをDBから再取得して同期
+                if (typeof syncReservations === 'function') await syncReservations();
             }
-
+        } // ← 【修正ポイント】この閉じカッコが不足していたためエラーが出ていました
 
         // --- 通知ロジック ---
+        // ★修正: LocalStorageから最新のタスク名を取得（ズレ防止）
         const activeTaskName = localStorage.getItem("currentTask") || currentTask || "業務";
 
         if (currentTask === "休憩" && elapsed > 0) {
@@ -254,6 +250,7 @@ const nowIso = new Date().toISOString();
                 triggerBreakNotification(elapsed);
             }
         }
+        
         if (userDisplayPreferences && userDisplayPreferences.notificationIntervalMinutes > 0) {
             const intervalSeconds = userDisplayPreferences.notificationIntervalMinutes * 60;
             if (elapsed > 0 && elapsed - lastEncouragementTime >= intervalSeconds) {
