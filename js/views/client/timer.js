@@ -362,41 +362,56 @@ export async function handleStopClick(isAuto = false) {
     await stopCurrentTask(true);
 }
 
+/**
+ * 休憩ボタンが押された時の処理
+ */
 export async function handleBreakClick(isAuto = false) {
     if (!isAuto) {
         const { cancelAllReservations } = await import("./reservations.js");
         await cancelAllReservations();
     }
 
-    const statusRef = doc(db, "work_status", userId);
-    const docSnap = await getDoc(statusRef);
-    if (!docSnap.exists() || !docSnap.data().isWorking) return;
+    // ★修正: Firebase(getDoc)ではなくLocalStorageから現在の状態を判断
+    const isWorking = localStorage.getItem("isWorking") === "1";
+    const nowTask = localStorage.getItem("currentTask");
 
-    const statusData = docSnap.data();
-    const currentDbTask = statusData.currentTask;
+    if (!isWorking) return;
 
-    if (currentDbTask === "休憩") {
-        await stopCurrentTask(false);
+    if (nowTask === "休憩") {
+        // --- 休憩から戻る処理 ---
+        await stopCurrentTaskCore(false); // 「休憩」のログを記録
         
-        // --- 【重要】JSON文字列として保存されている場合のパース処理 ---
-        let taskToReturnTo = statusData.preBreakTask;
-        if (typeof taskToReturnTo === 'string') {
-            try {
-                taskToReturnTo = JSON.parse(taskToReturnTo);
-            } catch (e) {
-                taskToReturnTo = null;
-            }
+        // LocalStorageに保存しておいた「休憩前の業務」を読み出す
+        let taskToReturnTo = null;
+        try {
+            const savedPreTask = localStorage.getItem("preBreakTask");
+            taskToReturnTo = savedPreTask ? JSON.parse(savedPreTask) : null;
+        } catch (e) {
+            console.error("休憩前タスクの復元失敗:", e);
         }
-        // --------------------------------------------------------
 
-        resetClientState(); 
         if (taskToReturnTo && taskToReturnTo.task) {
-            await startTask(taskToReturnTo.task, taskToReturnTo.goalId, taskToReturnTo.goalTitle);
+            // 前の業務に戻る
+            await executeStartTask(taskToReturnTo.task, taskToReturnTo.goalId, taskToReturnTo.goalTitle);
+        } else {
+            // 万が一戻り先が不明なら停止状態にする
+            await stopCurrentTask(true);
         }
     } else {
-        preBreakTask = { task: currentTask, goalId: currentGoalId, goalTitle: currentGoalTitle };
+        // --- 休憩を開始する処理 ---
+        // 1. 休憩前のタスク情報をLocalStorageに退避
+        const preTaskData = { 
+            task: currentTask, 
+            goalId: currentGoalId, 
+            goalTitle: currentGoalTitle 
+        };
+        localStorage.setItem("preBreakTask", JSON.stringify(preTaskData));
+
+        // 2. 今の業務のログを記録
         await stopCurrentTaskCore(false);
-        await startTask("休憩", null, null);
+
+        // 3. 「休憩」を開始（UI更新もこの中で行われる）
+        await executeStartTask("休憩", null, null);
     }
 }
 
