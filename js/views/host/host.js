@@ -47,7 +47,7 @@ function injectTomuraLocationUI() {
 
             const radios = wrapper.querySelectorAll('input[name="tomura-location"]');
             radios.forEach(radio => {
-                radio.addEventListener("change", handleTomuraLocationChange);
+                radio.addEventListener("change", updateTomuraStatusOnD1);
             });
         }
     }
