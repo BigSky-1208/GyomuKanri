@@ -238,6 +238,7 @@ function stopTimerLoop() {
 
 // --- Action Handlers ---
 
+// 【修正箇所】handleStartClick 関数の中
 export async function handleStartClick() {
     const taskSelect = document.getElementById("task-select");
     const goalSelect = document.getElementById("goal-select");
@@ -268,26 +269,31 @@ export async function handleStartClick() {
         });
 
         if (response.ok) {
-            // ★重要: Firebaseの反映を待たず、LocalStorageを即座に正解として上書きする
+            // ★修正1: メモリ変数を即座に更新（通知のズレ防止）
+            currentTask = data.currentTask;
+            currentGoalTitle = data.currentGoal;
+            startTime = new Date(data.startTime);
+
+            // ★修正2: LocalStorage を即座に更新
             localStorage.setItem("isWorking", "1");
             localStorage.setItem("currentTask", data.currentTask);
             localStorage.setItem("currentGoal", data.currentGoal || "");
             localStorage.setItem("startTime", data.startTime);
 
-            // ★重要: 即座にボタンの拡縮アニメーションを止める
+            // ★修正3: ボタンの拡縮を即座に止める
             const startBtn = document.getElementById("start-btn");
             if (startBtn) {
-                startBtn.classList.remove("animate-pulse"); // アニメーションを解除
-                startBtn.textContent = "業務を変更する";      // テキストも確定させる
+                startBtn.classList.remove("animate-pulse", "animate-pulse-scale"); // 両方の可能性を削除
+                startBtn.textContent = "業務を変更する";
+                startBtn.classList.replace("bg-indigo-600", "bg-green-600");
             }
 
-            // UI全体をLocalStorageの状態に同期
+            // UI全体を最新状態に同期
             await restoreClientState();
             alert(`業務を「${data.currentTask}」に変更しました。`);
         }
     } catch (error) {
         console.error("業務開始エラー:", error);
-        alert("接続に失敗しました。");
     }
 }
 
