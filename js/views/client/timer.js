@@ -410,7 +410,7 @@ async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = nul
         userId, userName, onlineStatus: true
     }, { merge: true });
 
-    // --- 【重要】D1ステータス同期 ---
+    // --- 【修正】D1ステータス同期 ---
     try {
         await fetch(`${WORKER_URL}/update-status`, {
             method: 'POST',
@@ -420,7 +420,8 @@ async function startTask(newTask, newGoalId, newGoalTitle, forcedStartTime = nul
                 userName: userName,
                 isWorking: 1,
                 currentTask: newTask,
-                startTime: startTime.toISOString()
+                startTime: startTime.toISOString(),
+                currentGoal: currentGoalTitle // ★工数（タイトル）を送信に追加
             })
         });
     } catch (e) {
@@ -480,7 +481,8 @@ async function stopCurrentTaskCore(isLeaving, forcedEndTime = null, taskDataOver
                     userName: userName,
                     isWorking: 0,
                     currentTask: null,
-                    startTime: null
+                    startTime: null,
+                    currentGoal: null // ★終了時は工数もクリアする
                 })
             });
             console.log("D1 status synced (stopped).");
