@@ -87,19 +87,24 @@ export function stopStatusListener() {
 export function updateUIForActiveTask() {
     if (startBtn) startBtn.textContent = "業務変更";
     
-    // メモリ上の currentTask を優先して表示
+    // 警告メッセージを隠す（ここでも念のため実行）
+    if (changeWarningMessage) changeWarningMessage.classList.add("hidden");
+
     if (currentTaskDisplay) {
-        const displayTaskName = currentTask || localStorage.getItem("currentTask") || "未開始";
-        const displayGoalName = currentGoalTitle || localStorage.getItem("currentGoal");
+        const displayTaskName = currentTask || "未開始";
+        const displayGoalName = currentGoalTitle;
         
-        currentTaskDisplay.textContent = (displayGoalName && displayGoalName !== "なし")
-            ? `${displayTaskName} (${displayGoalName})`
-            : displayTaskName;
+        // 【新不具合の対応】工数が有効な文字列（なし・任意以外）の時だけカッコ書きを表示
+        if (displayGoalName && displayGoalName !== "なし" && displayGoalName !== "工数を選択 (任意)") {
+            currentTaskDisplay.textContent = `${displayTaskName} (${displayGoalName})`;
+        } else {
+            currentTaskDisplay.textContent = displayTaskName;
+        }
     }
 
+    // 休憩ボタンの表示切替
     if (breakBtn) {
         breakBtn.disabled = false;
-        // 休憩ボタンのトグル処理（既存のまま）
         if (currentTask === "休憩") {
             breakBtn.textContent = "休憩前の業務に戻る";
             breakBtn.classList.replace("bg-yellow-500", "bg-cyan-600");
@@ -108,6 +113,27 @@ export function updateUIForActiveTask() {
             breakBtn.classList.replace("bg-cyan-600", "bg-yellow-500");
         }
     }
+
+    // 【不具合修正】プルダウンの内容がリセットされるのを防ぐ
+    import("./clientUI.js").then(({ updateTaskDisplaysForSelection, handleGoalSelectionChange }) => {
+        const taskSelect = document.getElementById("task-select");
+        const goalSelect = document.getElementById("goal-select");
+        
+        if (taskSelect && currentTask) {
+            taskSelect.value = currentTask;
+            // オプションを再描画
+            updateTaskDisplaysForSelection(); 
+            
+            // オプション生成後に工数を選択状態にする
+            setTimeout(() => {
+                const targetGoalId = currentGoalId || localStorage.getItem("currentGoalId");
+                if (targetGoalId && goalSelect) {
+                    goalSelect.value = targetGoalId;
+                    handleGoalSelectionChange();
+                }
+            }, 100); // 確実に描画が終わるよう少し長めに待機
+        }
+    });
 }
 
 function resetClientState() {
@@ -220,8 +246,15 @@ export async function handleStartClick() {
     const otherTaskInput = document.getElementById("other-task-input");
 
     const selectedTask = taskSelect.value === "その他" ? otherTaskInput.value : taskSelect.value;
-    const selectedGoalTitle = goalSelect ? goalSelect.options[goalSelect.selectedIndex]?.text : null;
+    
+    // 工数の判定：未選択やプレースホルダーの場合は null にする
     const selectedGoalId = goalSelect ? goalSelect.value : null;
+    let selectedGoalTitle = goalSelect ? goalSelect.options[goalSelect.selectedIndex]?.text : null;
+    
+    // 「工数を選択 (任意)」や「なし」の場合はタイトルを空にする（新不具合の対応）
+    if (selectedGoalTitle === "工数を選択 (任意)" || selectedGoalTitle === "なし" || !selectedGoalId) {
+        selectedGoalTitle = null;
+    }
 
     if (!selectedTask) {
         alert("業務内容を選択または入力してください。");
@@ -233,7 +266,7 @@ export async function handleStartClick() {
         userName: userName,
         isWorking: 1,
         currentTask: selectedTask,
-        currentGoal: selectedGoalTitle,
+        currentGoal: selectedGoalTitle, // 整理されたタイトルを送信
         startTime: new Date().toISOString()
     };
 
@@ -245,19 +278,22 @@ export async function handleStartClick() {
         });
 
         if (response.ok) {
-            // --- 1. メモリ変数を即座に更新（これが「未開始」を防ぐ鍵です） ---
+            // メモリ変数を更新
             currentTask = data.currentTask;
             currentGoalTitle = data.currentGoal;
             currentGoalId = selectedGoalId;
             startTime = new Date(data.startTime);
 
-            // --- 2. LocalStorage を更新 ---
+            // LocalStorage を更新
             localStorage.setItem("isWorking", "1");
             localStorage.setItem("currentTask", currentTask);
             localStorage.setItem("currentGoal", currentGoalTitle || "");
+            localStorage.setItem("currentGoalId", currentGoalId || "");
             localStorage.setItem("startTime", data.startTime);
 
-            // --- 3. UIの即時反映（alertは削除） ---
+            // 【不具合修正】警告メッセージを隠す
+            if (changeWarningMessage) changeWarningMessage.classList.add("hidden");
+
             const startBtn = document.getElementById("start-btn");
             if (startBtn) {
                 startBtn.classList.remove("animate-pulse", "animate-pulse-scale");
@@ -265,11 +301,10 @@ export async function handleStartClick() {
                 startBtn.classList.replace("bg-indigo-600", "bg-green-600");
             }
 
-            // タイマーと表示を更新
+            // UI反映
             updateUIForActiveTask();
             startTimerLoop();
             
-            // 同僚リスト更新
             import("./colleagues.js").then(m => m.listenForColleagues(currentTask));
         }
     } catch (error) {
