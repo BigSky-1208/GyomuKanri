@@ -27,18 +27,19 @@ export function stopListeningForStatusUpdates() {
 
 async function fetchAndRefreshStatus() {
     try {
+        // ユーザー一覧取得
         const response = await fetch(`${WORKER_URL}/get-all-status`);
-        if (!response.ok) throw new Error("ステータス取得失敗");
-
         const statusData = await response.json();
-        
-        // 1. userManagement.js のキャッシュを更新
-        updateStatusesCache(statusData);
-
-        // 2. 画面の更新
         updateStatusUI(statusData);
+
+        // ★追加: 戸村さんステータスも取得
+        const tomuraResp = await fetch(`${WORKER_URL}/get-tomura-status`);
+        const tomuraData = await tomuraResp.json();
+        // 既存の updateUI(tomuraData) などを呼び出して反映
+        if (typeof updateUI === "function") updateUI(tomuraData); 
+
     } catch (error) {
-        console.error("D1ステータス同期エラー:", error);
+        console.error("同期エラー:", error);
     }
 }
 
