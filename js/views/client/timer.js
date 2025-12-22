@@ -53,6 +53,7 @@ export async function restoreClientState() {
     const savedTask = localStorage.getItem("currentTask");
     const savedGoal = localStorage.getItem("currentGoal");
     const savedStartTime = localStorage.getItem("startTime");
+    await syncReservations(); // ★これを追加！
 
     if (isWorking && savedTask && savedStartTime) {
         // メモリ変数に復元
@@ -212,29 +213,36 @@ function startTimerLoop() {
         if (timerDisplay) timerDisplay.textContent = formatDuration(elapsed);
 
         // --- 【マージ】★追加: 予約の即時実行チェック ---
-        const nowIso = now.toISOString();
-        // まだ実行されていない、かつ時間を過ぎている予約を探す
-        // ※activeReservations は timer.js の冒頭で定義されている必要があります
-        if (typeof activeReservations !== 'undefined' && activeReservations.length > 0) {
+const nowIso = new Date().toISOString();
+        if (activeReservations.length > 0) {
             const dueReservation = activeReservations.find(res => 
                 res.status === 'reserved' && res.scheduledTime <= nowIso
             );
 
             if (dueReservation) {
-                console.log("予約実行時間になりました:", dueReservation.action);
-                // 二重実行を防ぐため、即座にメモリ上のリストから削除
+                console.log("予約実行時間です:", dueReservation.action);
+                // 二重実行防止
                 activeReservations = activeReservations.filter(r => r.id !== dueReservation.id);
                 
+                // ★重要: ブラウザ側の状態を強制的にDBに合わせる
                 if (dueReservation.action === 'break') {
-                    await handleBreakClick(true); // 自動実行として休憩開始
+                    // 休憩開始
+                    localStorage.setItem("isWorking", "1");
+                    localStorage.setItem("currentTask", "休憩");
+                    localStorage.setItem("currentGoal", ""); // 休憩中は工数なし
+                    // UIを即座に更新
+                    updateUIForActiveTask();
+                    // 必要ならトリガーを呼ぶ
+                    await handleBreakClick(true); 
                 } else if (dueReservation.action === 'stop') {
-                    await handleStopClick(true);  // 自動実行として終了
+                    // 終了処理
+                    localStorage.removeItem("isWorking");
+                    localStorage.removeItem("currentTask");
+                    resetClientState();
+                    await handleStopClick(true);
                 }
-                
-                // 実行後に最新のリストをDBから再取得して同期
-                if (typeof syncReservations === 'function') await syncReservations();
             }
-        }
+
 
         // --- 通知ロジック ---
         const activeTaskName = localStorage.getItem("currentTask") || currentTask || "業務";
@@ -554,6 +562,7 @@ async function stopCurrentTaskCore(isLeaving, forcedEndTime = null, taskDataOver
  * D1から最新の予約リストを取得してメモリに同期する
  */
 export async function syncReservations() {
+    if (!userId) return;
     try {
         const resp = await fetch(`${WORKER_URL}/get-user-reservations?userId=${userId}`);
         if (resp.ok) {
