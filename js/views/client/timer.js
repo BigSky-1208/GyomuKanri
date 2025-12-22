@@ -209,7 +209,10 @@ function startTimerLoop() {
         const elapsed = Math.floor((now - startTime) / 1000);
         if (timerDisplay) timerDisplay.textContent = formatDuration(elapsed);
 
-        // 各種通知ロジック
+        // --- 通知ロジックの修正 ---
+        // ★修正: メモリの currentTask ではなく、LocalStorage から最新のタスク名を取得
+        const activeTaskName = localStorage.getItem("currentTask") || currentTask || "業務";
+
         if (currentTask === "休憩" && elapsed > 0) {
             const breakInterval = 1800;
             if (elapsed - lastBreakNotificationTime >= breakInterval) {
@@ -221,7 +224,8 @@ function startTimerLoop() {
             const intervalSeconds = userDisplayPreferences.notificationIntervalMinutes * 60;
             if (elapsed > 0 && elapsed - lastEncouragementTime >= intervalSeconds) {
                 lastEncouragementTime = Math.floor(elapsed / intervalSeconds) * intervalSeconds;
-                triggerEncouragementNotification(elapsed, "breather", currentTask);
+                // ★修正: activeTaskName を渡す
+                triggerEncouragementNotification(elapsed, "breather", activeTaskName);
             }
         }
     }, 1000);
