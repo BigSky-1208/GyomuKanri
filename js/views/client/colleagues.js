@@ -39,7 +39,7 @@ export function listenForColleagues(myCurrentTask) {
 
     // 初回実行と定期実行（10秒おき）
     fetchColleagues();
-    colleaguesInterval = setInterval(fetchColleagues, 10000);
+    colleaguesInterval = setInterval(fetchColleagues, 60000);
 }
 
 /**
