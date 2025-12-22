@@ -60,7 +60,9 @@ function updateStatusUI(statusArray) {
                 statusBadge.className = "status-badge inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800";
             }
             if (taskText) {
-                taskText.textContent = userStatus.currentTask || "業務中";
+                // 【マージ】工数があればカッコ書きで表示
+                const goalSuffix = userStatus.currentGoal ? ` (${userStatus.currentGoal})` : '';
+                taskText.textContent = (userStatus.currentTask || "業務中") + goalSuffix;
             }
         } else {
             // 停止中
@@ -84,7 +86,7 @@ function updateStatusUI(statusArray) {
         // 稼働中のユーザーだけを抽出
         const workingUsers = statusArray.filter(u => u.isWorking === 1);
 
-        // ★追加: 業務ごとの人数を集計する
+        // 業務ごとの人数を集計する
         const taskCounts = {};
         workingUsers.forEach(u => {
             const task = u.currentTask || "その他";
@@ -100,7 +102,6 @@ function updateStatusUI(statusArray) {
                 </div>
             `;
 
-            // 業務別内訳を表示 (ここが今回追加した「どの業務に何人いるか」の部分です)
             if (workingUsers.length > 0) {
                 summaryHtml += `<div class="flex flex-wrap gap-2">`;
                 Object.entries(taskCounts).forEach(([taskName, count]) => {
@@ -137,16 +138,24 @@ function updateStatusUI(statusArray) {
                 const displayName = u.userName || `User (${u.userId.slice(0,4)}...)`;
                 const taskName = u.currentTask || '業務中';
 
+                // 【マージ】カード内に工数バッジを表示
                 html += `
                 <div class="bg-white border border-gray-200 p-3 rounded-lg shadow-sm flex justify-between items-center mb-2 hover:bg-gray-50 transition">
-                    <div>
-                        <div class="font-bold text-gray-800 text-sm">${escapeHtml(displayName)}</div>
-                        <div class="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                            <svg class="w-3 h-3 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
-                            <span class="font-medium text-indigo-600 truncate max-w-[150px]">${escapeHtml(taskName)}</span>
+                    <div class="min-w-0 flex-1">
+                        <div class="font-bold text-gray-800 text-sm truncate">${escapeHtml(displayName)}</div>
+                        <div class="text-xs mt-1 flex flex-wrap items-center gap-1">
+                            <span class="text-indigo-600 font-medium flex items-center gap-1">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+                                ${escapeHtml(taskName)}
+                            </span>
+                            ${u.currentGoal ? `
+                                <span class="px-1.5 py-0.5 rounded bg-orange-100 text-orange-800 border border-orange-200 text-[10px]">
+                                    目標: ${escapeHtml(u.currentGoal)}
+                                </span>
+                            ` : ''}
                         </div>
                     </div>
-                    <div class="flex flex-col items-center">
+                    <div class="flex flex-col items-center ml-2">
                         <span class="relative flex h-3 w-3">
                           <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                           <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
