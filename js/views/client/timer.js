@@ -239,19 +239,16 @@ function stopTimerLoop() {
 
 // --- Action Handlers ---
 
-// 【修正箇所】handleStartClick 関数の中
 export async function handleStartClick() {
+    // 1. 新しく選択された値を取得
     const taskSelect = document.getElementById("task-select");
     const goalSelect = document.getElementById("goal-select");
     const otherTaskInput = document.getElementById("other-task-input");
 
     const selectedTask = taskSelect.value === "その他" ? otherTaskInput.value : taskSelect.value;
-    
-    // 工数の判定：未選択やプレースホルダーの場合は null にする
     const selectedGoalId = goalSelect ? goalSelect.value : null;
     let selectedGoalTitle = goalSelect ? goalSelect.options[goalSelect.selectedIndex]?.text : null;
     
-    // 「工数を選択 (任意)」や「なし」の場合はタイトルを空にする（新不具合の対応）
     if (selectedGoalTitle === "工数を選択 (任意)" || selectedGoalTitle === "なし" || !selectedGoalId) {
         selectedGoalTitle = null;
     }
@@ -261,12 +258,39 @@ export async function handleStartClick() {
         return;
     }
 
+    // --- ★追加: 業務変更時の未入力チェック ---
+    const isWorking = localStorage.getItem("isWorking") === "1";
+    
+    // 現在稼働中 且つ 目標が設定されている 且つ 進捗が未入力の場合
+    if (isWorking && currentGoalId && !hasContributedToCurrentGoal) {
+        const { showConfirmationModal, hideConfirmationModal } = await import("../../components/modal.js");
+        
+        showConfirmationModal(
+            `「${currentGoalTitle}」の進捗(件数)が入力されていません。\nこのまま業務を変更しますか？`,
+            async () => {
+                // OKが押されたらモーダルを閉じて、業務変更を実行
+                hideConfirmationModal();
+                await executeStartTask(selectedTask, selectedGoalId, selectedGoalTitle);
+            },
+            hideConfirmationModal // キャンセルなら何もしない
+        );
+        return; // 一旦処理を抜ける
+    }
+
+    // まだ稼働していない、またはチェック不要な場合はそのまま実行
+    await executeStartTask(selectedTask, selectedGoalId, selectedGoalTitle);
+}
+
+/**
+ * 実際の業務開始・変更処理（共通化）
+ */
+async function executeStartTask(selectedTask, selectedGoalId, selectedGoalTitle) {
     const data = {
         userId: userId,
         userName: userName,
         isWorking: 1,
         currentTask: selectedTask,
-        currentGoal: selectedGoalTitle, // 整理されたタイトルを送信
+        currentGoal: selectedGoalTitle,
         startTime: new Date().toISOString()
     };
 
@@ -283,35 +307,31 @@ export async function handleStartClick() {
             currentGoalTitle = data.currentGoal;
             currentGoalId = selectedGoalId;
             startTime = new Date(data.startTime);
-
-            // 2. 通知用カウンターをリセット（これでズレと沈黙を防ぎます）
+            
+            // 重要: 通知と進捗フラグをリセット
             lastEncouragementTime = 0;
             lastBreakNotificationTime = 0;
+            hasContributedToCurrentGoal = false; 
 
-            // 3. LocalStorage を更新（restoreClientState がここを参照するため、先に書く）
+            // LocalStorage を更新
             localStorage.setItem("isWorking", "1");
             localStorage.setItem("currentTask", currentTask);
             localStorage.setItem("currentGoal", currentGoalTitle || "");
             localStorage.setItem("currentGoalId", currentGoalId || "");
             localStorage.setItem("startTime", data.startTime);
 
-            // 4. UI状態をLocalStorageから復元
-            await restoreClientState();
-
-            // 【不具合修正】警告メッセージを隠す
             if (changeWarningMessage) changeWarningMessage.classList.add("hidden");
 
             const startBtn = document.getElementById("start-btn");
             if (startBtn) {
                 startBtn.classList.remove("animate-pulse", "animate-pulse-scale");
                 startBtn.textContent = "業務を変更する";
-                startBtn.classList.replace("bg-indigo-600", "bg-green-600");
+                startBtn.classList.remove("bg-indigo-600");
+                startBtn.classList.add("bg-green-600");
             }
 
-            // UI反映
             updateUIForActiveTask();
             startTimerLoop();
-            
             import("./colleagues.js").then(m => m.listenForColleagues(currentTask));
         }
     } catch (error) {
