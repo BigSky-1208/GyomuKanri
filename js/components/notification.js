@@ -7,7 +7,7 @@
  * @param {string} type - 通知タイプ ('encouragement' | 'breather')
  */
 export async function triggerEncouragementNotification(elapsedSeconds, type = 'encouragement') {
-    const taskName = localStorage.getItem('currentTaskName') || '業務';
+    const latestTaskName = localStorage.getItem("currentTask") || taskName || "業務";
     const hours = Math.floor(elapsedSeconds / 3600);
     const minutes = Math.floor((elapsedSeconds % 3600) / 60);
 
@@ -17,7 +17,7 @@ export async function triggerEncouragementNotification(elapsedSeconds, type = 'e
     }
     timeString += `${minutes}分`;
 
-    const message = `【${taskName}】を${timeString}継続しています！`;
+    const message = `【${latestTaskName}】を${timeString}継続しています！`;
     
     let title = "お疲れ様です！";
     if (type === 'breather') {
