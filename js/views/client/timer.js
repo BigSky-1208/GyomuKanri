@@ -183,13 +183,19 @@ export function updateUIForActiveTask() {
     import("./clientUI.js").then(({ updateTaskDisplaysForSelection, handleGoalSelectionChange }) => {
         const taskSelect = document.getElementById("task-select");
         const goalSelect = document.getElementById("goal-select");
+        
         if (taskSelect) {
             taskSelect.value = currentTask;
+            // 1. 業務に合わせた工数リストを生成
             updateTaskDisplaysForSelection(); 
-            if (currentGoalId && goalSelect) {
-                goalSelect.value = currentGoalId;
-                handleGoalSelectionChange();
-            }
+            
+            // 2. 【修正】DOMの更新を待ってから工数をセットする
+            setTimeout(() => {
+                if (currentGoalId && goalSelect) {
+                    goalSelect.value = currentGoalId;
+                    handleGoalSelectionChange();
+                }
+            }, 50); // わずかなディレイを入れて確実にOptionが生成された後にセット
         }
     });
 }
