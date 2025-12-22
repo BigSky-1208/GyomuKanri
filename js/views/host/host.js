@@ -138,33 +138,29 @@ export function setupHostEventListeners() {
     console.log("Host View event listeners set up complete.");
 }
 
-async function handleTomuraStatusChange(event) {
-    const newStatus = event.target.value;
-    const statusRef = doc(db, "settings", "tomura_status");
-    const todayStr = new Date().toISOString().split("T")[0]; 
+// handleTomuraStatusChange と handleTomuraLocationChange を以下のように統合・修正
+async function updateTomuraStatusOnD1(newData) {
+    const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev";
+    
+    // 現在のデータを一度取得するか、UIの状態から構築して送信
     try {
-        await setDoc(statusRef, {
-            status: newStatus,
-            date: todayStr, 
-        }, { merge: true }); 
+        await fetch(`${WORKER_URL}/update-tomura-status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newData)
+        });
     } catch (error) {
-        console.error("Error updating Tomura status:", error);
+        console.error("戸村ステータス更新エラー:", error);
     }
 }
 
-async function handleTomuraLocationChange(event) {
-    const newLocation = event.target.value;
-    const statusRef = doc(db, "settings", "tomura_status");
-    const todayStr = new Date().toISOString().split("T")[0]; 
-    try {
-        await setDoc(statusRef, {
-            location: newLocation,
-            date: todayStr, 
-        }, { merge: true }); 
-    } catch (error) {
-        console.error("Error updating Tomura location:", error);
-    }
+// 既存のラジオボタンイベント内で呼び出す
+async function handleTomuraStatusChange(event) {
+    const status = event.target.value;
+    const location = document.querySelector('input[name="tomura-location"]:checked')?.value || "出社";
+    await updateTomuraStatusOnD1({ status, location });
 }
+
 
 // ★修正2: updateUI 関数を追加（これが不足していました）
 function updateUI(data) {
@@ -410,3 +406,5 @@ async function executeSendMessage(targetIds, title, bodyContent) {
         alert("処理中に予期せぬエラーが発生しました。");
     }
 }
+
+
