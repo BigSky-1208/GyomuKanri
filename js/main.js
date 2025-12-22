@@ -14,7 +14,8 @@ import { initializeReportView, cleanupReportView, setupReportEventListeners } fr
 import { initializeProgressView, setupProgressEventListeners } from './views/progress/progress.js';
 import { initializeArchiveView, setupArchiveEventListeners } from './views/archive.js';
 const LAST_VIEW_KEY = "gyomu_timer_last_view";
-const worker = new Worker('timer-worker.js');
+export const worker = new Worker('/timer-worker.js'); // export をつける
+
 
 import { initializeApprovalView, cleanupApprovalView } from './views/host/approval.js';
 
