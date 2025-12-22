@@ -14,7 +14,7 @@ export function startListeningForStatusUpdates() {
     // 初回実行
     fetchAndRefreshStatus();
     // 5秒おきに実行
-    statusInterval = setInterval(fetchAndRefreshStatus, 5000);
+    statusInterval = setInterval(fetchAndRefreshStatus, 30000);
 }
 
 export function stopListeningForStatusUpdates() {
