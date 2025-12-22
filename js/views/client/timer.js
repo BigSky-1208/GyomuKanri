@@ -15,6 +15,7 @@ let currentGoalTitle = null;
 let preBreakTask = null; 
 let midnightStopTimer = null; 
 let hasContributedToCurrentGoal = false;
+let activeReservations = []; // 現在の予約リストをメモリに保持
 
 // ★ここが抜けていました（通知用カウンター）
 let lastBreakNotificationTime = 0;
@@ -204,14 +205,38 @@ function startTimerLoop() {
         renderTaskDisplaySettings(); 
     });
 
-    timerInterval = setInterval(() => {
+    timerInterval = setInterval(async () => { // ★asyncを追加
         if (!startTime) return;
         const now = new Date();
         const elapsed = Math.floor((now - startTime) / 1000);
         if (timerDisplay) timerDisplay.textContent = formatDuration(elapsed);
 
-        // --- 通知ロジックの修正 ---
-        // ★修正: メモリの currentTask ではなく、LocalStorage から最新のタスク名を取得
+        // --- 【マージ】★追加: 予約の即時実行チェック ---
+        const nowIso = now.toISOString();
+        // まだ実行されていない、かつ時間を過ぎている予約を探す
+        // ※activeReservations は timer.js の冒頭で定義されている必要があります
+        if (typeof activeReservations !== 'undefined' && activeReservations.length > 0) {
+            const dueReservation = activeReservations.find(res => 
+                res.status === 'reserved' && res.scheduledTime <= nowIso
+            );
+
+            if (dueReservation) {
+                console.log("予約実行時間になりました:", dueReservation.action);
+                // 二重実行を防ぐため、即座にメモリ上のリストから削除
+                activeReservations = activeReservations.filter(r => r.id !== dueReservation.id);
+                
+                if (dueReservation.action === 'break') {
+                    await handleBreakClick(true); // 自動実行として休憩開始
+                } else if (dueReservation.action === 'stop') {
+                    await handleStopClick(true);  // 自動実行として終了
+                }
+                
+                // 実行後に最新のリストをDBから再取得して同期
+                if (typeof syncReservations === 'function') await syncReservations();
+            }
+        }
+
+        // --- 通知ロジック ---
         const activeTaskName = localStorage.getItem("currentTask") || currentTask || "業務";
 
         if (currentTask === "休憩" && elapsed > 0) {
@@ -225,7 +250,6 @@ function startTimerLoop() {
             const intervalSeconds = userDisplayPreferences.notificationIntervalMinutes * 60;
             if (elapsed > 0 && elapsed - lastEncouragementTime >= intervalSeconds) {
                 lastEncouragementTime = Math.floor(elapsed / intervalSeconds) * intervalSeconds;
-                // ★修正: activeTaskName を渡す
                 triggerEncouragementNotification(elapsed, "breather", activeTaskName);
             }
         }
@@ -523,6 +547,21 @@ async function stopCurrentTaskCore(isLeaving, forcedEndTime = null, taskDataOver
         } catch (e) {
             console.error("Firestore save error:", e);
         }
+    }
+}
+
+/**
+ * D1から最新の予約リストを取得してメモリに同期する
+ */
+export async function syncReservations() {
+    try {
+        const resp = await fetch(`${WORKER_URL}/get-user-reservations?userId=${userId}`);
+        if (resp.ok) {
+            activeReservations = await resp.json();
+            console.log("予約リストを同期しました:", activeReservations);
+        }
+    } catch (e) {
+        console.error("予約同期エラー:", e);
     }
 }
 
