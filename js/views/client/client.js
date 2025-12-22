@@ -57,9 +57,8 @@ const fixCheckoutSaveBtn = document.getElementById("fix-checkout-save-btn");
 const helpButton = document.querySelector('#client-view .help-btn');
 
 // リスナー解除用変数
-let tomuraStatusUnsubscribe = null;
-let myStatusUnsubscribe = null; // ★追加: 自分のステータス監視用
-
+let tomuraStatusInterval = null; // Unsubscribe から Interval に変更
+let myStatusUnsubscribe = null;
 /**
  * クライアント画面を離れる際、または初期化前のクリーンアップ処理
  */
@@ -67,9 +66,9 @@ export function cleanupClientView() {
     console.log("Cleaning up Client View listeners...");
     
     // 1. 戸村さんのステータス監視を止める
-    if (tomuraStatusUnsubscribe) {
-        tomuraStatusUnsubscribe();
-        tomuraStatusUnsubscribe = null;
+    if ( tomuraStatusInterval) {
+         tomuraStatusInterval();
+         tomuraStatusInterval = null;
     }
 
     // 2. ★追加: 自分自身のステータス監視を止める
@@ -229,33 +228,43 @@ export function setupClientEventListeners() {
     console.log("Client View event listeners set up complete.");
 }
 
-// 戸村さんの状況を監視して表示する関数
+// 【修正】戸村さんの状況をD1から取得して表示する関数
 function listenForTomuraStatus() {
-    if (tomuraStatusUnsubscribe) {
-        tomuraStatusUnsubscribe();
-        tomuraStatusUnsubscribe = null;
+    // すでに動いているタイマーがあれば止める
+    if (tomuraStatusInterval) {
+        clearInterval(tomuraStatusInterval);
     }
 
-    const statusRef = doc(db, "settings", "tomura_status");
+    const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev";
     const todayStr = new Date().toISOString().split("T")[0];
 
-    tomuraStatusUnsubscribe = onSnapshot(statusRef, (docSnap) => {
-        let statusData = {
-            status: "声掛けNG",
-            location: ""
-        };
+    const fetchStatus = async () => {
+        try {
+            const resp = await fetch(`${WORKER_URL}/get-tomura-status`);
+            if (resp.ok) {
+                const data = await resp.json();
+                
+                // 日付が今日のものかチェック（Worker側でも考慮されていますが念のため）
+                let statusData = {
+                    status: data.status || "声掛けNG",
+                    location: data.location || ""
+                };
 
-        if (docSnap.exists()) {
-            const data = docSnap.data();
-            if (data.date === todayStr) {
-                statusData.status = data.status || "声掛けNG";
-                statusData.location = data.location || "";
+                // もし日付が今日でない場合は、デフォルトに戻す
+                if (data.date && data.date !== todayStr) {
+                    statusData = { status: "声掛けNG", location: "出社" };
+                }
+                
+                // UI表示を更新（既存のclientUI.jsの関数を呼び出し）
+                updateTomuraStatusDisplay(statusData);
             }
+        } catch (error) {
+            console.error("戸村ステータス(D1)取得エラー:", error);
         }
-        
-        updateTomuraStatusDisplay(statusData);
+    };
 
-    }, (error) => {
-        console.error("Error listening for Tomura's status:", error);
-    });
+    // 初回実行
+    fetchStatus();
+    // 10秒おきに最新の状態を確認
+    tomuraStatusInterval = setInterval(fetchStatus, 10000);
 }
