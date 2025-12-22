@@ -265,5 +265,5 @@ function listenForTomuraStatus() {
     // 初回実行
     fetchStatus();
     // 10秒おきに最新の状態を確認
-    tomuraStatusInterval = setInterval(fetchStatus, 10000);
+    tomuraStatusInterval = setInterval(fetchStatus, 60000);
 }
