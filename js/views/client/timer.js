@@ -284,12 +284,19 @@ export async function handleStartClick() {
             currentGoalId = selectedGoalId;
             startTime = new Date(data.startTime);
 
-            // LocalStorage を更新
+            // 2. 通知用カウンターをリセット（これでズレと沈黙を防ぎます）
+            lastEncouragementTime = 0;
+            lastBreakNotificationTime = 0;
+
+            // 3. LocalStorage を更新（restoreClientState がここを参照するため、先に書く）
             localStorage.setItem("isWorking", "1");
             localStorage.setItem("currentTask", currentTask);
             localStorage.setItem("currentGoal", currentGoalTitle || "");
             localStorage.setItem("currentGoalId", currentGoalId || "");
             localStorage.setItem("startTime", data.startTime);
+
+            // 4. UI状態をLocalStorageから復元
+            await restoreClientState();
 
             // 【不具合修正】警告メッセージを隠す
             if (changeWarningMessage) changeWarningMessage.classList.add("hidden");
