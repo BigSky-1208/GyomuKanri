@@ -220,23 +220,40 @@ function startTimerLoop() {
                 res.status === 'reserved' && res.scheduledTime <= nowIso
             );
 
-            if (dueReservation) {
-                console.log("予約実行時間になりました:", dueReservation.action);
-                // 二重実行を防ぐため、即座にメモリ上のリストから削除
-                activeReservations = activeReservations.filter(r => r.id !== dueReservation.id);
-                
-                if (dueReservation.action === 'break') {
-                    // ★LocalStorageも更新して画面表示のズレを防ぐ
-                    localStorage.setItem("currentTask", "休憩");
-                    localStorage.setItem("currentGoal", ""); 
-                    await handleBreakClick(true); // 自動実行として休憩開始
-                } else if (dueReservation.action === 'stop') {
-                    await handleStopClick(true);  // 自動実行として終了
-                }
-                
-                // 実行後に最新のリストをDBから再取得して同期
-                if (typeof syncReservations === 'function') await syncReservations();
-            }
+if (dueReservation) {
+    console.log("予約実行時間になりました:", dueReservation.action);
+    activeReservations = activeReservations.filter(r => r.id !== dueReservation.id);
+    
+    if (dueReservation.action === 'break') {
+        // --- ★ここが重要：メモリ変数を直接「休憩」に書き換える ---
+        currentTask = "休憩";
+        currentGoalTitle = null;
+        currentGoalId = null;
+        startTime = new Date(); // タイマーを今からに設定
+
+        // LocalStorageも即座に同期
+        localStorage.setItem("isWorking", "1");
+        localStorage.setItem("currentTask", "休憩");
+        localStorage.setItem("currentGoal", "");
+        localStorage.setItem("startTime", startTime.toISOString());
+
+        // UIを強制的に再描画（これで「現在の業務」が切り替わります）
+        updateUIForActiveTask();
+
+        // Worker(D1)への通知とログ保存を実行
+        await handleBreakClick(true); 
+        
+    } else if (dueReservation.action === 'stop') {
+        currentTask = null;
+        startTime = null;
+        localStorage.removeItem("isWorking");
+        localStorage.removeItem("currentTask");
+        resetClientState();
+        await handleStopClick(true);
+    }
+    
+    if (typeof syncReservations === 'function') await syncReservations();
+}
         } // ← 【修正ポイント】この閉じカッコが不足していたためエラーが出ていました
 
         // --- 通知ロジック ---
