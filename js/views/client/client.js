@@ -65,12 +65,11 @@ let myStatusUnsubscribe = null;
 export function cleanupClientView() {
     console.log("Cleaning up Client View listeners...");
     
-    // 1. 戸村さんのステータス監視を止める
-    if ( tomuraStatusInterval) {
-         tomuraStatusInterval();
-         tomuraStatusInterval = null;
+    // 1. 【修正】戸村さんのステータス監視（タイマー）を止める
+    if (tomuraStatusInterval) {
+        clearInterval(tomuraStatusInterval);
+        tomuraStatusInterval = null;
     }
-
     // 2. ★追加: 自分自身のステータス監視を止める
     if (myStatusUnsubscribe) {
         myStatusUnsubscribe();
