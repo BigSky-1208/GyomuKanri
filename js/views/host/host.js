@@ -127,10 +127,9 @@ export function setupHostEventListeners() {
     deleteAllLogsButton?.addEventListener("click", handleDeleteAllLogs); 
 
 tomuraStatusRadios.forEach((radio) => {
-    radio.addEventListener("change", (event) => {
-        handleTomuraStatusChange(event); // または直接値を渡す処理
+        radio.addEventListener("change", handleTomuraStatusChange);
     });
-
+    
     userListContainer?.addEventListener("click", (event) => {
         handleUserDetailClick(event.target);
     });
