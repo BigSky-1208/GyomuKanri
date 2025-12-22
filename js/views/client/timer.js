@@ -302,30 +302,54 @@ function stopTimerLoop() {
 export async function handleStartClick() {
     const taskSelect = document.getElementById("task-select");
     const goalSelect = document.getElementById("goal-select");
-    
-    let newTask = taskSelect.value;
-    if (!newTask) return alert("業務を選択してください。");
-    if (newTask === "休憩") return alert("休憩は「休憩開始」ボタンを使用してください。");
+    const otherTaskInput = document.getElementById("other-task-input");
 
-    const newGoalId = goalSelect.value || null;
-    const newGoalTitle = newGoalId ? goalSelect.options[goalSelect.selectedIndex].text : null;
+    const selectedTask = taskSelect.value === "その他" ? otherTaskInput.value : taskSelect.value;
+    const selectedGoal = goalSelect ? goalSelect.value : null;
 
-    if (currentGoalId && !hasContributedToCurrentGoal && currentTask !== newTask) {
-        const { showConfirmationModal, hideConfirmationModal } = await import("../../components/modal.js");
-        showConfirmationModal(
-            `「${currentGoalTitle}」の進捗(件数)が入力されていません。\nこのまま業務を変更しますか？`,
-            async () => {
-                hideConfirmationModal();
-                await stopCurrentTaskCore(false);
-                await startTask(newTask, newGoalId, newGoalTitle);
-            },
-            hideConfirmationModal
-        );
+    if (!selectedTask) {
+        alert("業務内容を選択または入力してください。");
         return;
     }
 
-    await stopCurrentTaskCore(false);
-    await startTask(newTask, newGoalId, newGoalTitle);
+    const data = {
+        userId: userId,
+        userName: userName,
+        isWorking: 1,
+        currentTask: selectedTask,
+        currentGoal: selectedGoal,
+        startTime: new Date().toISOString()
+    };
+
+    try {
+        const response = await fetch(`${WORKER_URL}/start-work`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            // ★重要: Firebaseの反映を待たず、LocalStorageを即座に正解として上書きする
+            localStorage.setItem("isWorking", "1");
+            localStorage.setItem("currentTask", data.currentTask);
+            localStorage.setItem("currentGoal", data.currentGoal || "");
+            localStorage.setItem("startTime", data.startTime);
+
+            // ★重要: 即座にボタンの拡縮アニメーションを止める
+            const startBtn = document.getElementById("start-btn");
+            if (startBtn) {
+                startBtn.classList.remove("animate-pulse"); // アニメーションを解除
+                startBtn.textContent = "業務を変更する";      // テキストも確定させる
+            }
+
+            // UI全体をLocalStorageの状態に同期
+            await restoreClientState();
+            alert(`業務を「${data.currentTask}」に変更しました。`);
+        }
+    } catch (error) {
+        console.error("業務開始エラー:", error);
+        alert("接続に失敗しました。");
+    }
 }
 
 export async function handleStopClick(isAuto = false) {
