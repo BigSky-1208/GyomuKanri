@@ -179,32 +179,55 @@ function updateUI(data) {
     }
 }
 
+let tomuraPollingInterval = null;
+let lastTomuraDataCache = null;
+
 async function listenForTomuraStatus() {
-    const statusRef = doc(db, "settings", "tomura_status");
-    const todayStr = new Date().toISOString().split("T")[0];
+    // 既存のタイマーをクリア
+    if (tomuraPollingInterval) clearInterval(tomuraPollingInterval);
 
-    // 1. 監視を始める前に、一度だけチェックして必要なら初期化する
-    try {
-        // getDocは上でimportしたので動作します
-        const docSnap = await getDoc(statusRef);
-        if (!docSnap.exists() || docSnap.data().date !== todayStr) {
-            await setDoc(statusRef, { 
-                status: "声掛けNG", 
-                location: "出社", 
-                date: todayStr 
-            }, { merge: true });
+    const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev";
+
+    // 読み込み処理の本体
+    const fetchStatus = async () => {
+        // 【節約対策1】タブが隠れている（非アクティブ）時はWorkerを叩かない
+        // これだけで、PC放置中や別タブ閲覧中の読み取りをゼロにできます
+        if (document.hidden) return;
+
+        try {
+            const resp = await fetch(`${WORKER_URL}/get-tomura-status`);
+            if (resp.ok) {
+                const data = await resp.json();
+                const dataStr = JSON.stringify(data);
+
+                // 【節約対策2】前回取得したデータと全く同じなら、UI更新(DOM操作)をスキップ
+                if (dataStr === lastTomuraDataCache) return;
+
+                // データの変化があった時だけ反映
+                updateUI(data); 
+                lastTomuraDataCache = dataStr;
+            }
+        } catch (error) {
+            console.error("D1 戸村ステータス取得エラー:", error);
         }
-    } catch (e) {
-        console.error("Error initializing Tomura status:", e);
-    }
+    };
 
-    // 2. その後で純粋な「監視のみ」を行う
-    onSnapshot(statusRef, (snapshot) => {
-        const data = snapshot.data();
-        updateUI(data); // 定義したupdateUI関数を呼び出し
-    });
+    // 1. ページ読み込み時に初回実行
+    fetchStatus();
+
+    // 2. 【節約対策3】定期取得の間隔（先ほどのご要望通り 30〜60秒）
+    // 30秒 = 30000ms / 60秒 = 60000ms
+    tomuraPollingInterval = setInterval(fetchStatus, 30000);
 }
 
+// 【節約対策4】タブがアクティブになった瞬間に即座に最新を確認する
+// これにより、ポーリング間隔を長くしても、ユーザーが画面を見た瞬間は常に最新になります
+document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+        // 他の初期化が終わっていることを想定して、直接関数を叩く
+        listenForTomuraStatus();
+    }
+});
 // --- メッセージ機能の実装 ---
 
 function injectMessageFeature() {
