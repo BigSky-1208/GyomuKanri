@@ -126,8 +126,9 @@ export function setupHostEventListeners() {
     exportExcelButton?.addEventListener("click", openExportExcelModal); 
     deleteAllLogsButton?.addEventListener("click", handleDeleteAllLogs); 
 
-    tomuraStatusRadios.forEach((radio) => {
-        radio.addEventListener("change", handleTomuraStatusChange);
+tomuraStatusRadios.forEach((radio) => {
+    radio.addEventListener("change", (event) => {
+        handleTomuraStatusChange(event); // または直接値を渡す処理
     });
 
     userListContainer?.addEventListener("click", (event) => {
