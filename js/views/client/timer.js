@@ -45,110 +45,45 @@ export function getHasContributed() {
 }
 
 /**
- * 【重要・修正版】クライアント状態の復元
- * Worker（予約）による変更を反映するため、Firestoreの状態を最優先で復元します。
+ * LocalStorageの情報を元に画面表示を最新の状態に復元する
  */
 export async function restoreClientState() {
-    if (!userId) return;
+    // ★修正: 常にLocalStorageを最優先で読み込む
+    const isWorking = localStorage.getItem("isWorking") === "1";
+    const currentTask = localStorage.getItem("currentTask");
+    const currentGoal = localStorage.getItem("currentGoal");
 
-    let data = null;
+    const startBtn = document.getElementById("start-btn");
+    const stopBtn = document.getElementById("stop-btn");
+    const breakBtn = document.getElementById("break-btn");
 
-    // 1. まずサーバー(Firestore)から最新の状態を取得
-    console.log("Restoring status from Firestore...");
-    const statusRef = doc(db, "work_status", userId);
-    try {
-        const docSnap = await getDoc(statusRef);
-        if (docSnap.exists()) {
-            const fsData = docSnap.data();
-            // サーバー側で稼働中（休憩含む）であれば、それを優先して採用
-            if (fsData.isWorking) {
-                data = fsData;
-                // 日付型の変換 (Timestamp or String -> Date)
-                if (data.startTime && data.startTime.toDate) {
-                    data.startTime = data.startTime.toDate();
-                } else if (data.startTime) {
-                    data.startTime = new Date(data.startTime);
-                }
-                // ローカルストレージも最新状態に更新しておく
-                localStorage.setItem(LOCAL_STATUS_KEY, JSON.stringify(data));
-            }
+    if (isWorking) {
+        // 稼働中の表示
+        if (startBtn) {
+            startBtn.classList.remove("animate-pulse"); // 拡縮停止
+            startBtn.textContent = "業務を変更する";
+            startBtn.classList.replace("bg-indigo-600", "bg-green-600"); // 色の変更
         }
-    } catch (error) {
-        console.error("Error fetching work status from Firestore:", error);
-    }
+        if (stopBtn) stopBtn.disabled = false;
+        if (breakBtn) breakBtn.disabled = false;
 
-    // 2. Firestoreにデータがない（または通信エラーの）場合のみ、ローカルストレージを確認
-    if (!data) {
-        const savedStatus = localStorage.getItem(LOCAL_STATUS_KEY);
-        if (savedStatus) {
-            try {
-                data = JSON.parse(savedStatus);
-                if (data.startTime) data.startTime = new Date(data.startTime);
-            } catch (e) {
-                console.error("Failed to parse local status:", e);
-            }
-        }
-    }
-
-    // 3. 取得したデータをUIに反映
-    if (data && data.isWorking) {
-        const now = new Date();
-        const localStartTime = data.startTime || now;
-
-        // 日付跨ぎチェック（前日のままなら自動退勤）
-        const startTimeStr = getJSTDateString(localStartTime);
-        const todayStr = getJSTDateString(now);
-
-        if (startTimeStr !== todayStr) {
-            console.log("Auto-checkout for previous day.");
-            const endOfStartTimeDay = new Date(localStartTime);
-            endOfStartTimeDay.setHours(23, 59, 59, 999);
-            
-            await stopCurrentTaskCore(true, endOfStartTimeDay, {
-                task: data.currentTask,
-                goalId: data.currentGoalId,
-                goalTitle: data.currentGoalTitle,
-                startTime: localStartTime,
-                memo: "（自動退勤処理）"
-            });
-
-            // 修正フラグを立てる
-            const sRef = doc(db, "work_status", userId);
-            await updateDoc(sRef, { needsCheckoutCorrection: true });
-            
-            // ダイアログ表示
-            const { checkForCheckoutCorrection } = await import("../../utils.js");
-            checkForCheckoutCorrection(userId);
-            
-            localStorage.removeItem(LOCAL_STATUS_KEY);
-            resetClientState();
-            return;
-        }
-
-        // 状態を復元
-        startTime = localStartTime;
-        currentTask = data.currentTask || null;
-        currentGoalId = data.currentGoalId || null;
-        currentGoalTitle = data.currentGoalTitle || null;
-        preBreakTask = data.preBreakTask || null;
-
-        // 通知カウンターの復元（経過時間から計算）
-        const elapsed = Math.floor((now - startTime) / 1000);
-        const breakInterval = 1800;
-        lastBreakNotificationTime = Math.floor(elapsed / breakInterval) * breakInterval;
-        
-        const intervalMinutes = userDisplayPreferences?.notificationIntervalMinutes || 5;
-        const intervalSeconds = intervalMinutes * 60;
-        lastEncouragementTime = Math.floor(elapsed / intervalSeconds) * intervalSeconds;
-
-        // UI更新・タイマー開始
-        updateUIForActiveTask();
-        startTimerLoop();
-        listenForColleagues(currentTask);
-        setupMidnightTimer();
+        // 同僚リストの監視を開始（先ほどD1化したもの）
+        import("./colleagues.js").then(m => m.listenForColleagues(currentTask));
     } else {
-        resetClientState();
+        // 未稼働（停止中）の表示
+        if (startBtn) {
+            startBtn.classList.add("animate-pulse"); // 停止中のみ拡縮させる
+            startBtn.textContent = "業務を開始する";
+            startBtn.classList.replace("bg-green-600", "bg-indigo-600");
+        }
+        if (stopBtn) stopBtn.disabled = true;
+        if (breakBtn) breakBtn.disabled = true;
+        
+        import("./colleagues.js").then(m => m.stopColleaguesListener());
     }
+
+    // プルダウン等の選択状態をLocalStorageに合わせる（clientUI.js側の関数）
+    import("./clientUI.js").then(m => m.updateTaskDisplaysForSelection());
 }
 
 export function stopStatusListener() {
