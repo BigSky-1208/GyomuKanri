@@ -1,86 +1,78 @@
-// js/views/client/colleagues.js - 同僚の稼働状況表示
+// js/views/client/colleagues.js
 
-import { db, userName } from "../../main.js";
-import { collection, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { userId } from "../../main.js";
 import { escapeHtml } from "../../utils.js";
 
-let colleaguesListenerUnsubscribe = null;
+const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev";
+let colleaguesInterval = null;
 
 /**
- * Starts listening for colleagues working on the same task.
- * @param {string} task - The name of the task to filter by.
+ * 同僚の稼働状況監視を開始（D1ポーリング版）
  */
-export function listenForColleagues(task) {
-    stopColleaguesListener(); // Stop any existing listener first
+export function listenForColleagues(myCurrentTask) {
+    stopColleaguesListener();
 
-    if (!userName || !task) return;
-
-    const container = document.getElementById("colleagues-on-task-container");
-    const colleaguesList = document.getElementById("colleagues-list");
-
-    if (!container || !colleaguesList) return;
-
-    // "休憩"の場合は同僚を表示しない要件であればここでリターン
-    if (task === "休憩") {
-        container.classList.add("hidden");
+    if (!myCurrentTask || myCurrentTask === "休憩") {
+        updateColleaguesUI([]); // 休憩中や未開始時は表示しない
         return;
     }
 
-    const q = query(
-        collection(db, "work_status"),
-        where("isWorking", "==", true),
-        where("currentTask", "==", task)
-    );
+    const fetchColleagues = async () => {
+        try {
+            const resp = await fetch(`${WORKER_URL}/get-all-status`);
+            if (!resp.ok) return;
+            
+            const allStatus = await resp.json();
+            
+            // 自分以外 且つ 同じ業務 且つ 稼働中 の人を抽出
+            const colleagues = allStatus.filter(u => 
+                u.userId !== userId && 
+                u.isWorking === 1 && 
+                u.currentTask === myCurrentTask
+            );
 
-    // console.log(`Starting colleague listener for task: ${task}`);
-
-    colleaguesListenerUnsubscribe = onSnapshot(q, (snapshot) => {
-        const colleagues = snapshot.docs
-            .map((doc) => doc.data())
-            .filter((data) => data.userName && data.userName !== userName);
-
-        colleaguesList.innerHTML = "";
-
-        if (colleagues.length > 0) {
-            colleagues.forEach((data) => {
-                const li = document.createElement("li");
-                li.className = "p-2 bg-gray-50 rounded-md text-sm";
-                
-                const wordDisplay = data.wordOfTheDay
-                    ? `<p class="text-xs text-gray-500 mt-1 pl-2 border-l-2 border-gray-300">「${escapeHtml(data.wordOfTheDay)}」</p>`
-                    : "";
-                
-                li.innerHTML = `
-                    <div class="flex items-center">
-                        <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                        <span class="font-semibold text-gray-700">${escapeHtml(data.userName)}</span>
-                    </div>
-                    ${wordDisplay}
-                `;
-                colleaguesList.appendChild(li);
-            });
-            container.classList.remove("hidden");
-        } else {
-            container.classList.add("hidden");
+            updateColleaguesUI(colleagues);
+        } catch (error) {
+            console.error("同僚ステータス取得エラー:", error);
         }
-    }, (error) => {
-        console.error("Error listening for colleagues:", error);
-        container.classList.add("hidden");
-    });
+    };
+
+    // 初回実行と定期実行（10秒おき）
+    fetchColleagues();
+    colleaguesInterval = setInterval(fetchColleagues, 10000);
 }
 
 /**
- * Stops the colleague listener.
+ * 監視を停止
  */
 export function stopColleaguesListener() {
-    if (colleaguesListenerUnsubscribe) {
-        colleaguesListenerUnsubscribe();
-        colleaguesListenerUnsubscribe = null;
+    if (colleaguesInterval) {
+        clearInterval(colleaguesInterval);
+        colleaguesInterval = null;
     }
-    
+}
+
+/**
+ * UIの更新
+ */
+function updateColleaguesUI(colleagues) {
     const container = document.getElementById("colleagues-on-task-container");
-    const list = document.getElementById("colleagues-list");
-    
-    if (container) container.classList.add("hidden");
-    if (list) list.innerHTML = "";
+    const listEl = document.getElementById("colleagues-list");
+
+    if (!container || !listEl) return;
+
+    if (colleagues.length === 0) {
+        container.classList.add("hidden");
+        listEl.innerHTML = "";
+        return;
+    }
+
+    container.classList.remove("hidden");
+    listEl.innerHTML = colleagues.map(c => `
+        <li class="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 p-2 rounded border border-gray-100">
+            <span class="h-2 w-2 bg-green-500 rounded-full animate-pulse"></span>
+            <span class="font-medium">${escapeHtml(c.userName)}</span>
+            ${c.currentGoal ? `<span class="text-[10px] bg-orange-100 text-orange-700 px-1 rounded border border-orange-200">${escapeHtml(c.currentGoal)}</span>` : ""}
+        </li>
+    `).join("");
 }
