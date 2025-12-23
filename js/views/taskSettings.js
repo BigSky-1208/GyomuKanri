@@ -278,9 +278,9 @@ async function handleSaveGoal() {
     try {
         await saveAllTasksToFirestore(updatedTasks);
         updateGlobalTaskObjects(updatedTasks); // グローバル変数を即時更新
-        renderTaskEditor();
         closeGoalModal();
         alert("保存しました。");
+        renderTaskEditor();
     } catch (error) {
         console.error("Error saving goal:", error);
         alert("保存中にエラーが発生しました。");
