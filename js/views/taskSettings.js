@@ -2,8 +2,7 @@
 
 import { 
     db, 
-    // allTaskObjects, // ★直接変数をインポートするのをやめ、下のゲッター関数を使います
-    getAllTaskObjects, // ★ main.js に追加してもらった関数をインポート
+    getAllTaskObjects, // ★データ取得用
     authLevel, 
     updateGlobalTaskObjects, 
     handleGoBack, 
@@ -50,9 +49,6 @@ const goalModalCancelBtn = document.getElementById("goal-modal-cancel-btn");
 
 let currentUserRole = "general";
 
-/**
- * 画面の初期化
- */
 export async function initializeTaskSettingsView() {
     console.log("Initializing Task Settings View...");
     if (userId) {
@@ -67,9 +63,6 @@ export async function initializeTaskSettingsView() {
     if(newTaskInput) newTaskInput.value = '';
 }
 
-/**
- * イベントリスナー設定
- */
 export function setupTaskSettingsEventListeners() {
     const viewProgressButton = document.getElementById("view-progress-from-settings-btn");
     viewProgressButton?.addEventListener('click', () => {
@@ -92,11 +85,12 @@ export function setupTaskSettingsEventListeners() {
 
 /**
  * 業務リストの描画
+ * ★ここに「工数リストの表示ロジック」を復活させました
  */
 export function renderTaskEditor() {
     if (!taskListEditor || !addTaskForm) return;
 
-    // ★重要: 必ず関数経由で最新データを取得する
+    // ★重要: 必ず関数経由で最新データを取得
     const currentTasks = getAllTaskObjects();
 
     const isHost = authLevel === "admin" || currentUserRole === "host";
@@ -121,16 +115,19 @@ export function renderTaskEditor() {
         div.className = "p-4 bg-gray-100 rounded-lg shadow-sm mb-4 task-item";
         div.dataset.taskName = task.name;
 
+        // 削除ボタン
         const deleteButtonHtml = (isHost && task.name !== "休憩")
             ? `<button class="delete-task-btn bg-red-500 text-white text-xs font-bold py-1 px-2 rounded-full hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-400" data-task-name="${escapeHtml(task.name)}">削除</button>`
             : "";
 
+        // 工数追加ボタン
         const addGoalButtonHtml = (task.name !== "休憩" && isManager) ? `
             <div class="mt-3 border-t pt-3">
                 <button class="add-goal-btn bg-green-500 text-white text-xs font-bold py-1 px-3 rounded hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-400" data-task-name="${escapeHtml(task.name)}">この業務に工数を追加 +</button>
             </div>
         ` : (task.name === "休憩" ? '<div class="mt-3 border-t pt-3"><p class="text-xs text-gray-500">「休憩」には工数を追加できません。</p></div>' : '');
 
+        // 担当者トグル
         const membersToggleHtml = `
              <div class="mt-3 border-t pt-3">
                  <button class="toggle-members-btn text-sm font-semibold text-gray-600 hover:text-blue-600 focus:outline-none" data-task-name="${escapeHtml(task.name)}">
@@ -139,6 +136,31 @@ export function renderTaskEditor() {
                  <div class="members-list-container hidden mt-2 pl-4 border-l-2 border-gray-200 space-y-1 text-sm"></div>
              </div>
         `;
+
+        // ★★★ 復活させた部分: 工数リストの生成 ★★★
+        let goalsListHtml = "";
+        if (task.goals && task.goals.length > 0) {
+            goalsListHtml = `<div class="mt-3 space-y-2">`;
+            task.goals.forEach((goal) => {
+                goalsListHtml += `
+                    <div class="flex justify-between items-center bg-white border border-gray-200 p-2 rounded text-sm">
+                        <span class="font-medium text-gray-700 truncate mr-2">
+                            ${escapeHtml(goal.title)} 
+                            <span class="text-xs text-gray-500">(${goal.target}件)</span>
+                        </span>
+                        ${isManager ? `
+                        <button class="add-goal-btn text-blue-600 hover:text-blue-800 text-xs font-bold px-2 py-1 border border-blue-200 rounded hover:bg-blue-50" 
+                                data-task-name="${escapeHtml(task.name)}" 
+                                data-goal-id="${goal.id || goal.title}">
+                            編集
+                        </button>
+                        ` : ''}
+                    </div>
+                `;
+            });
+            goalsListHtml += `</div>`;
+        }
+        // ★★★★★★★★★★★★★★★★★★★★★★★★
 
         div.innerHTML = `
             <div class="flex justify-between items-center">
@@ -152,6 +174,9 @@ export function renderTaskEditor() {
             <div class="text-right mt-2">
                 ${task.name !== "休憩" ? `<button class="save-task-btn bg-blue-500 text-white text-xs font-bold py-1 px-2 rounded hover:bg-blue-600" data-task-name="${escapeHtml(task.name)}">メモを保存</button>` : ''}
             </div>
+
+            ${goalsListHtml}
+
             ${addGoalButtonHtml}
             ${membersToggleHtml}
         `;
@@ -173,7 +198,9 @@ async function handleTaskEditorClick(event) {
     } else if (target.classList.contains("save-task-btn")) {
         handleSaveTaskMemo(taskName, taskItem);
     } else if (target.classList.contains("add-goal-btn")) {
-        openGoalModal("add", taskName);
+        // IDがあれば編集モードとして開く
+        const goalId = target.dataset.goalId;
+        openGoalModal(goalId ? "edit" : "add", taskName, goalId); 
     } else if (target.classList.contains("toggle-members-btn")) {
         await toggleMembersList(target, taskName);
     }
@@ -229,16 +256,11 @@ async function handleSaveGoal() {
 
     try {
         await saveAllTasksToFirestore(updatedTasks);
-        updateGlobalTaskObjects(updatedTasks); // main.jsの変数を更新
-
-        const debugLatestTasks = getAllTaskObjects(); // main.jsから最新の値を取得
-        const debugTask = debugLatestTasks.find(t => t.name === taskName);
-        console.log("更新後のグローバル変数:", debugTask?.goals);
+        updateGlobalTaskObjects(updatedTasks);
         
-        closeGoalModal();       // 閉じる
-        renderTaskEditor();     // 再描画 (getAllTaskObjects経由で最新を取得するはず)
+        closeGoalModal();
+        renderTaskEditor(); // これで工数リストも描画されます
         alert("工数を保存しました。");
-
     } catch (error) {
         console.error("Error saving goal:", error);
         alert("保存中にエラーが発生しました。");
@@ -255,9 +277,7 @@ async function handleAddTask() {
         return;
     }
 
-    // ★関数経由で最新データを取得
     const currentTasks = getAllTaskObjects();
-    
     if (currentTasks.some((t) => t.name === newTaskName)) {
         alert("既に存在する業務名です。");
         return;
@@ -271,7 +291,6 @@ async function handleAddTask() {
         newTaskInput.value = "";
         renderTaskEditor();
         alert(`業務「${newTaskName}」を追加しました。`);
-
     } catch (error) { console.error(error); }
 }
 
@@ -282,7 +301,6 @@ async function handleSaveTaskMemo(taskName, taskItemElement) {
     const memoInput = taskItemElement?.querySelector(".task-memo-editor");
     const newMemo = memoInput.value.trim();
     
-    // ★関数経由で最新データを取得
     const currentTasks = getAllTaskObjects();
     const taskIndex = currentTasks.findIndex((t) => t.name === taskName);
     if (taskIndex === -1) return;
@@ -309,11 +327,10 @@ function handleDeleteTask(taskNameToDelete) {
         `業務「${escapeHtml(taskNameToDelete)}」を削除しますか？\n\nこの業務に紐づく工数も全て削除されます。\n（関連する業務ログは削除されません）\n\nこの操作は元に戻せません。`,
         async () => {
             hideConfirmationModal();
-            
-            // ★関数経由で最新データを取得
+
             const currentTasks = getAllTaskObjects();
             const updatedTasks = currentTasks.filter(t => t.name !== taskNameToDelete);
-            
+
             try {
                 await saveAllTasksToFirestore(updatedTasks);
                 updateGlobalTaskObjects(updatedTasks);
