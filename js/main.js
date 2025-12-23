@@ -19,7 +19,7 @@ export const worker = new Worker('/timer-worker.js'); // export をつける
 
 import { initializeApprovalView, cleanupApprovalView } from './views/host/approval.js';
 
-import { setupModalEventListeners, adminPasswordView, closeModal } from './components/modal.js';
+import { setupModalEventListeners, adminPasswordView, closeModal } from './components/modal/index.js';
 import { setupExcelExportEventListeners } from './excelExport.js';
 import { getJSTDateString, escapeHtml } from './utils.js';
 
