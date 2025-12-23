@@ -1,15 +1,5 @@
 // js/components/modal/core.js
 
-// --- 1. 他のファイルでも共有するDOM要素のエクスポート ---
-// これらがあることで、taskGoal.js などが「どの画面を閉じるか」を指定できます
-export const confirmationModal = document.getElementById("confirmation-modal");
-export const adminPasswordView = document.getElementById("admin-password-view");
-export const editLogModal = document.getElementById("edit-log-modal");
-export const fixCheckoutModal = document.getElementById("fix-checkout-modal");
-export const editMemoModal = document.getElementById("edit-memo-modal");
-export const exportExcelModal = document.getElementById("export-excel-modal");
-export const editContributionModal = document.getElementById("edit-contribution-modal");
-
 // 内部でのみ使用する要素
 const modalMessage = document.getElementById("modal-message");
 let modalConfirmBtn = document.getElementById("modal-confirm-btn");
