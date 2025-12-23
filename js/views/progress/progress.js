@@ -4,7 +4,7 @@
 import { db, allTaskObjects, handleGoBack, showView, VIEWS, escapeHtml } from "../../main.js";
 import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 // ★修正: js/views/progress/ から js/components/ は ../../components/
-import { openGoalModal, showHelpModal } from "../../components/modal.js";
+import { openGoalModal, showHelpModal } from "../../components/modal/index.js";
 import { destroyCharts } from "../../components/chart.js";
 
 import {
