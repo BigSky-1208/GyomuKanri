@@ -2,8 +2,7 @@
 
 import { 
     db, 
-    // allTaskObjects, // ★直接参照せず、下の関数を使います
-    getAllTaskObjects, // ★main.jsに追加していただいた関数
+    getAllTaskObjects, // データ取得用
     authLevel, 
     updateGlobalTaskObjects, 
     handleGoBack, 
@@ -26,7 +25,6 @@ import {
     hideConfirmationModal, 
     showHelpModal 
 } from "../components/modal/index.js";
-// ★ closeGoalModal はエクスポートされていないためインポートせず、ファイル末尾で定義します
 import { formatHoursMinutes, escapeHtml } from "../utils.js";
 
 // DOM要素
@@ -87,12 +85,20 @@ export function setupTaskSettingsEventListeners() {
 
 /**
  * 業務リストの描画
+ * @param {Array} tasksToRender - (任意) 描画したいタスクリスト。指定がない場合はグローバル変数を使用
  */
-export function renderTaskEditor() {
+export function renderTaskEditor(tasksToRender = null) {
     if (!taskListEditor || !addTaskForm) return;
 
-    // ★重要: 必ず関数経由で最新データを取得
-    const currentTasks = getAllTaskObjects();
+    // ★ログ: どちらのデータを使っているか確認
+    if (tasksToRender) {
+        console.log("【Debug】renderTaskEditor: 引数で渡された最新データを使用して描画します");
+    } else {
+        console.log("【Debug】renderTaskEditor: グローバル変数(getAllTaskObjects)を使用して描画します");
+    }
+
+    // 引数がなければグローバル変数から取得
+    const currentTasks = tasksToRender || getAllTaskObjects();
 
     const isHost = authLevel === "admin" || currentUserRole === "host";
     const isManager = isHost || currentUserRole === "manager";
@@ -135,7 +141,7 @@ export function renderTaskEditor() {
              </div>
         `;
 
-        // ★★★ 復活: ここが抜けていたため、工数が表示されていませんでした ★★★
+        // 工数リストの生成
         let goalsListHtml = "";
         if (task.goals && task.goals.length > 0) {
             goalsListHtml = `<div class="mt-3 space-y-2">`;
@@ -158,7 +164,6 @@ export function renderTaskEditor() {
             });
             goalsListHtml += `</div>`;
         }
-        // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
 
         div.innerHTML = `
             <div class="flex justify-between items-center">
@@ -182,9 +187,6 @@ export function renderTaskEditor() {
     });
 }
 
-/**
- * リスト内クリックハンドラ
- */
 async function handleTaskEditorClick(event) {
     const target = event.target;
     const taskItem = target.closest('.task-item');
@@ -196,7 +198,6 @@ async function handleTaskEditorClick(event) {
     } else if (target.classList.contains("save-task-btn")) {
         handleSaveTaskMemo(taskName, taskItem);
     } else if (target.classList.contains("add-goal-btn")) {
-        // IDがあれば編集モード
         const goalId = target.dataset.goalId;
         openGoalModal(goalId ? "edit" : "add", taskName, goalId);
     } else if (target.classList.contains("toggle-members-btn")) {
@@ -218,7 +219,6 @@ async function handleSaveGoal() {
         return;
     }
 
-    // ★関数経由で最新データを取得
     const currentTasks = getAllTaskObjects();
     const taskIndex = currentTasks.findIndex((t) => t.name === taskName);
     if (taskIndex === -1) return;
@@ -256,8 +256,12 @@ async function handleSaveGoal() {
         await saveAllTasksToFirestore(updatedTasks);
         updateGlobalTaskObjects(updatedTasks);
         
+        console.log("【Debug】DB保存・変数更新完了。最新データを描画に渡します:", updatedTasks);
+        
         closeGoalModal();
-        renderTaskEditor(); // リスト生成コードを復活させたので、これで表示されるはずです
+        // ★ここが修正点: 最新データを直接渡して強制的に描画
+        renderTaskEditor(updatedTasks); 
+        
         alert("工数を保存しました。");
     } catch (error) {
         console.error("Error saving goal:", error);
@@ -286,8 +290,12 @@ async function handleAddTask() {
         await saveAllTasksToFirestore(updatedTasks);
         updateGlobalTaskObjects(updatedTasks);
         
+        console.log("【Debug】業務追加完了。最新データを描画に渡します:", updatedTasks);
+
         newTaskInput.value = "";
-        renderTaskEditor();
+        // ★ここが修正点
+        renderTaskEditor(updatedTasks);
+        
         alert(`業務「${newTaskName}」を追加しました。`);
     } catch (error) { console.error(error); }
 }
@@ -311,6 +319,8 @@ async function handleSaveTaskMemo(taskName, taskItemElement) {
     try {
         await saveAllTasksToFirestore(updatedTasks);
         updateGlobalTaskObjects(updatedTasks);
+        console.log("【Debug】メモ保存完了。");
+        // メモは再描画不要（入力欄そのまま）
         alert("メモを保存しました。");
     } catch(error) { console.error(error); }
 }
@@ -332,7 +342,11 @@ function handleDeleteTask(taskNameToDelete) {
             try {
                 await saveAllTasksToFirestore(updatedTasks);
                 updateGlobalTaskObjects(updatedTasks);
-                renderTaskEditor();
+                
+                console.log("【Debug】削除完了。最新データを描画に渡します:", updatedTasks);
+                // ★ここが修正点
+                renderTaskEditor(updatedTasks);
+                
                 alert(`業務「${escapeHtml(taskNameToDelete)}」を削除しました。`);
             } catch(error) { 
                 console.error(error);
@@ -349,53 +363,33 @@ function handleDeleteTask(taskNameToDelete) {
 async function toggleMembersList(button, taskName) {
     const container = button.nextElementSibling;
     if (!container) return;
-
     const isHidden = container.classList.contains("hidden");
 
     if (isHidden) {
         button.textContent = "担当者別 合計時間 [-]";
         container.innerHTML = '<p class="text-gray-400">集計中...</p>';
         container.classList.remove("hidden");
-
-        let logsForTask = [];
         try {
-            const logsQuery = query(
-                collection(db, "work_logs"),
-                where("task", "==", taskName)
-            );
-            const logsSnapshot = await getDocs(logsQuery);
-            logsForTask = logsSnapshot.docs
-                .map((doc) => doc.data())
-                .filter((log) => log.type !== "goal" && log.userName);
+            const q = query(collection(db, "work_logs"), where("task", "==", taskName));
+            const snapshot = await getDocs(q);
+            const memberSummary = snapshot.docs
+                .map(doc => doc.data())
+                .filter(log => log.type !== "goal" && log.userName)
+                .reduce((acc, log) => {
+                    acc[log.userName] = (acc[log.userName] || 0) + (log.duration || 0);
+                    return acc;
+                }, {});
+
+            const sorted = Object.entries(memberSummary)
+                .filter(([, duration]) => duration > 0)
+                .sort((a, b) => b[1] - a[1]);
+
+            container.innerHTML = sorted.length > 0 
+                ? sorted.map(([name, d]) => `<div class="flex justify-between"><span>${escapeHtml(name)}</span><span class="font-mono">${formatHoursMinutes(d)}</span></div>`).join("")
+                : '<p class="text-gray-500">稼働記録はありません。</p>';
         } catch (error) {
-            console.error(`Error fetching logs for task ${taskName}:`, error);
-            container.innerHTML = '<p class="text-red-500">時間データの取得エラー</p>';
-            return;
+            container.innerHTML = '<p class="text-red-500">取得エラー</p>';
         }
-
-        const memberSummary = logsForTask.reduce((acc, log) => {
-            if (!acc[log.userName]) {
-                acc[log.userName] = 0;
-            }
-            acc[log.userName] += (log.duration || 0);
-            return acc;
-        }, {});
-
-        const sortedMembers = Object.entries(memberSummary)
-            .filter(([, duration]) => duration > 0)
-            .sort((a, b) => b[1] - a[1]);
-
-        if (sortedMembers.length > 0) {
-            container.innerHTML = sortedMembers
-                .map(
-                    ([name, duration]) =>
-                    `<div class="flex justify-between hover:bg-gray-200 px-1 rounded"><span>${escapeHtml(name)}</span><span class="font-mono">${formatHoursMinutes(duration)}</span></div>`
-                )
-                .join("");
-        } else {
-            container.innerHTML = '<p class="text-gray-500">この業務の稼働記録はまだありません。</p>';
-        }
-
     } else {
         button.textContent = "担当者別 合計時間 [+]";
         container.classList.add("hidden");
@@ -408,7 +402,6 @@ async function saveAllTasksToFirestore(tasksToSave) {
     await setDoc(tasksRef, { list: tasksToSave });
 }
 
-// ★ローカルで定義
 function closeGoalModal() {
     if (goalModal) goalModal.classList.add("hidden");
 }
