@@ -53,10 +53,12 @@ export function openGoalModal(mode, taskName, goalId = null) {
     taskIn.value = taskName;
     idIn.value = goalId || "";
 
-    if (mode === 'edit' && goalId) {
+if (mode === 'edit' && goalId) {
         title.textContent = "工数の編集";
         const task = allTaskObjects.find(t => t.name === taskName);
-        const goal = task?.goals?.find(g => g.id === goalId);
+        // ★ ID または タイトルで検索
+        const goal = task?.goals?.find(g => g.id === goalId || g.title === goalId);
+    
         if (goal) {
             titleIn.value = goal.title || "";
             targetIn.value = goal.target || "";
