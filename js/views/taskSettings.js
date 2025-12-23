@@ -2,7 +2,7 @@
 
 import { 
     db, 
-    getAllTaskObjects, // データ取得用
+    getAllTaskObjects, 
     authLevel, 
     updateGlobalTaskObjects, 
     handleGoBack, 
@@ -27,15 +27,11 @@ import {
 } from "../components/modal/index.js";
 import { formatHoursMinutes, escapeHtml } from "../utils.js";
 
-// DOM要素
-const taskListEditor = document.getElementById("task-list-editor");
-const addTaskForm = document.getElementById("add-task-form");
-const newTaskInput = document.getElementById("new-task-input");
-const addTaskButton = document.getElementById("add-task-btn");
-const backButton = document.getElementById("back-to-selection-from-settings");
-const helpButton = document.querySelector('#task-settings-view .help-btn');
+// ★修正点1: ここでDOM要素を固定してしまうのをやめます（変数の宣言だけにするか、使う場所で取得します）
+// モーダル要素など、画面遷移で消えないものはここでも良いですが、
+// メインのリストなどは描画のたびに取得するのが確実です。
 
-// モーダル要素
+// モーダル要素（IDが変わらない前提ならここでOK）
 const goalModal = document.getElementById("goal-modal");
 const goalModalTaskNameInput = document.getElementById("goal-modal-task-name");
 const goalModalGoalIdInput = document.getElementById("goal-modal-goal-id");
@@ -60,22 +56,34 @@ export async function initializeTaskSettingsView() {
         }
     }
     renderTaskEditor();
-    if(newTaskInput) newTaskInput.value = '';
+    
+    // input要素も毎回取得する
+    const input = document.getElementById("new-task-input");
+    if(input) input.value = '';
 }
 
 export function setupTaskSettingsEventListeners() {
+    // ボタンなどもイベント設定時に再取得する
     const viewProgressButton = document.getElementById("view-progress-from-settings-btn");
     viewProgressButton?.addEventListener('click', () => {
         window.isProgressViewReadOnly = false;
         showView(VIEWS.PROGRESS);
     });
 
+    const addTaskButton = document.getElementById("add-task-btn");
     addTaskButton?.addEventListener("click", handleAddTask);
-    taskListEditor?.addEventListener("click", handleTaskEditorClick);
-    backButton?.addEventListener("click", handleGoBack);
-    helpButton?.addEventListener('click', () => showHelpModal('taskSettings'));
 
-    newTaskInput?.addEventListener('keypress', (event) => {
+    const listEditor = document.getElementById("task-list-editor");
+    listEditor?.addEventListener("click", handleTaskEditorClick);
+
+    const backBtn = document.getElementById("back-to-selection-from-settings");
+    backBtn?.addEventListener("click", handleGoBack);
+
+    const helpBtn = document.querySelector('#task-settings-view .help-btn');
+    helpBtn?.addEventListener('click', () => showHelpModal('taskSettings'));
+
+    const newTaskIn = document.getElementById("new-task-input");
+    newTaskIn?.addEventListener('keypress', (event) => {
         if (event.key === 'Enter') handleAddTask();
     });
 
@@ -85,19 +93,17 @@ export function setupTaskSettingsEventListeners() {
 
 /**
  * 業務リストの描画
- * @param {Array} tasksToRender - (任意) 描画したいタスクリスト。指定がない場合はグローバル変数を使用
  */
 export function renderTaskEditor(tasksToRender = null) {
-    if (!taskListEditor || !addTaskForm) return;
+    // ★修正点2: 描画のたびに、必ず「今の画面にある要素」を取得し直す
+    const taskListEditor = document.getElementById("task-list-editor");
+    const addTaskForm = document.getElementById("add-task-form");
 
-    // ★ログ: どちらのデータを使っているか確認
-    if (tasksToRender) {
-        console.log("【Debug】renderTaskEditor: 引数で渡された最新データを使用して描画します");
-    } else {
-        console.log("【Debug】renderTaskEditor: グローバル変数(getAllTaskObjects)を使用して描画します");
+    if (!taskListEditor || !addTaskForm) {
+        console.error("【Error】DOM要素が見つかりません。画面遷移等でIDが変わった可能性があります。");
+        return;
     }
 
-    // 引数がなければグローバル変数から取得
     const currentTasks = tasksToRender || getAllTaskObjects();
 
     const isHost = authLevel === "admin" || currentUserRole === "host";
@@ -141,12 +147,10 @@ export function renderTaskEditor(tasksToRender = null) {
              </div>
         `;
 
-        // 工数リストの生成
         let goalsListHtml = "";
         if (task.goals && task.goals.length > 0) {
             goalsListHtml = `<div class="mt-3 space-y-2">`;
             task.goals.forEach((goal) => {
-                console.log("【Debug】HTML生成中:", goal.title);
                 goalsListHtml += `
                     <div class="flex justify-between items-center bg-white border border-gray-200 p-2 rounded text-sm">
                         <span class="font-medium text-gray-700 truncate mr-2">
@@ -206,9 +210,6 @@ async function handleTaskEditorClick(event) {
     }
 }
 
-/**
- * 工数の保存処理
- */
 async function handleSaveGoal() {
     const taskName = goalModalTaskNameInput.value;
     const goalId = goalModalGoalIdInput.value;
@@ -257,12 +258,8 @@ async function handleSaveGoal() {
         await saveAllTasksToFirestore(updatedTasks);
         updateGlobalTaskObjects(updatedTasks);
         
-        console.log("【Debug】DB保存・変数更新完了。最新データを描画に渡します:", updatedTasks);
-        
         closeGoalModal();
-        // ★ここが修正点: 最新データを直接渡して強制的に描画
-        renderTaskEditor(updatedTasks); 
-        
+        renderTaskEditor(updatedTasks); // 最新データを渡して描画
         alert("工数を保存しました。");
     } catch (error) {
         console.error("Error saving goal:", error);
@@ -270,11 +267,11 @@ async function handleSaveGoal() {
     }
 }
 
-/**
- * 業務追加処理
- */
 async function handleAddTask() {
-    const newTaskName = newTaskInput.value.trim();
+    const newTaskIn = document.getElementById("new-task-input"); // ここも再取得
+    if (!newTaskIn) return;
+    const newTaskName = newTaskIn.value.trim();
+    
     if (!newTaskName || newTaskName === "休憩" || /\s/.test(newTaskName)) {
         alert("有効な業務名を入力してください。");
         return;
@@ -291,19 +288,12 @@ async function handleAddTask() {
         await saveAllTasksToFirestore(updatedTasks);
         updateGlobalTaskObjects(updatedTasks);
         
-        console.log("【Debug】業務追加完了。最新データを描画に渡します:", updatedTasks);
-
-        newTaskInput.value = "";
-        // ★ここが修正点
+        newTaskIn.value = "";
         renderTaskEditor(updatedTasks);
-        
         alert(`業務「${newTaskName}」を追加しました。`);
     } catch (error) { console.error(error); }
 }
 
-/**
- * 業務メモの保存
- */
 async function handleSaveTaskMemo(taskName, taskItemElement) {
     const memoInput = taskItemElement?.querySelector(".task-memo-editor");
     const newMemo = memoInput.value.trim();
@@ -320,15 +310,10 @@ async function handleSaveTaskMemo(taskName, taskItemElement) {
     try {
         await saveAllTasksToFirestore(updatedTasks);
         updateGlobalTaskObjects(updatedTasks);
-        console.log("【Debug】メモ保存完了。");
-        // メモは再描画不要（入力欄そのまま）
         alert("メモを保存しました。");
     } catch(error) { console.error(error); }
 }
 
-/**
- * 業務削除処理
- */
 function handleDeleteTask(taskNameToDelete) {
     if (!taskNameToDelete || taskNameToDelete === "休憩") return;
 
@@ -343,11 +328,7 @@ function handleDeleteTask(taskNameToDelete) {
             try {
                 await saveAllTasksToFirestore(updatedTasks);
                 updateGlobalTaskObjects(updatedTasks);
-                
-                console.log("【Debug】削除完了。最新データを描画に渡します:", updatedTasks);
-                // ★ここが修正点
                 renderTaskEditor(updatedTasks);
-                
                 alert(`業務「${escapeHtml(taskNameToDelete)}」を削除しました。`);
             } catch(error) { 
                 console.error(error);
@@ -358,9 +339,6 @@ function handleDeleteTask(taskNameToDelete) {
     );
 }
 
-/**
- * 担当者別集計
- */
 async function toggleMembersList(button, taskName) {
     const container = button.nextElementSibling;
     if (!container) return;
