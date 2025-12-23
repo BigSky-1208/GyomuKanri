@@ -26,7 +26,7 @@ import {
 } from "../components/modal/index.js";
 import { formatHoursMinutes, escapeHtml } from "../utils.js";
 
-// DOM要素（固定的なもの）
+// DOM要素
 const goalModal = document.getElementById("goal-modal");
 const goalModalTaskNameInput = document.getElementById("goal-modal-task-name");
 const goalModalGoalIdInput = document.getElementById("goal-modal-goal-id");
@@ -46,7 +46,6 @@ let currentUserRole = "general";
 export async function initializeTaskSettingsView() {
     console.log("Initializing Task Settings View...");
     
-    // ユーザー権限取得
     if (userId) {
         try {
             const userDoc = await getDoc(doc(db, "user_profiles", userId));
@@ -56,26 +55,24 @@ export async function initializeTaskSettingsView() {
         }
     }
 
-    // 描画
     renderTaskEditor();
     
-    // 入力欄クリア
     const input = document.getElementById("new-task-input");
     if(input) input.value = '';
 
-    // ★重要: リロード後に「選択状態」を復元する処理
+    // ★リロード後の復元処理★
     const highlightTaskName = sessionStorage.getItem("highlightTaskName");
     if (highlightTaskName) {
-        // 保存されていたら削除（1回限り）
-        sessionStorage.removeItem("highlightTaskName");
-        // アラートの表示（リロード完了の合図として）
+        sessionStorage.removeItem("highlightTaskName"); // 使い終わったら消す
+        
         const actionMessage = sessionStorage.getItem("actionMessage");
         if (actionMessage) {
-            alert(actionMessage);
+            alert(actionMessage); // 先にメッセージを出す
             sessionStorage.removeItem("actionMessage");
         }
-        // スクロールとハイライト
-        restoreSelectionState(highlightTaskName);
+        
+        // ★ここがポイント: 要素が見つかるまで粘り強く待ってからスクロール
+        restoreSelectionStateWithRetry(highlightTaskName);
     }
 }
 
@@ -119,7 +116,7 @@ export function renderTaskEditor() {
 
     if (!taskListEditor || !addTaskForm) return;
 
-    // 常にグローバル変数の最新状態を取得
+    // 常に最新データを取得
     const currentTasks = getAllTaskObjects();
 
     const isHost = authLevel === "admin" || currentUserRole === "host";
@@ -141,9 +138,9 @@ export function renderTaskEditor() {
 
     sortedTasks.forEach((task) => {
         const div = document.createElement("div");
-        div.className = "p-4 bg-gray-100 rounded-lg shadow-sm mb-4 task-item transition-all duration-1000"; // アニメーション用クラス
+        div.className = "p-4 bg-gray-100 rounded-lg shadow-sm mb-4 task-item transition-all duration-1000"; 
         div.dataset.taskName = task.name;
-        // リロード後の検索用にIDを付与
+        // 復元用のID付与
         div.id = `task-row-${task.name}`;
 
         const deleteButtonHtml = (isHost && task.name !== "休憩")
@@ -165,7 +162,6 @@ export function renderTaskEditor() {
              </div>
         `;
 
-        // 工数リスト
         let goalsListHtml = "";
         if (task.goals && task.goals.length > 0) {
             goalsListHtml = `<div class="mt-3 space-y-2">`;
@@ -209,34 +205,44 @@ export function renderTaskEditor() {
     });
 }
 
-// --- 選択状態の復元 ---
-function restoreSelectionState(taskName) {
+/**
+ * ★重要: 要素が見つかるまで待機して選択状態を復元する（リトライ機能付き）
+ */
+function restoreSelectionStateWithRetry(taskName, retryCount = 0) {
     if (!taskName) return;
-    
-    // 描画が終わるのを少し待つ
-    setTimeout(() => {
-        // エスケープ処理などはせず、IDとして使用（英数字以外が含まれる場合は注意が必要だが、今回は簡易的に）
-        // もしtaskNameに記号が含まれるとquerySelectorでエラーになる可能性があるため、getElementByIdを使用
-        const element = document.getElementById(`task-row-${taskName}`);
+
+    // IDで要素を探す
+    const element = document.getElementById(`task-row-${taskName}`);
+
+    if (element) {
+        // 見つかった場合：即実行
+        console.log(`復元成功: ${taskName} (試行回数: ${retryCount})`);
         
-        if (element) {
-            console.log("選択状態を復元します:", taskName);
-            // スクロール
-            element.scrollIntoView({ behavior: "smooth", block: "center" });
-            
-            // 強調表示（黄色く光らせる）
-            element.classList.remove("bg-gray-100");
-            element.classList.add("bg-yellow-100", "ring-4", "ring-yellow-400"); // 目立つようにリング追加
-            
+        // スクロール
+        element.scrollIntoView({ behavior: "smooth", block: "center" });
+        
+        // ハイライト
+        element.classList.remove("bg-gray-100");
+        element.classList.add("bg-yellow-100", "ring-4", "ring-yellow-400");
+        
+        setTimeout(() => {
+            element.classList.remove("bg-yellow-100", "ring-4", "ring-yellow-400");
+            element.classList.add("bg-gray-100");
+        }, 2000);
+
+    } else {
+        // 見つからない場合：まだ描画されていない可能性があるためリトライ
+        if (retryCount < 20) { // 最大2秒待つ (100ms * 20回)
             setTimeout(() => {
-                element.classList.remove("bg-yellow-100", "ring-4", "ring-yellow-400");
-                element.classList.add("bg-gray-100");
-            }, 2000); // 2秒後に戻す
+                restoreSelectionStateWithRetry(taskName, retryCount + 1);
+            }, 100);
+        } else {
+            console.log(`復元失敗: ${taskName} が見つかりませんでした。`);
         }
-    }, 500); // リロード直後の描画待ち
+    }
 }
 
-// --- クリックハンドラ ---
+// --- アクションハンドラ ---
 async function handleTaskEditorClick(event) {
     const target = event.target;
     const taskItem = target.closest('.task-item');
@@ -255,7 +261,6 @@ async function handleTaskEditorClick(event) {
     }
 }
 
-// --- ★修正: 保存してリロード ---
 async function handleSaveGoal() {
     const taskName = goalModalTaskNameInput.value;
     const goalId = goalModalGoalIdInput.value;
@@ -302,11 +307,11 @@ async function handleSaveGoal() {
         await saveAllTasksToFirestore(updatedTasks);
         closeGoalModal();
 
-        // ★ リロードの仕込み
+        // ★リロードの仕込み
         sessionStorage.setItem("highlightTaskName", taskName);
         sessionStorage.setItem("actionMessage", "工数を保存しました。");
         
-        // ★ 強制リロード
+        // ★リロード
         window.location.reload();
 
     } catch (error) {
@@ -315,7 +320,6 @@ async function handleSaveGoal() {
     }
 }
 
-// --- ★修正: 追加してリロード ---
 async function handleAddTask() {
     const newTaskIn = document.getElementById("new-task-input");
     if (!newTaskIn) return;
@@ -336,17 +340,16 @@ async function handleAddTask() {
     try {
         await saveAllTasksToFirestore(updatedTasks);
 
-        // ★ リロードの仕込み
+        // ★リロードの仕込み
         sessionStorage.setItem("highlightTaskName", newTaskName);
         sessionStorage.setItem("actionMessage", `業務「${newTaskName}」を追加しました。`);
         
-        // ★ 強制リロード
+        // ★リロード
         window.location.reload();
 
     } catch (error) { console.error(error); }
 }
 
-// --- ★修正: メモ保存してリロード ---
 async function handleSaveTaskMemo(taskName, taskItemElement) {
     const memoInput = taskItemElement?.querySelector(".task-memo-editor");
     const newMemo = memoInput.value.trim();
@@ -354,7 +357,6 @@ async function handleSaveTaskMemo(taskName, taskItemElement) {
     const currentTasks = getAllTaskObjects();
     const taskIndex = currentTasks.findIndex((t) => t.name === taskName);
     if (taskIndex === -1) return;
-
     if (currentTasks[taskIndex].memo === newMemo) return;
 
     const updatedTasks = JSON.parse(JSON.stringify(currentTasks));
@@ -363,16 +365,16 @@ async function handleSaveTaskMemo(taskName, taskItemElement) {
     try {
         await saveAllTasksToFirestore(updatedTasks);
         
-        // ★ リロードの仕込み
+        // ★リロードの仕込み
         sessionStorage.setItem("highlightTaskName", taskName);
         sessionStorage.setItem("actionMessage", "メモを保存しました。");
         
+        // ★リロード
         window.location.reload();
 
     } catch(error) { console.error(error); }
 }
 
-// --- ★修正: 削除してリロード ---
 function handleDeleteTask(taskNameToDelete) {
     if (!taskNameToDelete || taskNameToDelete === "休憩") return;
 
@@ -380,16 +382,16 @@ function handleDeleteTask(taskNameToDelete) {
         `業務「${escapeHtml(taskNameToDelete)}」を削除しますか？\n\nこの業務に紐づく工数も全て削除されます。\n（関連する業務ログは削除されません）\n\nこの操作は元に戻せません。`,
         async () => {
             hideConfirmationModal();
-
             const currentTasks = getAllTaskObjects();
             const updatedTasks = currentTasks.filter(t => t.name !== taskNameToDelete);
 
             try {
                 await saveAllTasksToFirestore(updatedTasks);
                 
-                // 削除の場合はハイライト対象がないのでメッセージだけ
+                // 削除時はハイライトなし、メッセージのみ
                 sessionStorage.setItem("actionMessage", `業務「${escapeHtml(taskNameToDelete)}」を削除しました。`);
                 
+                // ★リロード
                 window.location.reload();
 
             } catch(error) { 
@@ -401,7 +403,7 @@ function handleDeleteTask(taskNameToDelete) {
     );
 }
 
-// 集計処理は変更なし
+// 集計処理
 async function toggleMembersList(button, taskName) {
     const container = button.nextElementSibling;
     if (!container) return;
