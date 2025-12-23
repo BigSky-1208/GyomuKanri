@@ -1,35 +1,34 @@
-// js/components/modal/core.js
-export const confirmationModal = document.getElementById("confirmation-modal");
-export const adminPasswordView = document.getElementById("admin-password-view");
-const modalMessage = document.getElementById("modal-message");
-let modalConfirmBtn = document.getElementById("modal-confirm-btn");
-let modalCancelBtn = document.getElementById("modal-cancel-btn");
+/**
+ * パスワード入力モーダルを表示する
+ */
+export function showPasswordModal(role, onSuccess) {
+    const adminPasswordInput = document.getElementById("admin-password-input");
+    const adminPasswordError = document.getElementById("admin-password-error");
+    const adminPasswordSubmitBtn = document.getElementById("admin-password-submit-btn");
 
-export function showModal(modalElement) {
-    if (modalElement) modalElement.classList.remove("hidden");
-}
+    if (!adminPasswordView || !adminPasswordInput) return;
 
-export function closeModal(modalElement) {
-    if (modalElement) modalElement.classList.add("hidden");
-}
-
-export function showConfirmationModal(message, onConfirm, onCancel = () => closeModal(confirmationModal)) {
-    if (!confirmationModal || !modalMessage) {
-        if (confirm(message)) onConfirm?.();
-        return;
-    }
-    modalMessage.textContent = message;
+    adminPasswordInput.value = "";
+    if (adminPasswordError) adminPasswordError.classList.add("hidden");
     
-    // イベントリスナーの重複登録を防ぐためのクローン
-    const newConfirm = modalConfirmBtn.cloneNode(true);
-    modalConfirmBtn.parentNode.replaceChild(newConfirm, modalConfirmBtn);
-    modalConfirmBtn = newConfirm;
-    modalConfirmBtn.onclick = () => { onConfirm?.(); closeModal(confirmationModal); };
+    showModal(adminPasswordView);
+    adminPasswordInput.focus();
 
-    const newCancel = modalCancelBtn.cloneNode(true);
-    modalCancelBtn.parentNode.replaceChild(newCancel, modalCancelBtn);
-    modalCancelBtn = newCancel;
-    modalCancelBtn.onclick = () => { onCancel?.(); closeModal(confirmationModal); };
+    const checkPassword = () => {
+        const val = adminPasswordInput.value;
+        const isValid = (role === "host" && val === "9999") || (role === "manager" && val === "0000");
 
-    showModal(confirmationModal);
+        if (isValid) {
+            closeModal(adminPasswordView);
+            onSuccess();
+        } else {
+            if (adminPasswordError) {
+                adminPasswordError.textContent = "パスワードが違います";
+                adminPasswordError.classList.remove("hidden");
+            }
+        }
+    };
+
+    adminPasswordSubmitBtn.onclick = checkPassword;
+    adminPasswordInput.onkeydown = (e) => { if (e.key === "Enter") checkPassword(); };
 }
