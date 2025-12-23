@@ -6,7 +6,7 @@ import { getJSTDateString } from "../../utils.js";
 import { setHasContributed } from "./timer.js";
 
 export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
-    console.log("1. 登録処理開始:", { taskName, goalId, value: inputElement?.value });
+    console.log("登録処理開始");
 
     let finalGoalId = goalId || document.getElementById("goal-modal")?.dataset.currentGoalId;
     if (!finalGoalId) return;
@@ -22,19 +22,17 @@ export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
     );
     if (goalIndex === -1) return;
 
-    // --- ローカルデータの更新 ---
+    // --- 1. ローカルデータの準備 ---
     const updatedTasks = JSON.parse(JSON.stringify(allTaskObjects));
     const task = updatedTasks[taskIndex];
     const goal = task.goals[goalIndex];
     
-    // 現在の値を加算
     const oldCurrent = goal.current || 0;
-    const newCurrent = oldCurrent + contribution;
+    const newCurrent = oldCurrent + contribution; // 新しい合計値
     goal.current = newCurrent;
 
     try {
-        console.log(`4. Firebase書き込み開始... (${oldCurrent} -> ${newCurrent})`);
-        
+        // --- 2. Firestore書き込み ---
         const tasksRef = doc(db, "settings", "tasks");
         await setDoc(tasksRef, { list: updatedTasks }); 
 
@@ -50,38 +48,47 @@ export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
             startTime: Timestamp.fromDate(new Date()),
         });
 
-        console.log("5. 全ての更新が完了しました！");
-
-        // --- ★ここからUIを即座に書き換える処理を追加 ---
+        // --- 3. ★UIの即時更新ロジック ---
         
-        // 1. メモリ上のグローバル変数を更新（これをしないと再描画で元に戻る）
+        // メモリ上のデータを更新（他の画面への移動対策）
         allTaskObjects[taskIndex].goals[goalIndex].current = newCurrent;
 
-        // 2. 画面上の数値を直接書き換える
-        const currentLabel = document.querySelector("#goal-progress-container .font-bold.text-lg");
-        const progressBar = document.querySelector("#goal-progress-container .bg-blue-600");
-        const percentLabel = progressBar?.parentElement?.previousElementSibling?.querySelector("span:last-child");
+        // 画面上の要素を特定
+        const container = document.getElementById("goal-progress-container");
+        if (container) {
+            const currentLabel = container.querySelector(".font-bold.text-lg"); // 現在値の数字
+            const progressBar = container.querySelector(".bg-blue-600");       // 青いバー
+            const percentLabel = container.querySelector("div.flex.justify-between span:last-child"); // %表示
 
-        if (currentLabel) currentLabel.textContent = newCurrent;
-        
-        if (progressBar) {
             const target = goal.target || 1;
             const newPercent = Math.min(100, Math.round((newCurrent / target) * 100));
-            progressBar.style.width = `${newPercent}%`;
-            if (percentLabel) percentLabel.textContent = `${newPercent}%`;
+
+            // 数字を更新
+            if (currentLabel) {
+                currentLabel.textContent = newCurrent;
+                // 登録した感出すために一瞬色を変える
+                currentLabel.classList.add("text-blue-600");
+                setTimeout(() => currentLabel.classList.remove("text-blue-600"), 1000);
+            }
+
+            // バーを伸ばす
+            if (progressBar) {
+                progressBar.style.width = `${newPercent}%`;
+            }
+
+            // パーセント数字を更新
+            if (percentLabel) {
+                percentLabel.textContent = `${newPercent}%`;
+            }
         }
 
-        // 3. 入力欄をクリア
+        // 入力欄をクリア
         inputElement.value = "";
-        if (typeof setHasContributed === 'function') setHasContributed(true);
-
-        // 4. 管理者画面（業務進捗ページ）にも反映させるため、念のため少し後にリロードするか、
-        // 成功のトーストを表示する
-        console.log("UIを更新しました。");
+        console.log("UIの即時更新が完了しました");
 
     } catch (error) {
-        console.error("Firebase更新エラー:", error);
-        alert("進捗の更新中にエラーが発生しました。");
+        console.error("更新エラー:", error);
+        alert("エラーが発生しました。");
     }
 }
 
