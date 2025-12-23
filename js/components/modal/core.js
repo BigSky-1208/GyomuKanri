@@ -1,3 +1,16 @@
+// js/components/modal/core.js 追記・修正
+export const confirmationModal = document.getElementById("confirmation-modal");
+export const adminPasswordView = document.getElementById("admin-password-view");
+export const editLogModal = document.getElementById("edit-log-modal");          // ★追加
+export const editMemoModal = document.getElementById("edit-memo-modal");        // ★追加
+export const editContributionModal = document.getElementById("edit-contribution-modal"); // ★追加
+export const fixCheckoutModal = document.getElementById("fix-checkout-modal");  // ★追加
+export const exportExcelModal = document.getElementById("export-excel-modal");  // ★追加
+
+const modalMessage = document.getElementById("modal-message");
+let modalConfirmBtn = document.getElementById("modal-confirm-btn");
+let modalCancelBtn = document.getElementById("modal-cancel-btn");
+
 /**
  * パスワード入力モーダルを表示する
  */
@@ -31,4 +44,8 @@ export function showPasswordModal(role, onSuccess) {
 
     adminPasswordSubmitBtn.onclick = checkPassword;
     adminPasswordInput.onkeydown = (e) => { if (e.key === "Enter") checkPassword(); };
+}
+
+export function hideConfirmationModal() {
+    closeModal(confirmationModal);
 }
