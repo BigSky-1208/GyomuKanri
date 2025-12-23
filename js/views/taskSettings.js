@@ -146,6 +146,7 @@ export function renderTaskEditor(tasksToRender = null) {
         if (task.goals && task.goals.length > 0) {
             goalsListHtml = `<div class="mt-3 space-y-2">`;
             task.goals.forEach((goal) => {
+                console.log("【Debug】HTML生成中:", goal.title);
                 goalsListHtml += `
                     <div class="flex justify-between items-center bg-white border border-gray-200 p-2 rounded text-sm">
                         <span class="font-medium text-gray-700 truncate mr-2">
