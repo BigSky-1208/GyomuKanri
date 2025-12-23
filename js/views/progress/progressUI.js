@@ -60,17 +60,15 @@ export function renderProgressGoalList(allTaskObjects, selectedProgressTaskName,
 
 activeGoals.forEach((goal) => {
         const button = document.createElement("button");
-        // ★修正: goal.id が無い場合は goal.title を ID としてセットする
-        const targetId = goal.id || goal.title; 
-        
-        button.className = `w-full text-left p-2 rounded-lg list-item hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-300 ${selectedProgressGoalId === targetId ? "selected bg-indigo-100" : ""}`;
+        const tid = goal.id || goal.title; // ★IDがなければタイトルを使用
+        button.className = `w-full text-left p-2 rounded-lg list-item hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-300 ${selectedProgressGoalId === tid ? "selected bg-indigo-100" : ""}`;
         button.textContent = escapeHtml(goal.title);
-        button.dataset.goalId = targetId; // dataset にも反映
+        button.dataset.goalId = tid;
 
-        button.onclick = () => handleGoalClick(targetId);
-        
-        goalListContainer.appendChild(button);
-    });
+        button.onclick = () => handleGoalClick(tid);
+        taskListContainer.appendChild(button); // (修正: goalListContainerですね)
+        goalListContainer.appendChild(button);   
+});
 }
 
 export function updateTaskSelectionUI(taskListContainer, taskName) {
@@ -99,6 +97,7 @@ export function renderProgressGoalDetails(goal, taskName, readOnlyMode, goalDeta
     if (!goalDetailsContainer) return;
 
     const progress = goal.target > 0 ? Math.min(100, Math.max(0,(goal.current / goal.target) * 100)) : 0;
+    const tid = goal.id || goal.title;
 
 const buttonsHtml = readOnlyMode ? "" : `
         <div class="flex-shrink-0 ml-4 space-x-2">
