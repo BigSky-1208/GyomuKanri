@@ -2,7 +2,7 @@
 
 import { db } from "./firebase.js"; 
 import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { fixCheckoutModal } from "./components/modal.js"; 
+import { fixCheckoutModal } from "./components/modal/index.js"; 
 
 export function formatDuration(seconds) {
     if (isNaN(seconds) || seconds < 0) return "00:00:00";
