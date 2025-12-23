@@ -1,7 +1,7 @@
 // js/views/modeSelection.js
 
 import { showView, VIEWS, userId, userName, db } from "../main.js";
-import { showPasswordModal } from "../components/modal.js";
+import { showPasswordModal } from "../components/modal/index.js";
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // DOM要素
