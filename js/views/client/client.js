@@ -27,7 +27,7 @@ import {
 
 import { handleFixCheckout } from "./clientActions.js";
 import { toggleMiniDisplay } from "./miniDisplay.js";
-import { openBreakReservationModal, fixCheckoutModal, showHelpModal } from "../../components/modal.js";
+import { openBreakReservationModal, fixCheckoutModal, showHelpModal } from "../../components/modal/index.js";
 import { stopColleaguesListener } from "./colleagues.js";
 
 // --- DOM Element references ---
