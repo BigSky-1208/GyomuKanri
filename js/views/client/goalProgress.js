@@ -8,55 +8,36 @@ import { setHasContributed } from "./timer.js";
 export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
     console.log("1. 登録処理開始:", { taskName, goalId, value: inputElement?.value });
 
-    // IDの特定
     let finalGoalId = goalId || document.getElementById("goal-modal")?.dataset.currentGoalId;
-
-    if (!finalGoalId) {
-        console.error("エラー: finalGoalId がありません");
-        return;
-    }
+    if (!finalGoalId) return;
 
     const contribution = parseInt(inputElement.value, 10);
-    if (isNaN(contribution) || contribution <= 0) {
-        console.warn("警告: 数値が正しくありません");
-        alert("正の数値を入力してください。");
-        return;
-    }
+    if (isNaN(contribution) || contribution <= 0) return;
 
-    // データの検索
-    console.log("2. 検索中... 全タスク数:", allTaskObjects.length);
     const taskIndex = allTaskObjects.findIndex((t) => t.name === taskName);
-    
-    if (taskIndex === -1) {
-        console.error("エラー: タスク名が見つかりません:", taskName);
-        return;
-    }
+    if (taskIndex === -1) return;
 
     const goalIndex = allTaskObjects[taskIndex].goals.findIndex(
         (g) => g.id === finalGoalId || g.title === finalGoalId
     );
-    
-    if (goalIndex === -1) {
-        console.error("エラー: 工数が見つかりません:", finalGoalId);
-        return;
-    }
+    if (goalIndex === -1) return;
 
-    console.log("3. データ特定成功。更新準備中...");
-
+    // --- ローカルデータの更新 ---
     const updatedTasks = JSON.parse(JSON.stringify(allTaskObjects));
     const task = updatedTasks[taskIndex];
     const goal = task.goals[goalIndex];
     
-    goal.current = (goal.current || 0) + contribution;
+    // 現在の値を加算
+    const oldCurrent = goal.current || 0;
+    const newCurrent = oldCurrent + contribution;
+    goal.current = newCurrent;
 
     try {
-        console.log("4. Firebase書き込み開始...");
+        console.log(`4. Firebase書き込み開始... (${oldCurrent} -> ${newCurrent})`);
         
-        // Firestore: タスクマスターの更新
         const tasksRef = doc(db, "settings", "tasks");
         await setDoc(tasksRef, { list: updatedTasks }); 
 
-        // Firestore: 作業ログの保存
         await addDoc(collection(db, `work_logs`), {
             type: "goal",
             userId: userId,
@@ -70,10 +51,34 @@ export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
         });
 
         console.log("5. 全ての更新が完了しました！");
+
+        // --- ★ここからUIを即座に書き換える処理を追加 ---
         
-        if (typeof setHasContributed === 'function') setHasContributed(true);
+        // 1. メモリ上のグローバル変数を更新（これをしないと再描画で元に戻る）
+        allTaskObjects[taskIndex].goals[goalIndex].current = newCurrent;
+
+        // 2. 画面上の数値を直接書き換える
+        const currentLabel = document.querySelector("#goal-progress-container .font-bold.text-lg");
+        const progressBar = document.querySelector("#goal-progress-container .bg-blue-600");
+        const percentLabel = progressBar?.parentElement?.previousElementSibling?.querySelector("span:last-child");
+
+        if (currentLabel) currentLabel.textContent = newCurrent;
+        
+        if (progressBar) {
+            const target = goal.target || 1;
+            const newPercent = Math.min(100, Math.round((newCurrent / target) * 100));
+            progressBar.style.width = `${newPercent}%`;
+            if (percentLabel) percentLabel.textContent = `${newPercent}%`;
+        }
+
+        // 3. 入力欄をクリア
         inputElement.value = "";
-        
+        if (typeof setHasContributed === 'function') setHasContributed(true);
+
+        // 4. 管理者画面（業務進捗ページ）にも反映させるため、念のため少し後にリロードするか、
+        // 成功のトーストを表示する
+        console.log("UIを更新しました。");
+
     } catch (error) {
         console.error("Firebase更新エラー:", error);
         alert("進捗の更新中にエラーが発生しました。");
