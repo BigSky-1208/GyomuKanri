@@ -387,6 +387,11 @@ worker.onmessage = function(e) {
 document.getElementById('start-btn').onclick = function() {
   worker.postMessage('start');
 };
+
+export function getAllTaskObjects() {
+    return allTaskObjects;
+}
     
 export { db, escapeHtml, getJSTDateString };
 document.addEventListener("DOMContentLoaded", initialize);
+
