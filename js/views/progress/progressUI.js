@@ -66,7 +66,6 @@ activeGoals.forEach((goal) => {
         button.dataset.goalId = tid;
 
         button.onclick = () => handleGoalClick(tid);
-        taskListContainer.appendChild(button); // (修正: goalListContainerですね)
         goalListContainer.appendChild(button);   
 });
 }
