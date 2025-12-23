@@ -58,13 +58,16 @@ export function renderProgressGoalList(allTaskObjects, selectedProgressTaskName,
         return;
     }
 
-    activeGoals.forEach((goal) => {
+activeGoals.forEach((goal) => {
         const button = document.createElement("button");
-        button.className = `w-full text-left p-2 rounded-lg list-item hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-300 ${selectedProgressGoalId === goal.id ? "selected bg-indigo-100" : ""}`;
+        // ★修正: goal.id が無い場合は goal.title を ID としてセットする
+        const targetId = goal.id || goal.title; 
+        
+        button.className = `w-full text-left p-2 rounded-lg list-item hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-300 ${selectedProgressGoalId === targetId ? "selected bg-indigo-100" : ""}`;
         button.textContent = escapeHtml(goal.title);
-        button.dataset.goalId = goal.id;
+        button.dataset.goalId = targetId; // dataset にも反映
 
-        button.onclick = () => handleGoalClick(goal.id);
+        button.onclick = () => handleGoalClick(targetId);
         
         goalListContainer.appendChild(button);
     });
@@ -97,11 +100,11 @@ export function renderProgressGoalDetails(goal, taskName, readOnlyMode, goalDeta
 
     const progress = goal.target > 0 ? Math.min(100, Math.max(0,(goal.current / goal.target) * 100)) : 0;
 
-    const buttonsHtml = readOnlyMode ? "" : `
+const buttonsHtml = readOnlyMode ? "" : `
         <div class="flex-shrink-0 ml-4 space-x-2">
-            <button class="edit-goal-btn bg-blue-500 text-white font-bold py-1 px-3 rounded hover:bg-blue-600 text-sm" data-task-name="${escapeHtml(taskName)}" data-goal-id="${goal.id}">編集</button>
-            <button class="complete-goal-btn bg-green-500 text-white font-bold py-1 px-3 rounded hover:bg-green-600 text-sm" data-task-name="${escapeHtml(taskName)}" data-goal-id="${goal.id}">完了</button>
-            <button class="delete-goal-btn bg-red-500 text-white font-bold py-1 px-3 rounded hover:bg-red-600 text-sm" data-task-name="${escapeHtml(taskName)}" data-goal-id="${goal.id}">削除</button>
+            <button class="edit-goal-btn bg-blue-500 text-white font-bold py-1 px-3 rounded hover:bg-blue-600 text-sm" data-task-name="${escapeHtml(taskName)}" data-goal-id="${goal.id || goal.title}">編集</button>
+            <button class="complete-goal-btn bg-green-500 text-white font-bold py-1 px-3 rounded hover:bg-green-600 text-sm" data-task-name="${escapeHtml(taskName)}" data-goal-id="${goal.id || goal.title}">完了</button>
+            <button class="delete-goal-btn bg-red-500 text-white font-bold py-1 px-3 rounded hover:bg-red-600 text-sm" data-task-name="${escapeHtml(taskName)}" data-goal-id="${goal.id || goal.title}">削除</button>
         </div>
     `;
 
