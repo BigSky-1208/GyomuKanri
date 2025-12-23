@@ -225,25 +225,26 @@ if (dueReservation) {
     activeReservations = activeReservations.filter(r => r.id !== dueReservation.id);
     
     if (dueReservation.action === 'break') {
-        // --- ★ここが重要：メモリ変数を直接「休憩」に書き換える ---
-        currentTask = "休憩";
-        currentGoalTitle = null;
-        currentGoalId = null;
-        startTime = new Date(); // タイマーを今からに設定
+        // --- ★ここが最重要：UI表示用の変数を「即座に」上書きする ---
+        currentTask = "休憩";           // メモリ変数を更新
+        currentGoalTitle = null;        // 工数をクリア
+        currentGoalId = null;           // 工数IDをクリア
+        startTime = new Date();         // タイマー開始時間を「今」に
 
-        // LocalStorageも即座に同期
+        // LocalStorageも即座に同期（リロード対策）
         localStorage.setItem("isWorking", "1");
         localStorage.setItem("currentTask", "休憩");
         localStorage.setItem("currentGoal", "");
         localStorage.setItem("startTime", startTime.toISOString());
 
-        // UIを強制的に再描画（これで「現在の業務」が切り替わります）
+        // --- ★画面を強制的に書き換える ---
         updateUIForActiveTask();
 
-        // Worker(D1)への通知とログ保存を実行
+        // その後に裏側でDB保存やログ記録を行う
         await handleBreakClick(true); 
         
     } else if (dueReservation.action === 'stop') {
+        // 終了の場合も同様に即座にクリア
         currentTask = null;
         startTime = null;
         localStorage.removeItem("isWorking");
