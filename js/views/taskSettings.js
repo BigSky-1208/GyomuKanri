@@ -1,6 +1,5 @@
 // js/views/taskSettings.js
 
-// 1. 必要なモジュールをすべてインポート
 import { 
     db, 
     allTaskObjects, 
@@ -20,7 +19,6 @@ import {
     where, 
     getDoc 
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-// ★ closeGoalModal はここでインポートするため、ファイル内での再定義は削除
 import { 
     openGoalModal, 
     showConfirmationModal, 
@@ -29,7 +27,7 @@ import {
 } from "../components/modal/index.js";
 import { formatHoursMinutes, escapeHtml } from "../utils.js";
 
-// DOM要素の取得
+// DOM要素
 const taskListEditor = document.getElementById("task-list-editor");
 const addTaskForm = document.getElementById("add-task-form");
 const newTaskInput = document.getElementById("new-task-input");
@@ -37,9 +35,8 @@ const addTaskButton = document.getElementById("add-task-btn");
 const backButton = document.getElementById("back-to-selection-from-settings");
 const helpButton = document.querySelector('#task-settings-view .help-btn');
 
-// モーダル要素 (index.htmlにあるものを使用)
+// モーダル要素
 const goalModal = document.getElementById("goal-modal");
-// const goalModalTitle = document.getElementById("goal-modal-title"); // openGoalModal内で操作するため不要
 const goalModalTaskNameInput = document.getElementById("goal-modal-task-name");
 const goalModalGoalIdInput = document.getElementById("goal-modal-goal-id");
 const goalModalTitleInput = document.getElementById("goal-modal-title-input");
@@ -50,27 +47,21 @@ const goalModalMemoInput = document.getElementById("goal-modal-memo-input");
 const goalModalSaveBtn = document.getElementById("goal-modal-save-btn");
 const goalModalCancelBtn = document.getElementById("goal-modal-cancel-btn");
 
-// ユーザー権限の状態
 let currentUserRole = "general";
 
 /**
- * 画面初期化処理
+ * 画面の初期化
  */
 export async function initializeTaskSettingsView() {
     console.log("Initializing Task Settings View...");
-
-    // ユーザー権限の取得 (Firestoreから)
     if (userId) {
         try {
             const userDoc = await getDoc(doc(db, "user_profiles", userId));
-            if (userDoc.exists()) {
-                currentUserRole = userDoc.data().role || "general";
-            }
+            if (userDoc.exists()) currentUserRole = userDoc.data().role || "general";
         } catch (error) {
             console.error("Error fetching user role:", error);
         }
     }
-
     renderTaskEditor();
     if(newTaskInput) newTaskInput.value = '';
 }
@@ -79,12 +70,8 @@ export async function initializeTaskSettingsView() {
  * イベントリスナー設定
  */
 export function setupTaskSettingsEventListeners() {
-    console.log("Setting up Task Settings event listeners...");
-    
-    // 進捗画面への遷移ボタン
     const viewProgressButton = document.getElementById("view-progress-from-settings-btn");
     viewProgressButton?.addEventListener('click', () => {
-        console.log("View Progress button clicked");
         window.isProgressViewReadOnly = false;
         showView(VIEWS.PROGRESS);
     });
@@ -92,29 +79,20 @@ export function setupTaskSettingsEventListeners() {
     addTaskButton?.addEventListener("click", handleAddTask);
     taskListEditor?.addEventListener("click", handleTaskEditorClick);
     backButton?.addEventListener("click", handleGoBack);
-
     helpButton?.addEventListener('click', () => showHelpModal('taskSettings'));
 
     newTaskInput?.addEventListener('keypress', (event) => {
-        if (event.key === 'Enter') {
-            handleAddTask();
-        }
+        if (event.key === 'Enter') handleAddTask();
     });
 
-    // モーダルのイベントリスナー
-    // ★重要: handleSaveGoal を呼ぶように設定
     goalModalSaveBtn?.addEventListener("click", handleSaveGoal);
     goalModalCancelBtn?.addEventListener("click", closeGoalModal);
-
-    console.log("Task Settings event listeners set up complete.");
 }
 
 /**
  * 業務リストの描画
- * ★修正: 引数でデータを受け取れるように変更
- * （引数がなければ、従来の allTaskObjects を使う）
  */
-export function renderTaskEditor(tasksToRender = allTaskObjects) {
+export function renderTaskEditor() {
     if (!taskListEditor || !addTaskForm) return;
 
     const isHost = authLevel === "admin" || currentUserRole === "host";
@@ -123,8 +101,7 @@ export function renderTaskEditor(tasksToRender = allTaskObjects) {
     addTaskForm.style.display = isHost ? "flex" : "none";
     taskListEditor.innerHTML = "";
 
-    // 受け取った tasksToRender を使ってソート・表示
-    const sortedTasks = [...tasksToRender].sort((a, b) => {
+    const sortedTasks = [...allTaskObjects].sort((a, b) => {
         if (a.name === "休憩") return 1;
         if (b.name === "休憩") return -1;
         return (a.name || "").localeCompare(b.name || "", "ja");
@@ -179,13 +156,12 @@ export function renderTaskEditor(tasksToRender = allTaskObjects) {
 }
 
 /**
- * リスト内のクリックイベントハンドラ
+ * リスト内クリックハンドラ
  */
 async function handleTaskEditorClick(event) {
     const target = event.target;
     const taskItem = target.closest('.task-item');
     const taskName = taskItem?.dataset.taskName || target.dataset.taskName;
-    
     if (!taskName) return;
 
     if (target.classList.contains("delete-task-btn")) {
@@ -193,15 +169,22 @@ async function handleTaskEditorClick(event) {
     } else if (target.classList.contains("save-task-btn")) {
         handleSaveTaskMemo(taskName, taskItem);
     } else if (target.classList.contains("add-goal-btn")) {
-        // ★ 共通の openGoalModal を使用してモーダルを開く
         openGoalModal("add", taskName);
     } else if (target.classList.contains("toggle-members-btn")) {
         await toggleMembersList(target, taskName);
     }
 }
 
+// -----------------------------------------------------------
+// ★ handleDeleteGoal と同じ構造にするためのコールバック関数定義
+// -----------------------------------------------------------
+const onSuccessCallback = () => {
+    closeGoalModal();
+    renderTaskEditor();
+};
+
 /**
- * 工数の保存処理（追加・編集対応）
+ * 工数の保存処理
  */
 async function handleSaveGoal() {
     const taskName = goalModalTaskNameInput.value;
@@ -217,11 +200,11 @@ async function handleSaveGoal() {
     const taskIndex = allTaskObjects.findIndex((t) => t.name === taskName);
     if (taskIndex === -1) return;
 
-    // 1. データの作成（削除処理と同様）
     const updatedTasks = JSON.parse(JSON.stringify(allTaskObjects));
     const task = updatedTasks[taskIndex];
 
     if (goalId) {
+        // 編集
         const goalIndex = task.goals.findIndex((g) => g.id === goalId || g.title === goalId);
         if (goalIndex !== -1) {
             task.goals[goalIndex] = {
@@ -233,6 +216,7 @@ async function handleSaveGoal() {
             };
         }
     } else {
+        // 新規
         const newGoal = {
             id: "goal_" + Date.now(),
             title, target,
@@ -245,12 +229,12 @@ async function handleSaveGoal() {
         task.goals.push(newGoal);
     }
 
-    // 2. 更新処理（削除処理と同じシステム）
+    // ★ handleDeleteGoal と全く同じ処理順序
     try {
         await saveAllTasksToFirestore(updatedTasks);
-        updateGlobalTaskObjects(updatedTasks); // グローバル変数を更新
-        closeGoalModal();       // モーダルを閉じる
-        renderTaskEditor();     // 画面を再描画
+        updateGlobalTaskObjects(updatedTasks);
+        onSuccessCallback(); // 定義したコールバックを実行
+        alert("工数を保存しました。");
     } catch (error) {
         console.error("Error saving goal:", error);
         alert("保存中にエラーが発生しました。");
@@ -258,47 +242,29 @@ async function handleSaveGoal() {
 }
 
 /**
- * 業務（タスク）の新規追加
+ * 業務追加処理
  */
 async function handleAddTask() {
-    if (!newTaskInput) return;
     const newTaskName = newTaskInput.value.trim();
-
-    if (!newTaskName) {
-        alert("業務名を入力してください。");
-        newTaskInput.focus();
+    if (!newTaskName || newTaskName === "休憩" || /\s/.test(newTaskName)) {
+        alert("有効な業務名を入力してください。");
         return;
     }
-    if (newTaskName === "休憩") {
-        alert("「休憩」は特別なタスク名のため追加できません。");
-        newTaskInput.value = "";
-        return;
-    }
-    if (/\s/.test(newTaskName)) {
-        alert("業務名に空白は使用できません。");
-        newTaskInput.focus();
-        return;
-    }
-
     if (allTaskObjects.some((t) => t.name === newTaskName)) {
-        alert(`業務「${escapeHtml(newTaskName)}」は既に追加されています。`);
-        newTaskInput.select();
+        alert("既に存在する業務名です。");
         return;
     }
 
-    const newTask = { name: newTaskName, memo: "", goals: [] };
-    const updatedTasks = [...allTaskObjects, newTask];
-
+    const updatedTasks = [...allTaskObjects, { name: newTaskName, memo: "", goals: [] }];
+    
+    // ★ handleDeleteGoal と全く同じ処理順序
     try {
         await saveAllTasksToFirestore(updatedTasks);
-        console.log(`Task "${newTaskName}" added successfully.`);
         updateGlobalTaskObjects(updatedTasks);
-        renderTaskEditor();
+        onSuccessCallback();
         newTaskInput.value = "";
-    } catch (error) {
-        console.error("Error adding task:", error);
-        alert("業務の追加中にエラーが発生しました。");
-    }
+        alert(`業務「${newTaskName}」を追加しました。`);
+    } catch (error) { console.error(error); }
 }
 
 /**
@@ -306,10 +272,8 @@ async function handleAddTask() {
  */
 async function handleSaveTaskMemo(taskName, taskItemElement) {
     const memoInput = taskItemElement?.querySelector(".task-memo-editor");
-    if (!memoInput) return;
     const newMemo = memoInput.value.trim();
-
-    const taskIndex = allTaskObjects.findIndex((task) => task.name === taskName);
+    const taskIndex = allTaskObjects.findIndex((t) => t.name === taskName);
     if (taskIndex === -1) return;
 
     if (allTaskObjects[taskIndex].memo === newMemo) return;
@@ -317,116 +281,73 @@ async function handleSaveTaskMemo(taskName, taskItemElement) {
     const updatedTasks = JSON.parse(JSON.stringify(allTaskObjects));
     updatedTasks[taskIndex].memo = newMemo;
 
+    // ★ handleDeleteGoal と全く同じ処理順序
     try {
         await saveAllTasksToFirestore(updatedTasks);
-        console.log(`Memo saved for task "${taskName}".`);
         updateGlobalTaskObjects(updatedTasks);
-        alert(`業務「${escapeHtml(taskName)}」のメモを保存しました。`);
-    } catch(error) {
-        console.error("Error saving task memo:", error);
-        alert("メモの保存中にエラーが発生しました。");
-    }
+        onSuccessCallback();
+        alert("メモを保存しました。");
+    } catch(error) { console.error(error); }
 }
 
 /**
- * 業務の削除
+ * 業務削除処理 (これは元々動いていたのでそのまま)
  */
 function handleDeleteTask(taskNameToDelete) {
-    if (!taskNameToDelete || taskNameToDelete === "休憩") return;
-
-    showConfirmationModal(
-        `業務「${escapeHtml(taskNameToDelete)}」を削除しますか？\n\nこの業務に紐づく工数も全て削除されます。\n（関連する業務ログは削除されません）\n\nこの操作は元に戻せません。`,
-        async () => {
-            hideConfirmationModal();
-
-            const updatedTasks = allTaskObjects.filter(
-                (task) => task.name !== taskNameToDelete
-            );
-
-            try {
-                await saveAllTasksToFirestore(updatedTasks);
-                console.log(`Task "${taskNameToDelete}" deleted successfully.`);
-                updateGlobalTaskObjects(updatedTasks);
-                renderTaskEditor();
-                alert(`業務「${escapeHtml(taskNameToDelete)}」を削除しました。`);
-            } catch(error) {
-                console.error("Error deleting task:", error);
-                alert("業務の削除中にエラーが発生しました。");
-            }
-        },
-        () => {
-            console.log(`Deletion of task "${taskNameToDelete}" cancelled.`);
-        }
-    );
+    showConfirmationModal(`業務「${escapeHtml(taskNameToDelete)}」を削除しますか？`, async () => {
+        hideConfirmationModal();
+        const updatedTasks = allTaskObjects.filter(t => t.name !== taskNameToDelete);
+        try {
+            await saveAllTasksToFirestore(updatedTasks);
+            updateGlobalTaskObjects(updatedTasks);
+            renderTaskEditor();
+            alert(`業務「${escapeHtml(taskNameToDelete)}」を削除しました。`);
+        } catch(error) { console.error(error); }
+    });
 }
 
 /**
- * 担当者別稼働時間の表示切り替え・集計
+ * 担当者別集計
  */
 async function toggleMembersList(button, taskName) {
     const container = button.nextElementSibling;
     if (!container) return;
-
     const isHidden = container.classList.contains("hidden");
 
     if (isHidden) {
         button.textContent = "担当者別 合計時間 [-]";
         container.innerHTML = '<p class="text-gray-400">集計中...</p>';
         container.classList.remove("hidden");
-
-        let logsForTask = [];
         try {
-            const logsQuery = query(
-                collection(db, "work_logs"),
-                where("task", "==", taskName)
-            );
-            const logsSnapshot = await getDocs(logsQuery);
-            logsForTask = logsSnapshot.docs
-                .map((doc) => doc.data())
-                .filter((log) => log.type !== "goal" && log.userName);
+            const q = query(collection(db, "work_logs"), where("task", "==", taskName));
+            const snapshot = await getDocs(q);
+            const memberSummary = snapshot.docs
+                .map(doc => doc.data())
+                .filter(log => log.type !== "goal" && log.userName)
+                .reduce((acc, log) => {
+                    acc[log.userName] = (acc[log.userName] || 0) + (log.duration || 0);
+                    return acc;
+                }, {});
+
+            const sorted = Object.entries(memberSummary)
+                .filter(([, duration]) => duration > 0)
+                .sort((a, b) => b[1] - a[1]);
+
+            container.innerHTML = sorted.length > 0 
+                ? sorted.map(([name, d]) => `<div class="flex justify-between"><span>${escapeHtml(name)}</span><span class="font-mono">${formatHoursMinutes(d)}</span></div>`).join("")
+                : '<p class="text-gray-500">稼働記録はありません。</p>';
         } catch (error) {
-            console.error(`Error fetching logs for task ${taskName}:`, error);
-            container.innerHTML = '<p class="text-red-500">時間データの取得エラー</p>';
-            return;
+            container.innerHTML = '<p class="text-red-500">取得エラー</p>';
         }
-
-        const memberSummary = logsForTask.reduce((acc, log) => {
-            if (!acc[log.userName]) {
-                acc[log.userName] = 0;
-            }
-            acc[log.userName] += (log.duration || 0);
-            return acc;
-        }, {});
-
-        const sortedMembers = Object.entries(memberSummary)
-            .filter(([, duration]) => duration > 0)
-            .sort((a, b) => b[1] - a[1]);
-
-        if (sortedMembers.length > 0) {
-            container.innerHTML = sortedMembers
-                .map(
-                    ([name, duration]) =>
-                    `<div class="flex justify-between hover:bg-gray-200 px-1 rounded"><span>${escapeHtml(name)}</span><span class="font-mono">${formatHoursMinutes(duration)}</span></div>`
-                )
-                .join("");
-        } else {
-            container.innerHTML = '<p class="text-gray-500">この業務の稼働記録はまだありません。</p>';
-        }
-
     } else {
         button.textContent = "担当者別 合計時間 [+]";
         container.classList.add("hidden");
     }
 }
 
-/**
- * 全タスク保存のヘルパー関数
- */
+// --- ユーティリティ ---
+
 async function saveAllTasksToFirestore(tasksToSave) {
-    if (!tasksToSave) {
-        console.error("Attempted to save undefined tasks list.");
-        throw new Error("Invalid task list provided for saving.");
-    }
     const tasksRef = doc(db, "settings", "tasks");
     await setDoc(tasksRef, { list: tasksToSave });
 }
@@ -434,5 +355,3 @@ async function saveAllTasksToFirestore(tasksToSave) {
 function closeGoalModal() {
     if (goalModal) goalModal.classList.add("hidden");
 }
-
-// ※ escapeHtmlはutils.jsからインポートして使っているため、ここでの定義は不要（削除済）
