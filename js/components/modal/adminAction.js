@@ -15,10 +15,6 @@ export function closeModal(modalElement) {
     if (modalElement) modalElement.classList.add("hidden");
 }
 
-export function hideConfirmationModal() {
-    closeModal(confirmationModal);
-}
-
 /**
  * 3. 確認モーダル (★最重要)
  * cloneNode を使用することで、以前のイベントリスナーが残って
