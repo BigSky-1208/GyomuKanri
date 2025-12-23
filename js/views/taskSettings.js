@@ -88,10 +88,15 @@ export function setupTaskSettingsEventListeners() {
  * ★ここに「工数リストの表示ロジック」を復活させました
  */
 export function renderTaskEditor() {
-    if (!taskListEditor || !addTaskForm) return;
+
+if (!taskListEditor || !addTaskForm) {
+        console.log("エラー: DOM要素が見つかりません"); // ★ログ1
+        return;
+    }
 
     // ★重要: 必ず関数経由で最新データを取得
     const currentTasks = getAllTaskObjects();
+    console.log("描画開始: タスク総数 =", currentTasks.length); // ★ログ2
 
     const isHost = authLevel === "admin" || currentUserRole === "host";
     const isManager = isHost || currentUserRole === "manager";
