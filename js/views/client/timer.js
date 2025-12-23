@@ -222,39 +222,40 @@ if (dueReservation) {
             activeReservations = activeReservations.filter(r => r.id !== dueReservation.id);
             
             if (dueReservation.action === 'break') {
-                // --- 【成功ロジックの応用】一度メモリと表示を「休憩」で強制確定させる ---
-                
-                // 1. メモリ変数を「休憩」に強制変更
+                // --- 【解決策】メモリとLocalStorageを「休憩」で物理的に上書きする ---
+
+                // 1. メモリ変数の上書き（画面表示の正解）
                 currentTask = "休憩";
                 currentGoalTitle = null;
                 currentGoalId = null;
-                startTime = new Date(); // 新しいタイマー開始
-                hasContributedToCurrentGoal = false;
+                startTime = new Date(); // タイマー開始
 
-                // 2. LocalStorage の各項目を「休憩」に書き換え
+                // 2. 個別LocalStorageの更新
                 localStorage.setItem("isWorking", "1");
                 localStorage.setItem("currentTask", "休憩");
                 localStorage.setItem("currentGoal", "");
-                localStorage.setItem("currentGoalId", "");
                 localStorage.setItem("startTime", startTime.toISOString());
 
-                // 3. 帰宅予約が成功している理由である「古い状態の破棄」をここでも行う
-                // (もし古いJSON形式のKeyがある場合はそれも更新)
-                const statusToSave = {
-                    currentTask, currentGoalId, currentGoalTitle, startTime,
-                    isWorking: true, preBreakTask: preBreakTask || null
+                // 3. JSON形式（LOCAL_STATUS_KEY）の更新
+                // ※これを忘れると、他の関数が古い情報を読み直してしまいます
+                const statusObj = {
+                    currentTask: "休憩",
+                    currentGoalId: null,
+                    currentGoalTitle: null,
+                    startTime: startTime.toISOString(),
+                    isWorking: true,
+                    preBreakTask: preBreakTask || null
                 };
-                localStorage.setItem(LOCAL_STATUS_KEY, JSON.stringify(statusToSave));
+                localStorage.setItem(LOCAL_STATUS_KEY, JSON.stringify(statusObj));
 
-                // 4. UIを即座に再描画（これで「社内業務」の文字が消えます）
+                // 4. UIの強制更新（これで「社内業務」が「休憩」に書き換わります）
                 updateUIForActiveTask();
 
-                // 5. 最後に裏側でDB更新（handleBreakClick）を呼ぶ
-                // 引数 true により、内部での無駄な再読み込みを防ぎます
+                // 5. 裏側でDB更新（handleBreakClick）を呼ぶ
                 await handleBreakClick(true); 
 
             } else if (dueReservation.action === 'stop') {
-                // 成功している帰宅ロジック（そのまま維持）
+                // 成功している帰宅ロジック
                 currentTask = null;
                 startTime = null;
                 localStorage.removeItem("isWorking");
