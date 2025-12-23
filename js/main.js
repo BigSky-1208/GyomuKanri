@@ -231,7 +231,7 @@ async function fetchTasks() {
     }
 }
 
-async function refreshUIBasedOnTaskUpdate() {
+export async function refreshUIBasedOnTaskUpdate() {
     const { renderTaskOptions, checkIfWarningIsNeeded } = await import('./views/client/clientUI.js');
     const { initializeProgressView } = await import('./views/progress/progress.js');
     const { initializeArchiveView } = await import('./views/archive.js');
