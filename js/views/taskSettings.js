@@ -23,7 +23,6 @@ import {
 // ★ closeGoalModal はここでインポートするため、ファイル内での再定義は削除
 import { 
     openGoalModal, 
-    closeGoalModal, 
     showConfirmationModal, 
     hideConfirmationModal, 
     showHelpModal 
@@ -460,6 +459,10 @@ async function saveAllTasksToFirestore(tasksToSave) {
     }
     const tasksRef = doc(db, "settings", "tasks");
     await setDoc(tasksRef, { list: tasksToSave });
+}
+
+function closeGoalModal() {
+    if (goalModal) goalModal.classList.add("hidden");
 }
 
 // ※ escapeHtmlはutils.jsからインポートして使っているため、ここでの定義は不要（削除済）
