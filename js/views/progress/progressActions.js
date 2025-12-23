@@ -9,7 +9,7 @@ export async function handleCompleteGoal(taskName, goalId, onSuccessCallback) {
     if (!taskName || !goalId) return;
 
     const task = allTaskObjects?.find(t => t.name === taskName);
-    const goal = task?.goals?.find(g => g.id === goalId);
+    const goal = task?.goals?.find(g => g.id === goalId || g.title === goalId);
     if (!goal) return;
 
     showConfirmationModal(
@@ -20,7 +20,7 @@ export async function handleCompleteGoal(taskName, goalId, onSuccessCallback) {
             const taskIndex = allTaskObjects.findIndex((t) => t.name === taskName);
             if (taskIndex === -1 || !allTaskObjects[taskIndex].goals) return;
 
-            const goalIndex = allTaskObjects[taskIndex].goals.findIndex((g) => g.id === goalId);
+            const goalIndex = allTaskObjects[taskIndex].goals.findIndex((g) => g.id === goalId || g.title === goalId);
             if (goalIndex === -1) return;
 
             const updatedTasks = JSON.parse(JSON.stringify(allTaskObjects));
