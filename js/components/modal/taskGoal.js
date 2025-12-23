@@ -1,3 +1,7 @@
+import { db } from "../../firebase.js"; // Firebaseが必要な場合
+import { doc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { showConfirmationModal } from "./core.js";
+
 export function openGoalModal(mode, taskName, goalId = null) {
     const title = document.getElementById("goal-modal-title");
     const taskInput = document.getElementById("goal-modal-task-name");
@@ -34,4 +38,43 @@ export function openGoalModal(mode, taskName, goalId = null) {
         memoInput.value = "";
     }
     showModal(goalModal);
+}
+
+/**
+ * 工数を削除するロジック
+ */
+export async function handleDeleteGoal(taskName, goalId) {
+    showConfirmationModal("この工数を削除してもよろしいですか？", async () => {
+        const { allTaskObjects, updateGlobalTaskObjects } = await import("../../main.js");
+        const task = allTaskObjects.find(t => t.name === taskName);
+        if (!task) return;
+
+        const updatedGoals = task.goals.filter(g => g.id !== goalId);
+        const taskRef = doc(db, "settings", "tasks");
+        const newTaskList = allTaskObjects.map(t => t.name === taskName ? { ...t, goals: updatedGoals } : t);
+
+        await updateDoc(taskRef, { list: newTaskList });
+        updateGlobalTaskObjects(newTaskList);
+        // 必要ならUI再描画を呼び出す
+    });
+}
+
+/**
+ * 完了した工数を未完了に戻すロジック
+ */
+export async function handleRestoreGoalClick(taskName, goalId) {
+    const { allTaskObjects, updateGlobalTaskObjects } = await import("../../main.js");
+    const task = allTaskObjects.find(t => t.name === taskName);
+    const goal = task?.goals?.find(g => g.id === goalId);
+    if (!goal) return;
+
+    showConfirmationModal(`「${goal.title}」を未完了に戻しますか？`, async () => {
+        const updatedGoals = task.goals.map(g => 
+            g.id === goalId ? { ...g, isCompleted: false, completedAt: null } : g
+        );
+        const newTaskList = allTaskObjects.map(t => t.name === taskName ? { ...t, goals: updatedGoals } : t);
+        
+        await updateDoc(doc(db, "settings", "tasks"), { list: newTaskList });
+        updateGlobalTaskObjects(newTaskList);
+    });
 }
