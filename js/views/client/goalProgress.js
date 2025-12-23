@@ -1,42 +1,34 @@
 // js/views/client/goalProgress.js - 目標進捗管理 (Client View)
 
-// ★修正: escapeHtml を追加インポート
 import { db, userId, userName, allTaskObjects, escapeHtml } from "../../main.js"; 
 import { addDoc, collection, doc, setDoc, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
 import { getJSTDateString } from "../../utils.js"; 
 import { setHasContributed } from "./timer.js";
 
-// --- 進捗更新処理 ---
-// js/views/progress/goalProgress.js など
-
+/**
+ * 進捗更新処理
+ */
 export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
-    // 【修正】引数があればそれを使い、なければモーダルを見る（進捗画面用）
-    // もし両方なければ、現在実行中のタスクから取得を試みる
-    let finalGoalId = goalId;
+    // 1. IDの特定（引数がなければモーダルから、それもなければ終了）
+    let finalGoalId = goalId || document.getElementById("goal-modal")?.dataset.currentGoalId;
 
-    if (!finalGoalId) {
-        finalGoalId = document.getElementById("goal-modal")?.dataset.currentGoalId;
-    }
-
-    const contribution = parseInt(inputElement.value, 10);
-
-    // バリデーション
     if (!finalGoalId) {
         console.error("goalId is missing!");
         alert("エラー：工数IDが取得できません。ページを更新してください。");
         return;
     }
 
+    const contribution = parseInt(inputElement.value, 10);
     if (isNaN(contribution) || contribution <= 0) {
         alert("正の数値を入力してください。");
         return;
     }
 
-    // --- 以降のロジックは変更なし ---
+    // 2. データの検索
     const taskIndex = allTaskObjects.findIndex((t) => t.name === taskName);
     if (taskIndex === -1) return;
 
-    // finalGoalId を使って検索
+    // IDまたはタイトルで一致する工数を探す
     const goalIndex = allTaskObjects[taskIndex].goals.findIndex(
         (g) => g.id === finalGoalId || g.title === finalGoalId
     );
@@ -44,18 +36,8 @@ export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
         console.error("Goal not found in task:", finalGoalId);
         return;
     }
-    
-    // ...以下、Firestore保存処理へ続く
 
-    // --- ここから先のロジックは維持 ---
-    const taskIndex = allTaskObjects.findIndex((t) => t.name === taskName);
-    if (taskIndex === -1) return;
-
-    const goalIndex = allTaskObjects[taskIndex].goals.findIndex(
-        (g) => g.id === finalGoalId // finalGoalId を使用
-    );
-    if (goalIndex === -1) return;
-
+    // 3. ローカルデータのディープコピーと更新
     const updatedTasks = JSON.parse(JSON.stringify(allTaskObjects));
     const task = updatedTasks[taskIndex];
     const goal = task.goals[goalIndex];
@@ -64,39 +46,42 @@ export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
     goal.current = currentProgress + contribution;
 
     try {
+        // 4. Firestore: タスクマスターの更新
         const tasksRef = doc(db, "settings", "tasks");
         await setDoc(tasksRef, { list: updatedTasks }); 
 
+        // 5. Firestore: 作業ログ（work_logs）の保存
         await addDoc(collection(db, `work_logs`), {
             type: "goal",
             userId,
             userName,
             task: taskName,
-            goalId: finalGoalId, // undefined を回避
+            goalId: finalGoalId,
             goalTitle: goal.title,
             contribution: contribution,
             date: getJSTDateString(new Date()),
             startTime: Timestamp.fromDate(new Date()),
         });
 
-        // 成功時の処理
+        // 6. 成功時のUI処理
         if (typeof setHasContributed === 'function') setHasContributed(true);
         inputElement.value = "";
         
-        // モーダルを閉じる場合はここに追加
-        // closeModal(document.getElementById("goal-modal"));
+        // 進捗バーなどはSnapshotリスナーによって自動で再描画されます
 
     } catch (error) {
         console.error("Error updating goal progress:", error);
         alert("進捗の更新中にエラーが発生しました。");
     }
 }
-// --- ★追加: 単一の工数進捗を表示する関数 ---
+
+/**
+ * 単一の工数進捗（プログレスバー）を表示する関数
+ */
 export function renderSingleGoalDisplay(task, goalId) {
     const container = document.getElementById("goal-progress-container");
     if (!container) return;
 
-    // IDまたはタイトルで検索
     const goal = task.goals.find(g => g.id === goalId) || task.goals.find(g => g.title === goalId);
     
     if (!goal) {
@@ -109,7 +94,6 @@ export function renderSingleGoalDisplay(task, goalId) {
     const target = goal.target || 0;
     const percentage = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
     
-    // UIの描画
     container.innerHTML = `
         <div class="border-b pb-4 mb-4">
             <h3 class="text-sm font-bold text-gray-700 mb-1">
@@ -128,8 +112,8 @@ export function renderSingleGoalDisplay(task, goalId) {
 
             <div class="flex gap-2 items-center">
                 <input type="number" id="goal-contribution-input" 
-                    class="flex-grow p-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
-                    placeholder="完了件数を追加 (例: 1)" min="1">
+                    class="flex-grow p-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500" 
+                    placeholder="完了件数を追加" min="1">
                 <button id="update-goal-btn" 
                     class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm transition">
                     登録
@@ -140,19 +124,15 @@ export function renderSingleGoalDisplay(task, goalId) {
 
     container.classList.remove("hidden");
 
-    // イベントリスナー設定
     const updateBtn = document.getElementById("update-goal-btn");
     const inputVal = document.getElementById("goal-contribution-input");
+
+    // 確実なID（またはタイトル）をイベントに渡す
     const targetId = goal.id || goal.title;
 
-    updateBtn.addEventListener("click", () => {
-        handleUpdateGoalProgress(task.name, goal.id, inputVal);
-    });
-
-    // Enterキーでも登録できるようにする
-    inputVal.addEventListener("keypress", (e) => {
-        if (e.key === "Enter") {
-            handleUpdateGoalProgress(task.name, goal.id, inputVal);
-        }
-    });
+    updateBtn.onclick = () => handleUpdateGoalProgress(task.name, targetId, inputVal);
+    
+    inputVal.onkeypress = (e) => {
+        if (e.key === "Enter") handleUpdateGoalProgress(task.name, targetId, inputVal);
+    };
 }
