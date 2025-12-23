@@ -229,11 +229,11 @@ async function handleSaveGoal() {
 
     try {
         await saveAllTasksToFirestore(updatedTasks);
-
-        console.log("更新前(allTaskObjects):", allTaskObjects[taskIndex].goals[0]?.title); // 仮
         updateGlobalTaskObjects(updatedTasks); // main.jsの変数を更新
-        console.log("更新後(allTaskObjects):", allTaskObjects[taskIndex].goals[0]?.title);
 
+        const debugLatestTasks = getAllTaskObjects(); // main.jsから最新の値を取得
+        const debugTask = debugLatestTasks.find(t => t.name === taskName);
+        console.log("更新後のグローバル変数:", debugTask?.goals);
         
         closeGoalModal();       // 閉じる
         renderTaskEditor();     // 再描画 (getAllTaskObjects経由で最新を取得するはず)
