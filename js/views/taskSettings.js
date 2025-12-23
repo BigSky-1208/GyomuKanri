@@ -223,7 +223,7 @@ async function handleTaskEditorClick(event) {
  */
 async function handleSaveGoal() {
     const taskName = goalModalTaskNameInput.value;
-    const goalId = goalModalGoalIdInput.value; // ID (文字列)
+    const goalId = goalModalGoalIdInput.value;
     const title = goalModalTitleInput.value.trim();
     const target = parseInt(goalModalTargetInput.value, 10);
 
@@ -233,54 +233,43 @@ async function handleSaveGoal() {
     }
 
     const taskIndex = allTaskObjects.findIndex((t) => t.name === taskName);
-    if (taskIndex === -1) {
-        console.error("Task not found:", taskName);
-        return;
-    }
+    if (taskIndex === -1) return;
 
-    // データのディープコピー
+    // 1. データの作成（削除処理と同様）
     const updatedTasks = JSON.parse(JSON.stringify(allTaskObjects));
     const task = updatedTasks[taskIndex];
 
     if (goalId) {
-        // --- 編集モード ---
-        // ★修正: ID または タイトル で一致する工数を探す (parseIntは使わない)
         const goalIndex = task.goals.findIndex((g) => g.id === goalId || g.title === goalId);
-        
         if (goalIndex !== -1) {
             task.goals[goalIndex] = {
                 ...task.goals[goalIndex],
-                title,
-                target,
+                title, target,
                 deadline: goalModalDeadlineInput.value,
                 effortDeadline: goalModalEffortDeadlineInput.value,
                 memo: goalModalMemoInput.value.trim(),
             };
-        } else {
-            console.error("編集対象が見つかりません:", goalId);
         }
     } else {
-        // --- 新規追加モード ---
         const newGoal = {
-            id: "goal_" + Date.now(), // ユニークIDを生成
-            title,
-            target,
+            id: "goal_" + Date.now(),
+            title, target,
             deadline: goalModalDeadlineInput.value,
             effortDeadline: goalModalEffortDeadlineInput.value,
             memo: goalModalMemoInput.value.trim(),
-            current: 0,
-            isComplete: false,
+            current: 0, isComplete: false,
         };
         if (!task.goals) task.goals = [];
         task.goals.push(newGoal);
     }
 
+    // 2. 更新処理（削除処理と同じシステム）
     try {
         await saveAllTasksToFirestore(updatedTasks);
-        updateGlobalTaskObjects(updatedTasks); // グローバル変数を即時更新
-        closeGoalModal();
-        alert("保存しました。");
-        renderTaskEditor();
+        updateGlobalTaskObjects(updatedTasks); // グローバル変数を更新
+        closeGoalModal();       // モーダルを閉じる
+        renderTaskEditor();     // 画面を再描画
+        alert("工数を保存しました。"); // アラートで完了通知
     } catch (error) {
         console.error("Error saving goal:", error);
         alert("保存中にエラーが発生しました。");
