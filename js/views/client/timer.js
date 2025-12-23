@@ -89,22 +89,19 @@ export function stopStatusListener() {
 export function updateUIForActiveTask() {
     if (startBtn) startBtn.textContent = "業務変更";
     
-    // 警告メッセージを隠す（ここでも念のため実行）
-    if (changeWarningMessage) changeWarningMessage.classList.add("hidden");
-
     if (currentTaskDisplay) {
-        const displayTaskName = currentTask || "未開始";
-        const displayGoalName = currentGoalTitle;
+        // ★修正：メモリ上の変数(currentTask)を最優先、次にLocalStorageを見る
+        const displayTaskName = currentTask || localStorage.getItem("currentTask") || "未開始";
+        const displayGoalName = currentGoalTitle || localStorage.getItem("currentGoal");
         
-        // 【新不具合の対応】工数が有効な文字列（なし・任意以外）の時だけカッコ書きを表示
         if (displayGoalName && displayGoalName !== "なし" && displayGoalName !== "工数を選択 (任意)") {
             currentTaskDisplay.textContent = `${displayTaskName} (${displayGoalName})`;
         } else {
             currentTaskDisplay.textContent = displayTaskName;
         }
     }
-
-    // 休憩ボタンの表示切替
+    
+    // 休憩ボタンの表示切替も、最新の currentTask に基づいて行う
     if (breakBtn) {
         breakBtn.disabled = false;
         if (currentTask === "休憩") {
