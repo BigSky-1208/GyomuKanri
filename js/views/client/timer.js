@@ -222,24 +222,22 @@ if (dueReservation) {
             activeReservations = activeReservations.filter(r => r.id !== dueReservation.id);
             
             if (dueReservation.action === 'break') {
-                // --- 【決定版】競合を防ぐアトミック更新 ---
+                // --- 【解決策】リセットして即座に再始動するロジック ---
                 
-                // 1. 他の同期処理に邪魔されないよう、先にメモリとLocalStorageを完全に固める
                 const breakStartTime = new Date();
+
+                // 1. メモリ変数を「休憩」でリセット
                 currentTask = "休憩";
                 currentGoalTitle = null;
                 currentGoalId = null;
-                startTime = breakStartTime;
+                startTime = breakStartTime; // ここでタイマー開始時間が「今」になる
                 hasContributedToCurrentGoal = false;
 
-                // 2. すべてのLocalStorageキーを「休憩」に強制上書き
+                // 2. LocalStorage を「休憩」でリセット
                 localStorage.setItem("isWorking", "1");
                 localStorage.setItem("currentTask", "休憩");
                 localStorage.setItem("currentGoal", "");
-                localStorage.setItem("currentGoalId", "");
                 localStorage.setItem("startTime", breakStartTime.toISOString());
-                
-                // 3. JSON Objectも更新（ここが古いと後で上書きされます）
                 localStorage.setItem(LOCAL_STATUS_KEY, JSON.stringify({
                     currentTask: "休憩",
                     currentGoalId: null,
@@ -248,16 +246,17 @@ if (dueReservation) {
                     isWorking: true
                 }));
 
-                // 4. UIを即座に更新（ユーザーの目にはここで切り替わって固定されます）
+                // 3. UIを即座に更新（表示を「休憩」に変える）
                 updateUIForActiveTask();
 
-                // 5. 【重要】handleBreakClick を通さず、直接 Worker に通知する
-                // これにより、関数連鎖による「画面の戻り」を防ぎます
+                // 4. バックエンド処理（前の業務のログ保存とD1更新）
+                // handleBreakClick(true) を呼ぶとタイマーが止まってしまうので、
+                // 必要な処理だけを順番に実行します
                 try {
-                    // 現在の業務を終了させるログ送信（非同期でOK）
-                    stopCurrentTaskCore(false); 
+                    // 前の業務の終了を記録（この中で一瞬タイマーが止まります）
+                    await stopCurrentTaskCore(false); 
 
-                    // Worker(D1)を休憩に更新
+                    // D1のステータスを「休憩」に更新
                     fetch(`${WORKER_URL}/update-status`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -270,15 +269,17 @@ if (dueReservation) {
                             currentGoal: null
                         })
                     });
+
+                    // 5. ★ここが最重要：止まったタイマーを「休憩」として再始動させる
+                    startTimerLoop(); 
                     
-                    // 完了通知
                     triggerReservationNotification("休憩開始");
                 } catch (e) {
-                    console.error("予約実行中の通信エラー:", e);
+                    console.error("休憩予約実行エラー:", e);
                 }
 
             } else if (dueReservation.action === 'stop') {
-                // 帰宅ロジックも同様に完結させる
+                // 帰宅（こちらは止まったままで正解）
                 currentTask = null;
                 startTime = null;
                 localStorage.removeItem("isWorking");
