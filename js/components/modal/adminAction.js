@@ -1,89 +1,113 @@
-// js/components/modal/adminAction.js
-import { showModal, closeModal } from "./core.js";
+// js/components/modal/core.js
 
-export const addUserModal = document.getElementById("add-user-modal");
+// --- 1. 他のファイルでも共有するDOM要素のエクスポート ---
+// これらがあることで、taskGoal.js などが「どの画面を閉じるか」を指定できます
+export const confirmationModal = document.getElementById("confirmation-modal");
+export const adminPasswordView = document.getElementById("admin-password-view");
+export const editLogModal = document.getElementById("edit-log-modal");
+export const fixCheckoutModal = document.getElementById("fix-checkout-modal");
+export const editMemoModal = document.getElementById("edit-memo-modal");
+export const exportExcelModal = document.getElementById("export-excel-modal");
+export const editContributionModal = document.getElementById("edit-contribution-modal");
 
-export function openMessageModal(allUsers, workingData, onSendCallback) {
-    const messageModal = document.getElementById("message-modal");
-    if (!messageModal) return;
+// 内部でのみ使用する要素
+const modalMessage = document.getElementById("modal-message");
+let modalConfirmBtn = document.getElementById("modal-confirm-btn");
+let modalCancelBtn = document.getElementById("modal-cancel-btn");
 
-    // 要素取得
-    const titleInput = document.getElementById("message-title-input");
-    const bodyInput = document.getElementById("message-body-input");
-    const sendBtn = document.getElementById("message-send-btn");
-    const cancelBtn = document.getElementById("message-cancel-btn");
-    const targetRadios = document.getElementsByName("message-target-type");
-    const userSelect = document.getElementById("message-user-select");
-    const manualList = document.getElementById("message-manual-list");
-    const workingInfo = document.getElementById("message-target-working-info");
-    const workingTaskSelect = document.getElementById("message-working-task-select");
-    const individualContainer = document.getElementById("message-target-individual-container");
-    const workingContainer = workingInfo.parentElement;
-    const manualContainer = document.getElementById("message-target-manual-container");
+// --- 2. 基本的な開閉関数 ---
 
-    // 初期化
-    titleInput.value = ""; bodyInput.value = "";
-    if (targetRadios[0]) targetRadios[0].checked = true;
-
-    const updateUI = (type) => {
-        [individualContainer, workingContainer, manualContainer].forEach(c => c.classList.add("hidden"));
-        if (type === "individual") individualContainer.classList.remove("hidden");
-        else if (type === "working") workingContainer.classList.remove("hidden");
-        else if (type === "manual") manualContainer.classList.remove("hidden");
-    };
-    updateUI("individual");
-    Array.from(targetRadios).forEach(r => r.onclick = () => updateUI(r.value));
-
-    // リスト生成
-    userSelect.innerHTML = "";
-    allUsers.forEach(u => {
-        const opt = document.createElement("option");
-        opt.value = u.id; opt.textContent = u.displayName || u.name || "名称未設定";
-        userSelect.appendChild(opt);
-    });
-
-    const allCount = workingData.all.length;
-    workingInfo.textContent = `現在、${allCount}名の従業員が業務中です。`;
-    workingTaskSelect.innerHTML = "";
-    const allOpt = document.createElement("option");
-    allOpt.value = "all"; allOpt.textContent = `全員 (${allCount}名)`;
-    workingTaskSelect.appendChild(allOpt);
-
-    Object.keys(workingData.byTask).sort().forEach(taskName => {
-        const opt = document.createElement("option");
-        opt.value = taskName; opt.textContent = `${taskName} (${workingData.byTask[taskName].length}名)`;
-        workingTaskSelect.appendChild(opt);
-    });
-
-    manualList.innerHTML = "";
-    allUsers.forEach(u => {
-        const label = document.createElement("label");
-        label.className = "flex items-center p-2 hover:bg-gray-50 border-b cursor-pointer";
-        label.innerHTML = `<input type="checkbox" value="${u.id}" class="manual-target-checkbox mr-2"><span class="text-sm">${u.displayName || u.name || "名称未設定"}</span>`;
-        manualList.appendChild(label);
-    });
-
-    sendBtn.onclick = () => {
-        const title = titleInput.value.trim(), body = bodyInput.value.trim();
-        if (!title || !body) { alert("タイトルと本文を入力してください。"); return; }
-        const type = Array.from(targetRadios).find(r => r.checked)?.value;
-        let ids = [];
-        if (type === "individual") ids = [userSelect.value];
-        else if (type === "working") ids = workingTaskSelect.value === "all" ? workingData.all : (workingData.byTask[workingTaskSelect.value] || []);
-        else if (type === "manual") manualList.querySelectorAll(".manual-target-checkbox:checked").forEach(cb => ids.push(cb.value));
-
-        if (ids.length === 0) { alert("送信対象が選択されていません。"); return; }
-        onSendCallback(ids, title, body);
-        closeModal(messageModal);
-    };
-    cancelBtn.onclick = () => closeModal(messageModal);
-    showModal(messageModal);
+export function showModal(modalElement) {
+    if (modalElement) modalElement.classList.remove("hidden");
 }
 
-export function openAddUserModal() {
-    const input = document.getElementById("add-user-modal-name-input");
-    const error = document.getElementById("add-user-modal-error");
-    if (!addUserModal || !input) return;
-    input.value = ""; error.textContent = "";
-    showModal(addUserModal); input.focus();
+export function closeModal(modalElement) {
+    if (modalElement) modalElement.classList.add("hidden");
+}
+
+export function hideConfirmationModal() {
+    closeModal(confirmationModal);
+}
+
+/**
+ * 3. 確認モーダル (★最重要)
+ * cloneNode を使用することで、以前のイベントリスナーが残って
+ * 「1回押しただけなのに2回削除される」といったバグを完全に防いでいます。
+ */
+export function showConfirmationModal(message, onConfirm, onCancel = hideConfirmationModal) {
+    if (!confirmationModal || !modalMessage || !modalConfirmBtn || !modalCancelBtn) {
+        if (confirm(message)) onConfirm?.(); else onCancel?.();
+        return;
+    }
+
+    modalMessage.textContent = message;
+
+    // ボタンをクローンして既存のイベントリスナーをリセット
+    const newConfirmBtn = modalConfirmBtn.cloneNode(true);
+    modalConfirmBtn.parentNode.replaceChild(newConfirmBtn, modalConfirmBtn);
+    modalConfirmBtn = newConfirmBtn;
+    modalConfirmBtn.onclick = () => {
+        onConfirm?.();
+        hideConfirmationModal();
+    };
+
+    const newCancelBtn = modalCancelBtn.cloneNode(true);
+    modalCancelBtn.parentNode.replaceChild(newCancelBtn, modalCancelBtn);
+    modalCancelBtn = newCancelBtn;
+    modalCancelBtn.onclick = () => {
+        onCancel?.();
+        hideConfirmationModal();
+    };
+
+    showModal(confirmationModal);
+}
+
+/**
+ * 4. パスワード入力モーダル
+ * 管理者（9999）と業務管理者（0000）の判定、Enterキー対応、
+ * 失敗時の赤枠エラー表示など、元の機能をすべて網羅しています。
+ */
+export function showPasswordModal(role, onSuccess) {
+    const input = document.getElementById("admin-password-input");
+    const error = document.getElementById("admin-password-error");
+    const submitBtn = document.getElementById("admin-password-submit-btn");
+
+    if (!adminPasswordView || !input) return;
+
+    // 入力欄のリセット
+    input.value = "";
+    if (error) { error.textContent = ""; error.classList.add("hidden"); }
+    input.classList.remove("border-red-500");
+    
+    showModal(adminPasswordView);
+    input.focus();
+
+    const cleanup = () => {
+        if (submitBtn) submitBtn.onclick = null;
+        input.onkeydown = null;
+        closeModal(adminPasswordView);
+    };
+
+    const check = () => {
+        const val = input.value;
+        const isValid = (role === "host" && val === "9999") || (role === "manager" && val === "0000");
+
+        if (isValid) {
+            cleanup();
+            onSuccess();
+        } else {
+            if (error) {
+                error.textContent = "パスワードが違います";
+                error.classList.remove("hidden");
+            }
+            input.classList.add("border-red-500");
+            input.value = "";
+        }
+    };
+
+    if (submitBtn) submitBtn.onclick = check;
+    input.onkeydown = (e) => {
+        if (e.key === "Enter") check();
+        if (e.key === "Escape") cleanup();
+    };
 }
