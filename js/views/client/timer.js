@@ -222,6 +222,15 @@ if (dueReservation) {
             activeReservations = activeReservations.filter(r => r.id !== dueReservation.id);
             
             if (dueReservation.action === 'break') {
+
+                // ★追加: 休憩に切り替わる前に、現在の業務情報を保存する
+                const preTaskData = { 
+                        task: currentTask, 
+                        goalId: currentGoalId, 
+                        goalTitle: currentGoalTitle 
+                    };
+                    localStorage.setItem("preBreakTask", JSON.stringify(preTaskData));
+                
                 // --- 【解決策】リセットして即座に再始動するロジック ---
                 
                 const breakStartTime = new Date();
