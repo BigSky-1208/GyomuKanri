@@ -222,40 +222,63 @@ if (dueReservation) {
             activeReservations = activeReservations.filter(r => r.id !== dueReservation.id);
             
             if (dueReservation.action === 'break') {
-                // --- 【解決策】メモリとLocalStorageを「休憩」で物理的に上書きする ---
-
-                // 1. メモリ変数の上書き（画面表示の正解）
+                // --- 【決定版】競合を防ぐアトミック更新 ---
+                
+                // 1. 他の同期処理に邪魔されないよう、先にメモリとLocalStorageを完全に固める
+                const breakStartTime = new Date();
                 currentTask = "休憩";
                 currentGoalTitle = null;
                 currentGoalId = null;
-                startTime = new Date(); // タイマー開始
+                startTime = breakStartTime;
+                hasContributedToCurrentGoal = false;
 
-                // 2. 個別LocalStorageの更新
+                // 2. すべてのLocalStorageキーを「休憩」に強制上書き
                 localStorage.setItem("isWorking", "1");
                 localStorage.setItem("currentTask", "休憩");
                 localStorage.setItem("currentGoal", "");
-                localStorage.setItem("startTime", startTime.toISOString());
-
-                // 3. JSON形式（LOCAL_STATUS_KEY）の更新
-                // ※これを忘れると、他の関数が古い情報を読み直してしまいます
-                const statusObj = {
+                localStorage.setItem("currentGoalId", "");
+                localStorage.setItem("startTime", breakStartTime.toISOString());
+                
+                // 3. JSON Objectも更新（ここが古いと後で上書きされます）
+                localStorage.setItem(LOCAL_STATUS_KEY, JSON.stringify({
                     currentTask: "休憩",
                     currentGoalId: null,
                     currentGoalTitle: null,
-                    startTime: startTime.toISOString(),
-                    isWorking: true,
-                    preBreakTask: preBreakTask || null
-                };
-                localStorage.setItem(LOCAL_STATUS_KEY, JSON.stringify(statusObj));
+                    startTime: breakStartTime.toISOString(),
+                    isWorking: true
+                }));
 
-                // 4. UIの強制更新（これで「社内業務」が「休憩」に書き換わります）
+                // 4. UIを即座に更新（ユーザーの目にはここで切り替わって固定されます）
                 updateUIForActiveTask();
 
-                // 5. 裏側でDB更新（handleBreakClick）を呼ぶ
-                await handleBreakClick(true); 
+                // 5. 【重要】handleBreakClick を通さず、直接 Worker に通知する
+                // これにより、関数連鎖による「画面の戻り」を防ぎます
+                try {
+                    // 現在の業務を終了させるログ送信（非同期でOK）
+                    stopCurrentTaskCore(false); 
+
+                    // Worker(D1)を休憩に更新
+                    fetch(`${WORKER_URL}/update-status`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            userId: userId,
+                            userName: userName,
+                            isWorking: 1,
+                            currentTask: "休憩",
+                            startTime: breakStartTime.toISOString(),
+                            currentGoal: null
+                        })
+                    });
+                    
+                    // 完了通知
+                    triggerReservationNotification("休憩開始");
+                } catch (e) {
+                    console.error("予約実行中の通信エラー:", e);
+                }
 
             } else if (dueReservation.action === 'stop') {
-                // 成功している帰宅ロジック
+                // 帰宅ロジックも同様に完結させる
                 currentTask = null;
                 startTime = null;
                 localStorage.removeItem("isWorking");
