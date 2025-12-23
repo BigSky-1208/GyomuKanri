@@ -231,7 +231,9 @@ async function handleSaveGoal() {
 
     // ★ handleDeleteGoal と全く同じ処理順序
     try {
+        console.log("更新前(allTaskObjects):", allTaskObjects[taskIndex].goals[0]?.title); // 仮
         await saveAllTasksToFirestore(updatedTasks);
+        console.log("更新後(allTaskObjects):", allTaskObjects[taskIndex].goals[0]?.title);
         updateGlobalTaskObjects(updatedTasks);
         onSuccessCallback(); // 定義したコールバックを実行
         alert("工数を保存しました。");
