@@ -2,7 +2,7 @@
 
 import { db, userName as currentUserName, authLevel, viewHistory, showView, VIEWS, allTaskObjects, updateGlobalTaskObjects, handleGoBack } from "../../main.js";
 import { renderUnifiedCalendar } from "../../components/calendar.js"; 
-import { editLogModal, editMemoModal, editContributionModal } from "../../components/modal.js"; 
+import { editLogModal, editMemoModal, editContributionModal } from "../../components/modal/index.js"; 
 
 import { startListeningForUserLogs, stopListeningForUserLogs } from "./logData.js";
 import { showDailyLogs, showMonthlyLogs, clearDetails } from "./logDisplay.js";
