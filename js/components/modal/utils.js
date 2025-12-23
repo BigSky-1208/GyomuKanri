@@ -2,11 +2,6 @@
 import { showModal, closeModal } from "./core.js";
 import { userReservations } from '../../views/client/reservations.js';
 
-// --- DOM要素の取得 ---
-export const helpModal = document.getElementById("help-modal");
-export const goalDetailsModal = document.getElementById("goal-details-modal");
-export const breakReservationModal = document.getElementById("break-reservation-modal");
-
 /**
  * 1. ヘルプモーダルを表示する
  * 元の長い if-else 分岐をオブジェクト形式にまとめて短縮しましたが、
