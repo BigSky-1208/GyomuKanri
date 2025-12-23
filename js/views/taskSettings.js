@@ -1,10 +1,36 @@
 // js/views/taskSettings.js
 
-import { db, allTaskObjects, VIEWS, showView, updateGlobalTaskObjects } from "../main.js";
-import { doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { openGoalModal, closeGoalModal } from "../components/modal/index.js";
-import { formatHoursMinutes } from "../utils.js";
+// 1. 必要なモジュールをすべてインポート
+import { 
+    db, 
+    allTaskObjects, 
+    authLevel, 
+    updateGlobalTaskObjects, 
+    handleGoBack, 
+    showView, 
+    VIEWS, 
+    userId 
+} from "../main.js";
+import { 
+    doc, 
+    setDoc, 
+    getDocs, 
+    collection, 
+    query, 
+    where, 
+    getDoc 
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+// ★ closeGoalModal はここでインポートするため、ファイル内での再定義は削除
+import { 
+    openGoalModal, 
+    closeGoalModal, 
+    showConfirmationModal, 
+    hideConfirmationModal, 
+    showHelpModal 
+} from "../components/modal/index.js";
+import { formatHoursMinutes, escapeHtml } from "../utils.js";
 
+// DOM要素の取得
 const taskListEditor = document.getElementById("task-list-editor");
 const addTaskForm = document.getElementById("add-task-form");
 const newTaskInput = document.getElementById("new-task-input");
@@ -14,21 +40,23 @@ const helpButton = document.querySelector('#task-settings-view .help-btn');
 
 // モーダル要素 (index.htmlにあるものを使用)
 const goalModal = document.getElementById("goal-modal");
-const goalModalTitle = document.getElementById("goal-modal-title");
-const goalModalForm = document.getElementById("goal-modal-form");
+// const goalModalTitle = document.getElementById("goal-modal-title"); // openGoalModal内で操作するため不要
 const goalModalTaskNameInput = document.getElementById("goal-modal-task-name");
 const goalModalGoalIdInput = document.getElementById("goal-modal-goal-id");
-const goalTitleInput = document.getElementById("goal-modal-title-input");
-const goalTargetInput = document.getElementById("goal-modal-target-input");
-const goalDeadlineInput = document.getElementById("goal-modal-deadline-input");
-const goalEffortDeadlineInput = document.getElementById("goal-modal-effort-deadline-input");
-const goalMemoInput = document.getElementById("goal-modal-memo-input");
+const goalModalTitleInput = document.getElementById("goal-modal-title-input");
+const goalModalTargetInput = document.getElementById("goal-modal-target-input");
+const goalModalDeadlineInput = document.getElementById("goal-modal-deadline-input");
+const goalModalEffortDeadlineInput = document.getElementById("goal-modal-effort-deadline-input");
+const goalModalMemoInput = document.getElementById("goal-modal-memo-input");
 const goalModalSaveBtn = document.getElementById("goal-modal-save-btn");
 const goalModalCancelBtn = document.getElementById("goal-modal-cancel-btn");
 
 // ユーザー権限の状態
 let currentUserRole = "general";
 
+/**
+ * 画面初期化処理
+ */
 export async function initializeTaskSettingsView() {
     console.log("Initializing Task Settings View...");
 
@@ -48,12 +76,14 @@ export async function initializeTaskSettingsView() {
     if(newTaskInput) newTaskInput.value = '';
 }
 
+/**
+ * イベントリスナー設定
+ */
 export function setupTaskSettingsEventListeners() {
     console.log("Setting up Task Settings event listeners...");
     
-    // ★修正: 要素の取得をここで行い、確実にイベントを設定する
+    // 進捗画面への遷移ボタン
     const viewProgressButton = document.getElementById("view-progress-from-settings-btn");
-    
     viewProgressButton?.addEventListener('click', () => {
         console.log("View Progress button clicked");
         window.isProgressViewReadOnly = false;
@@ -73,32 +103,31 @@ export function setupTaskSettingsEventListeners() {
     });
 
     // モーダルのイベントリスナー
+    // ★重要: handleSaveGoal を呼ぶように設定
     goalModalSaveBtn?.addEventListener("click", handleSaveGoal);
     goalModalCancelBtn?.addEventListener("click", closeGoalModal);
 
     console.log("Task Settings event listeners set up complete.");
 }
 
+/**
+ * 業務リスト（エディタ）の描画
+ */
 export function renderTaskEditor() {
     if (!taskListEditor || !addTaskForm) {
         console.error("Task editor elements not found.");
         return;
     }
 
-    // 権限判定: Admin認証(authLevel) または Roleが host
+    // 権限判定
     const isHost = authLevel === "admin" || currentUserRole === "host";
-    // 権限判定: Host または Roleが manager
     const isManager = isHost || currentUserRole === "manager";
 
     // 業務追加フォームの表示制御 (管理者のみ)
-    if (isHost) {
-        addTaskForm.style.display = "flex";
-    } else {
-        addTaskForm.style.display = "none";
-    }
-
+    addTaskForm.style.display = isHost ? "flex" : "none";
     taskListEditor.innerHTML = "";
 
+    // 業務リストのソート（休憩を最後尾、他は名前順）
     const sortedTasks = [...allTaskObjects].sort((a, b) => {
         if (a.name === "休憩") return 1;
         if (b.name === "休憩") return -1;
@@ -115,7 +144,7 @@ export function renderTaskEditor() {
         div.className = "p-4 bg-gray-100 rounded-lg shadow-sm mb-4 task-item";
         div.dataset.taskName = task.name;
 
-        // 削除ボタン (管理者のみ)
+        // 削除ボタン (管理者のみ、休憩以外)
         const deleteButtonHtml = (isHost && task.name !== "休憩")
             ? `<button class="delete-task-btn bg-red-500 text-white text-xs font-bold py-1 px-2 rounded-full hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-400" data-task-name="${escapeHtml(task.name)}" title="業務「${escapeHtml(task.name)}」を削除">削除</button>`
             : "";
@@ -135,8 +164,7 @@ export function renderTaskEditor() {
             </div>
         ` : '';
 
-        // ★工数追加ボタン (業務管理者以上、休憩以外)
-        // リスト表示は削除しました
+        // 工数追加ボタン (マネージャー以上、休憩以外)
         const addGoalButtonHtml = (task.name !== "休憩" && isManager) ? `
             <div class="mt-3 border-t pt-3">
                 <button class="add-goal-btn bg-green-500 text-white text-xs font-bold py-1 px-3 rounded hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-400" data-task-name="${escapeHtml(task.name)}">この業務に工数を追加 +</button>
@@ -169,57 +197,36 @@ export function renderTaskEditor() {
     });
 }
 
+/**
+ * リスト内のクリックイベントハンドラ
+ */
 async function handleTaskEditorClick(event) {
     const target = event.target;
     const taskItem = target.closest('.task-item');
-    const taskName = taskItem?.dataset.taskName;
-
-    const targetTaskName = taskName || target.dataset.taskName;
+    const taskName = taskItem?.dataset.taskName || target.dataset.taskName;
     
-    if (!targetTaskName) return;
+    if (!taskName) return;
 
     if (target.classList.contains("delete-task-btn")) {
-        handleDeleteTask(targetTaskName);
+        handleDeleteTask(taskName);
     } else if (target.classList.contains("save-task-btn")) {
-        handleSaveTaskMemo(targetTaskName, taskItem);
+        handleSaveTaskMemo(taskName, taskItem);
     } else if (target.classList.contains("add-goal-btn")) {
-        showGoalModal("add", targetTaskName);
+        // ★ 共通の openGoalModal を使用してモーダルを開く
+        openGoalModal("add", taskName);
     } else if (target.classList.contains("toggle-members-btn")) {
-        await toggleMembersList(target, targetTaskName);
+        await toggleMembersList(target, taskName);
     }
 }
 
-// --- モーダル関連処理 ---
-
-function showGoalModal(mode, taskName, goalIndex = null) {
-    if (!goalModal) return;
-
-    goalModalTaskNameInput.value = taskName;
-    goalModalGoalIdInput.value = goalIndex !== null ? goalIndex : "";
-
-    // 追加モードのみ対応（編集はリスト削除に伴い非表示）
-    goalModalTitle.textContent = "工数の追加";
-    goalModalForm.reset();
-    goalModalTaskNameInput.value = taskName; 
-
-    goalModal.classList.remove("hidden");
-}
-
-function closeGoalModal() {
-    if (goalModal) goalModal.classList.add("hidden");
-}
-
 /**
- * 工数の保存処理（追加・編集）
+ * 工数の保存処理（追加・編集対応）
  */
 async function handleSaveGoal() {
     const taskName = goalModalTaskNameInput.value;
-    const goalId = goalModalGoalIdInput.value; // モーダルから受け取ったID（またはタイトル）
+    const goalId = goalModalGoalIdInput.value; // ID (文字列)
     const title = goalModalTitleInput.value.trim();
     const target = parseInt(goalModalTargetInput.value, 10);
-    const deadline = goalModalDeadlineInput.value;
-    const effortDeadline = goalModalEffortDeadlineInput.value;
-    const memo = goalModalMemoInput.value.trim();
 
     if (!title || isNaN(target) || target <= 0) {
         alert("有効なタイトルと目標件数を入力してください。");
@@ -227,7 +234,10 @@ async function handleSaveGoal() {
     }
 
     const taskIndex = allTaskObjects.findIndex((t) => t.name === taskName);
-    if (taskIndex === -1) return;
+    if (taskIndex === -1) {
+        console.error("Task not found:", taskName);
+        return;
+    }
 
     // データのディープコピー
     const updatedTasks = JSON.parse(JSON.stringify(allTaskObjects));
@@ -235,7 +245,7 @@ async function handleSaveGoal() {
 
     if (goalId) {
         // --- 編集モード ---
-        // ★修正: ID または タイトル で一致する工数を探す
+        // ★修正: ID または タイトル で一致する工数を探す (parseIntは使わない)
         const goalIndex = task.goals.findIndex((g) => g.id === goalId || g.title === goalId);
         
         if (goalIndex !== -1) {
@@ -243,24 +253,22 @@ async function handleSaveGoal() {
                 ...task.goals[goalIndex],
                 title,
                 target,
-                deadline,
-                effortDeadline,
-                memo,
+                deadline: goalModalDeadlineInput.value,
+                effortDeadline: goalModalEffortDeadlineInput.value,
+                memo: goalModalMemoInput.value.trim(),
             };
         } else {
-            console.error("編集対象の工数が見つかりませんでした:", goalId);
-            alert("エラー：編集対象の工数が見つかりません。");
-            return;
+            console.error("編集対象が見つかりません:", goalId);
         }
     } else {
         // --- 新規追加モード ---
         const newGoal = {
-            id: "goal_" + Date.now(), // IDを新規発行
+            id: "goal_" + Date.now(), // ユニークIDを生成
             title,
             target,
-            deadline,
-            effortDeadline,
-            memo,
+            deadline: goalModalDeadlineInput.value,
+            effortDeadline: goalModalEffortDeadlineInput.value,
+            memo: goalModalMemoInput.value.trim(),
             current: 0,
             isComplete: false,
         };
@@ -269,31 +277,20 @@ async function handleSaveGoal() {
     }
 
     try {
-        const tasksRef = doc(db, "settings", "tasks");
-        await setDoc(tasksRef, { list: updatedTasks });
-        
-        // ★重要: アプリ内のグローバル変数を最新状態に更新
-        updateGlobalTaskObjects(updatedTasks);
-        
+        await saveAllTasksToFirestore(updatedTasks);
+        updateGlobalTaskObjects(updatedTasks); // グローバル変数を即時更新
+        renderTaskEditor();
         closeGoalModal();
-
-        // ★追加: 現在の表示をリフレッシュする
-        // 業務設定画面にいる場合
-        if (document.getElementById('task-settings-view').classList.contains('active')) {
-            renderTaskSettings();
-        } 
-        // 業務進捗画面から編集した場合
-        else if (document.getElementById('progress-view').classList.contains('active')) {
-            const { initializeProgressView } = await import('./progress/progress.js');
-            initializeProgressView();
-        }
-
+        alert("保存しました。");
     } catch (error) {
         console.error("Error saving goal:", error);
-        alert("工数の保存中にエラーが発生しました。");
+        alert("保存中にエラーが発生しました。");
     }
 }
 
+/**
+ * 業務（タスク）の新規追加
+ */
 async function handleAddTask() {
     if (!newTaskInput) return;
     const newTaskName = newTaskInput.value.trim();
@@ -335,6 +332,9 @@ async function handleAddTask() {
     }
 }
 
+/**
+ * 業務メモの保存
+ */
 async function handleSaveTaskMemo(taskName, taskItemElement) {
     const memoInput = taskItemElement?.querySelector(".task-memo-editor");
     if (!memoInput) return;
@@ -359,6 +359,9 @@ async function handleSaveTaskMemo(taskName, taskItemElement) {
     }
 }
 
+/**
+ * 業務の削除
+ */
 function handleDeleteTask(taskNameToDelete) {
     if (!taskNameToDelete || taskNameToDelete === "休憩") return;
 
@@ -388,6 +391,9 @@ function handleDeleteTask(taskNameToDelete) {
     );
 }
 
+/**
+ * 担当者別稼働時間の表示切り替え・集計
+ */
 async function toggleMembersList(button, taskName) {
     const container = button.nextElementSibling;
     if (!container) return;
@@ -444,6 +450,9 @@ async function toggleMembersList(button, taskName) {
     }
 }
 
+/**
+ * 全タスク保存のヘルパー関数
+ */
 async function saveAllTasksToFirestore(tasksToSave) {
     if (!tasksToSave) {
         console.error("Attempted to save undefined tasks list.");
@@ -453,12 +462,4 @@ async function saveAllTasksToFirestore(tasksToSave) {
     await setDoc(tasksRef, { list: tasksToSave });
 }
 
-function escapeHtml(unsafe) {
-    if (typeof unsafe !== 'string') return '';
-    return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
+// ※ escapeHtmlはutils.jsからインポートして使っているため、ここでの定義は不要（削除済）
