@@ -15,9 +15,6 @@ export function closeModal(modalElement) {
     if (modalElement) modalElement.classList.add("hidden");
 }
 
-
-    modalMessage.textContent = message;
-
     // ボタンをクローンして既存のイベントリスナーをリセット
     const newConfirmBtn = modalConfirmBtn.cloneNode(true);
     modalConfirmBtn.parentNode.replaceChild(newConfirmBtn, modalConfirmBtn);
