@@ -144,6 +144,11 @@ if (!taskListEditor || !addTaskForm) {
 
         // ★★★ 復活させた部分: 工数リストの生成 ★★★
         let goalsListHtml = "";
+
+        if (task.name === "（あなたが編集した業務名）") { 
+             console.log(`業務「${task.name}」の工数データ:`, task.goals);
+        }
+        
         if (task.goals && task.goals.length > 0) {
             goalsListHtml = `<div class="mt-3 space-y-2">`;
             task.goals.forEach((goal) => {
