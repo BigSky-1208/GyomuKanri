@@ -2,7 +2,7 @@
 
 import { db, allTaskObjects, authLevel, updateGlobalTaskObjects, handleGoBack, showView, VIEWS, userId } from "../main.js";
 import { doc, setDoc, getDocs, collection, query, where, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { showConfirmationModal, hideConfirmationModal, showHelpModal } from "../components/modal.js";
+import { showConfirmationModal, hideConfirmationModal, showHelpModal } from "../components/modal/index.js";
 import { formatHoursMinutes } from "../utils.js";
 
 const taskListEditor = document.getElementById("task-list-editor");
