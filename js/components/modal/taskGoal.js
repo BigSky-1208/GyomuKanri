@@ -2,7 +2,7 @@
 import { db } from "../../firebase.js";
 import { doc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { allTaskObjects, updateGlobalTaskObjects, escapeHtml } from "../../main.js";
-import { showModal, closeModal, showConfirmationModal } from "./core.js";
+import { showModal, closeModal, showConfirmationModal, taskModal, goalModal } from "./core.js";
 
 /**
  * 1. 業務(Task)の追加・編集モーダルを開く
@@ -43,6 +43,10 @@ export function openGoalModal(mode, taskName, goalId = null) {
     const deadlineIn = document.getElementById("goal-modal-deadline-input");
     const effortIn = document.getElementById("goal-modal-effort-deadline-input");
     const memoIn = document.getElementById("goal-modal-memo-input");
+    goalModal.dataset.currentGoalId = goalId || "";
+
+    if (idIn) idIn.value = goalId || "";
+    if (taskIn) taskIn.value = taskName;
 
     if (!goalModal) return;
 
