@@ -218,40 +218,54 @@ function startTimerLoop() {
             );
 
 if (dueReservation) {
-    console.log("予約実行時間になりました:", dueReservation.action);
-    activeReservations = activeReservations.filter(r => r.id !== dueReservation.id);
-    
-    if (dueReservation.action === 'break') {
-        // --- ★ここが最重要：UI表示用の変数を「即座に」上書きする ---
-        currentTask = "休憩";           // メモリ変数を更新
-        currentGoalTitle = null;        // 工数をクリア
-        currentGoalId = null;           // 工数IDをクリア
-        startTime = new Date();         // タイマー開始時間を「今」に
+            console.log("予約実行時間になりました:", dueReservation.action);
+            activeReservations = activeReservations.filter(r => r.id !== dueReservation.id);
+            
+            if (dueReservation.action === 'break') {
+                // --- 【成功ロジックの応用】一度メモリと表示を「休憩」で強制確定させる ---
+                
+                // 1. メモリ変数を「休憩」に強制変更
+                currentTask = "休憩";
+                currentGoalTitle = null;
+                currentGoalId = null;
+                startTime = new Date(); // 新しいタイマー開始
+                hasContributedToCurrentGoal = false;
 
-        // LocalStorageも即座に同期（リロード対策）
-        localStorage.setItem("isWorking", "1");
-        localStorage.setItem("currentTask", "休憩");
-        localStorage.setItem("currentGoal", "");
-        localStorage.setItem("startTime", startTime.toISOString());
+                // 2. LocalStorage の各項目を「休憩」に書き換え
+                localStorage.setItem("isWorking", "1");
+                localStorage.setItem("currentTask", "休憩");
+                localStorage.setItem("currentGoal", "");
+                localStorage.setItem("currentGoalId", "");
+                localStorage.setItem("startTime", startTime.toISOString());
 
-        // --- ★画面を強制的に書き換える ---
-        updateUIForActiveTask();
+                // 3. 帰宅予約が成功している理由である「古い状態の破棄」をここでも行う
+                // (もし古いJSON形式のKeyがある場合はそれも更新)
+                const statusToSave = {
+                    currentTask, currentGoalId, currentGoalTitle, startTime,
+                    isWorking: true, preBreakTask: preBreakTask || null
+                };
+                localStorage.setItem(LOCAL_STATUS_KEY, JSON.stringify(statusToSave));
 
-        // その後に裏側でDB保存やログ記録を行う
-        await handleBreakClick(true); 
-        
-    } else if (dueReservation.action === 'stop') {
-        // 終了の場合も同様に即座にクリア
-        currentTask = null;
-        startTime = null;
-        localStorage.removeItem("isWorking");
-        localStorage.removeItem("currentTask");
-        resetClientState();
-        await handleStopClick(true);
-    }
-    
-    if (typeof syncReservations === 'function') await syncReservations();
-}
+                // 4. UIを即座に再描画（これで「社内業務」の文字が消えます）
+                updateUIForActiveTask();
+
+                // 5. 最後に裏側でDB更新（handleBreakClick）を呼ぶ
+                // 引数 true により、内部での無駄な再読み込みを防ぎます
+                await handleBreakClick(true); 
+
+            } else if (dueReservation.action === 'stop') {
+                // 成功している帰宅ロジック（そのまま維持）
+                currentTask = null;
+                startTime = null;
+                localStorage.removeItem("isWorking");
+                localStorage.removeItem("currentTask");
+                localStorage.removeItem(LOCAL_STATUS_KEY);
+                resetClientState();
+                await handleStopClick(true);
+            }
+            
+            if (typeof syncReservations === 'function') await syncReservations();
+        }
         } // ← 【修正ポイント】この閉じカッコが不足していたためエラーが出ていました
 
         // --- 通知ロジック ---
