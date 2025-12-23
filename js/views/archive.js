@@ -174,6 +174,9 @@ function renderArchiveTaskList() {
   }
 }
 
+/**
+ * アーカイブされた（完了済み）工数リストを描画する
+ */
 function renderArchiveGoalList() {
   if (!archiveGoalListContainer) return;
   archiveGoalListContainer.innerHTML = ""; 
@@ -184,49 +187,68 @@ function renderArchiveGoalList() {
     return;
   }
 
+  // ★ 日付を安全に数値(ミリ秒)に変換する内部ヘルパー
+  const getMillis = (val) => {
+    if (!val) return 0;
+    if (typeof val.toMillis === 'function') return val.toMillis(); // Firestore Timestamp
+    if (val instanceof Date) return val.getTime(); // Date object
+    if (val.seconds) return val.seconds * 1000; // Plain object with seconds
+    return new Date(val).getTime(); // String or others
+  };
+
+  // 完了フラグが立っており、かつ完了日時がある工数を抽出
   const completedGoals = (task.goals || [])
     .filter((g) => g.isComplete && g.completedAt)
-    .sort((a, b) => (b.completedAt?.getTime() || 0) - (a.completedAt?.getTime() || 0));
+    // ★ getTime() の代わりに getMillis を使用して安全に降順ソート（最新が上）
+    .sort((a, b) => getMillis(b.completedAt) - getMillis(a.completedAt));
 
   if (completedGoals.length === 0) {
     archiveGoalListContainer.innerHTML = '<p class="text-gray-500">この業務に完了済みの工数はありません。</p>';
-     selectedArchiveGoalId = null;
-     if(archiveGoalDetailsContainer) archiveGoalDetailsContainer.classList.add("hidden");
-     if(archiveChartContainer) archiveChartContainer.classList.add("hidden");
-     if(archiveWeeklySummaryContainer) archiveWeeklySummaryContainer.classList.add("hidden");
-     destroyCharts([archiveChartInstance]);
-     archiveChartInstance = null;
+    selectedArchiveGoalId = null;
+    if (archiveGoalDetailsContainer) archiveGoalDetailsContainer.classList.add("hidden");
+    if (archiveChartContainer) archiveChartContainer.classList.add("hidden");
+    if (archiveWeeklySummaryContainer) archiveWeeklySummaryContainer.classList.add("hidden");
+    destroyCharts([archiveChartInstance]);
+    archiveChartInstance = null;
     return;
   }
 
   completedGoals.forEach((goal) => {
     const button = document.createElement("button");
+    // IDまたはタイトルを識別子として使用（selected状態の判定用）
+    const tid = goal.id || goal.title;
+    
     button.className = `w-full text-left p-2 rounded-lg list-item hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-300 ${
-      selectedArchiveGoalId === goal.id ? "selected bg-indigo-100" : "" 
+      selectedArchiveGoalId === tid ? "selected bg-indigo-100" : "" 
     }`;
-    const completedDate = (goal.completedAt instanceof Date && !isNaN(goal.completedAt))
-      ? goal.completedAt.toLocaleDateString("ja-JP")
+
+    // ★ 表示用の日付変換ロジック：Timestamp なら toDate()、それ以外なら new Date() で変換
+    const d = goal.completedAt?.toDate ? goal.completedAt.toDate() : new Date(goal.completedAt);
+    const completedDate = (d instanceof Date && !isNaN(d))
+      ? d.toLocaleDateString("ja-JP")
       : "不明";
+
     button.innerHTML = `
             <div>${escapeHtml(goal.title || '無題')}</div>
             <div class="text-xs text-gray-500">完了日: ${completedDate}</div>
         `;
-    button.dataset.goalId = goal.id;
+    button.dataset.goalId = tid;
     archiveGoalListContainer.appendChild(button);
   });
 
-   if (selectedArchiveGoalId) {
-    const goalExists = completedGoals.some(g => g.id === selectedArchiveGoalId);
-    if(goalExists){
+  // 既に工数が選択されている場合の状態維持
+  if (selectedArchiveGoalId) {
+    const goalExists = completedGoals.some(g => (g.id || g.title) === selectedArchiveGoalId);
+    if (goalExists) {
         renderArchiveGoalDetails();
         renderArchiveWeeklySummary();
         const selectedButton = archiveGoalListContainer.querySelector(`.list-item[data-goal-id="${selectedArchiveGoalId}"]`);
-        if(selectedButton) selectedButton.classList.add('selected', 'bg-indigo-100');
+        if (selectedButton) selectedButton.classList.add('selected', 'bg-indigo-100');
     } else {
         selectedArchiveGoalId = null;
-        if(archiveGoalDetailsContainer) archiveGoalDetailsContainer.classList.add("hidden");
-        if(archiveWeeklySummaryContainer) archiveWeeklySummaryContainer.classList.add("hidden");
-        if(archiveChartContainer) archiveChartContainer.classList.add("hidden");
+        if (archiveGoalDetailsContainer) archiveGoalDetailsContainer.classList.add("hidden");
+        if (archiveWeeklySummaryContainer) archiveWeeklySummaryContainer.classList.add("hidden");
+        if (archiveChartContainer) archiveChartContainer.classList.add("hidden");
         destroyCharts([archiveChartInstance]);
         archiveChartInstance = null;
     }
@@ -249,10 +271,12 @@ function renderArchiveGoalDetails() {
     return;
   }
 
-  const completedDate = (goal.completedAt instanceof Date && !isNaN(goal.completedAt))
-    ? goal.completedAt.toLocaleString("ja-JP")
+  // ★ 表示用日時の変換を安全に行う
+  const d = goal.completedAt?.toDate ? goal.completedAt.toDate() : new Date(goal.completedAt);
+  const completedDate = (d instanceof Date && !isNaN(d))
+    ? d.toLocaleString("ja-JP")
     : "不明";
-
+    
   const readOnlyMode = window.isProgressViewReadOnly === true;
   const buttonsHtml = readOnlyMode ? "" : `
     <div class="flex-shrink-0 ml-4 space-x-2">
