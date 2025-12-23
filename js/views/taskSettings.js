@@ -112,22 +112,17 @@ export function setupTaskSettingsEventListeners() {
 /**
  * 業務リスト（エディタ）の描画
  */
-export function renderTaskEditor() {
-    if (!taskListEditor || !addTaskForm) {
-        console.error("Task editor elements not found.");
-        return;
-    }
+export function renderTaskEditor(tasksToRender = allTaskObjects) {
+    if (!taskListEditor || !addTaskForm) return;
 
-    // 権限判定
     const isHost = authLevel === "admin" || currentUserRole === "host";
     const isManager = isHost || currentUserRole === "manager";
 
-    // 業務追加フォームの表示制御 (管理者のみ)
     addTaskForm.style.display = isHost ? "flex" : "none";
     taskListEditor.innerHTML = "";
 
-    // 業務リストのソート（休憩を最後尾、他は名前順）
-    const sortedTasks = [...allTaskObjects].sort((a, b) => {
+    // 受け取った tasksToRender を使ってソート・表示
+    const sortedTasks = [...tasksToRender].sort((a, b) => {
         if (a.name === "休憩") return 1;
         if (b.name === "休憩") return -1;
         return (a.name || "").localeCompare(b.name || "", "ja");
@@ -143,42 +138,22 @@ export function renderTaskEditor() {
         div.className = "p-4 bg-gray-100 rounded-lg shadow-sm mb-4 task-item";
         div.dataset.taskName = task.name;
 
-        // 削除ボタン (管理者のみ、休憩以外)
         const deleteButtonHtml = (isHost && task.name !== "休憩")
-            ? `<button class="delete-task-btn bg-red-500 text-white text-xs font-bold py-1 px-2 rounded-full hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-400" data-task-name="${escapeHtml(task.name)}" title="業務「${escapeHtml(task.name)}」を削除">削除</button>`
+            ? `<button class="delete-task-btn bg-red-500 text-white text-xs font-bold py-1 px-2 rounded-full hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-400" data-task-name="${escapeHtml(task.name)}">削除</button>`
             : "";
 
-        // メモ入力欄
-        const memoInputHtml = `
-            <div class="mt-2">
-                <label for="memo-${escapeHtml(task.name)}" class="block text-sm font-medium text-gray-600 mb-1">業務メモ:</label>
-                <input type="text" id="memo-${escapeHtml(task.name)}" value="${escapeHtml(task.memo || "")}" placeholder="業務の補足情報 (例: 定例会議用の資料)" class="task-memo-editor w-full p-1 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500" ${task.name === "休憩" ? 'disabled' : ''}>
-            </div>
-        `;
-
-        // メモ保存ボタン (休憩以外)
-        const saveMemoButtonHtml = task.name !== "休憩" ? `
-            <div class="text-right mt-2">
-                <button class="save-task-btn bg-blue-500 text-white text-xs font-bold py-1 px-2 rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400" data-task-name="${escapeHtml(task.name)}">メモを保存</button>
-            </div>
-        ` : '';
-
-        // 工数追加ボタン (マネージャー以上、休憩以外)
         const addGoalButtonHtml = (task.name !== "休憩" && isManager) ? `
             <div class="mt-3 border-t pt-3">
                 <button class="add-goal-btn bg-green-500 text-white text-xs font-bold py-1 px-3 rounded hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-400" data-task-name="${escapeHtml(task.name)}">この業務に工数を追加 +</button>
             </div>
         ` : (task.name === "休憩" ? '<div class="mt-3 border-t pt-3"><p class="text-xs text-gray-500">「休憩」には工数を追加できません。</p></div>' : '');
 
-        // 担当者リストトグル
         const membersToggleHtml = `
              <div class="mt-3 border-t pt-3">
                  <button class="toggle-members-btn text-sm font-semibold text-gray-600 hover:text-blue-600 focus:outline-none" data-task-name="${escapeHtml(task.name)}">
                      担当者別 合計時間 [+]
                  </button>
-                 <div class="members-list-container hidden mt-2 pl-4 border-l-2 border-gray-200 space-y-1 text-sm">
-                     <p class="text-gray-400">読み込み中...</p>
-                 </div>
+                 <div class="members-list-container hidden mt-2 pl-4 border-l-2 border-gray-200 space-y-1 text-sm"></div>
              </div>
         `;
 
@@ -187,8 +162,13 @@ export function renderTaskEditor() {
                 <span class="font-semibold text-lg text-gray-800">${escapeHtml(task.name)}</span>
                 ${deleteButtonHtml}
             </div>
-            ${memoInputHtml}
-            ${saveMemoButtonHtml}
+            <div class="mt-2">
+                <label class="block text-sm font-medium text-gray-600 mb-1">業務メモ:</label>
+                <input type="text" value="${escapeHtml(task.memo || "")}" class="task-memo-editor w-full p-1 border border-gray-300 rounded-md text-sm focus:ring-indigo-500" ${task.name === "休憩" ? 'disabled' : ''}>
+            </div>
+            <div class="text-right mt-2">
+                ${task.name !== "休憩" ? `<button class="save-task-btn bg-blue-500 text-white text-xs font-bold py-1 px-2 rounded hover:bg-blue-600" data-task-name="${escapeHtml(task.name)}">メモを保存</button>` : ''}
+            </div>
             ${addGoalButtonHtml}
             ${membersToggleHtml}
         `;
