@@ -269,6 +269,7 @@ async function handleSaveGoal() {
         updateGlobalTaskObjects(updatedTasks); // グローバル変数を更新
         closeGoalModal();       // モーダルを閉じる
         renderTaskEditor();     // 画面を再描画
+        onSuccessCallback();
     } catch (error) {
         console.error("Error saving goal:", error);
         alert("保存中にエラーが発生しました。");
