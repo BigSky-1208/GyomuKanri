@@ -1,5 +1,11 @@
 // js/components/modal/utils.js
-import { showModal, closeModal } from "./core.js";
+import { 
+    showModal, 
+    closeModal, 
+    helpModal,           // ← これが足りないとエラーになります
+    goalDetailsModal, 
+    breakReservationModal 
+} from "./core.js";
 import { userReservations } from '../../views/client/reservations.js';
 
 /**
