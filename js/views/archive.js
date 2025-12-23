@@ -60,10 +60,10 @@ export function setupArchiveEventListeners() {
         if (!taskName || !goalId) return;
 
         if (target.classList.contains('restore-goal-btn')) {
-            const { handleRestoreGoalClick } = await import('../components/modal.js');
+            const { handleRestoreGoalClick } = await import('../components/modal/index.js');
             handleRestoreGoalClick(taskName, goalId);
         } else if (target.classList.contains('delete-goal-btn')) {
-            const { handleDeleteGoal } = await import('../components/modal.js');
+            const { handleDeleteGoal } = await import('../components/modal/index.js');
             handleDeleteGoal(taskName, goalId);
         }
      });
