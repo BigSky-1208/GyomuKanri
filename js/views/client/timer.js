@@ -346,7 +346,7 @@ export async function handleStartClick() {
     
     // 現在稼働中 且つ 目標が設定されている 且つ 進捗が未入力の場合
     if (isWorking && currentGoalId && !hasContributedToCurrentGoal) {
-        const { showConfirmationModal, hideConfirmationModal } = await import("../../components/modal.js");
+        const { showConfirmationModal, hideConfirmationModal } = await import("../../components/modal/index.js");
         
         showConfirmationModal(
             `「${currentGoalTitle}」の進捗(件数)が入力されていません。\nこのまま業務を変更しますか？`,
@@ -430,7 +430,7 @@ export async function handleStopClick(isAuto = false) {
     if (!currentTask) return;
 
     if (currentGoalId && !hasContributedToCurrentGoal) {
-        const { showConfirmationModal, hideConfirmationModal } = await import("../../components/modal.js");
+        const { showConfirmationModal, hideConfirmationModal } = await import("../../components/modal/index.js");
         showConfirmationModal(
             `「${currentGoalTitle}」の進捗(件数)が入力されていません。\nこのまま終了（帰宅）しますか？`,
             async () => {
