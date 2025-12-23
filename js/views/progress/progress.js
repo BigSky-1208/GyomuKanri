@@ -215,7 +215,7 @@ function renderDetailsAndSummary() {
     }
 
     const task = allTaskObjects.find((t) => t.name === selectedProgressTaskName);
-    const goal = task?.goals.find((g) => g.id === selectedProgressGoalId);
+    const goal = task?.goals.find((g) => g.id === selectedProgressGoalId || g.title === selectedProgressGoalId);
 
     if (!goal || goal.isComplete) {
         clearGoalDetailsAndSummary(goalDetailsContainer, chartContainer, weeklySummaryContainer, [progressLineChartInstance]);
@@ -233,7 +233,8 @@ function renderDetailsAndSummary() {
     const weekDates = calculateDateRange(progressWeekOffset, progressMonthOffset);
 
     // ★ allUserLogs ではなく selectedTaskLogs を渡す
-    const chartAndTableData = aggregateWeeklyData(selectedTaskLogs, goal.id, weekDates);
+    const finalGoalIdForFilter = goal.id || goal.title;
+    const chartAndTableData = aggregateWeeklyData(selectedTaskLogs, finalGoalIdForFilter, weekDates);
 
     destroyCharts([progressLineChartInstance]);
     progressLineChartInstance = renderChartAndTable(
