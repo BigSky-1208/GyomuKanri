@@ -6,8 +6,6 @@ import { getJSTDateString } from "../../utils.js";
 import { setHasContributed } from "./timer.js";
 
 export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
-    console.log("登録処理開始");
-
     let finalGoalId = goalId || document.getElementById("goal-modal")?.dataset.currentGoalId;
     if (!finalGoalId) return;
 
@@ -15,80 +13,44 @@ export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
     if (isNaN(contribution) || contribution <= 0) return;
 
     const taskIndex = allTaskObjects.findIndex((t) => t.name === taskName);
-    if (taskIndex === -1) return;
+    const goalIndex = allTaskObjects[taskIndex]?.goals.findIndex(g => g.id === finalGoalId || g.title === finalGoalId);
+    if (taskIndex === -1 || goalIndex === -1) return;
 
-    const goalIndex = allTaskObjects[taskIndex].goals.findIndex(
-        (g) => g.id === finalGoalId || g.title === finalGoalId
-    );
-    if (goalIndex === -1) return;
-
-    // --- 1. ローカルデータの準備 ---
+    // データ更新
     const updatedTasks = JSON.parse(JSON.stringify(allTaskObjects));
-    const task = updatedTasks[taskIndex];
-    const goal = task.goals[goalIndex];
-    
-    const oldCurrent = goal.current || 0;
-    const newCurrent = oldCurrent + contribution; // 新しい合計値
+    const goal = updatedTasks[taskIndex].goals[goalIndex];
+    const newCurrent = (goal.current || 0) + contribution;
     goal.current = newCurrent;
 
     try {
-        // --- 2. Firestore書き込み ---
-        const tasksRef = doc(db, "settings", "tasks");
-        await setDoc(tasksRef, { list: updatedTasks }); 
-
-        await addDoc(collection(db, `work_logs`), {
-            type: "goal",
-            userId: userId,
-            userName: userName,
-            task: taskName,
-            goalId: finalGoalId,
-            goalTitle: goal.title,
-            contribution: contribution,
+        // Firebase保存
+        await setDoc(doc(db, "settings", "tasks"), { list: updatedTasks }); 
+        await addDoc(collection(db, "work_logs"), {
+            type: "goal", userId, userName, task: taskName,
+            goalId: finalGoalId, goalTitle: goal.title, contribution,
             date: getJSTDateString(new Date()),
             startTime: Timestamp.fromDate(new Date()),
         });
 
-        // --- 3. ★UIの即時更新ロジック ---
-        
-        // メモリ上のデータを更新（他の画面への移動対策）
-        allTaskObjects[taskIndex].goals[goalIndex].current = newCurrent;
+        // --- ★UIの直接更新（ID指定で確実に） ---
+        const valEl = document.getElementById("ui-current-val");
+        const barEl = document.getElementById("ui-current-bar");
+        const pctEl = document.getElementById("ui-current-percent");
 
-        // 画面上の要素を特定
-        const container = document.getElementById("goal-progress-container");
-        if (container) {
-            const currentLabel = container.querySelector(".font-bold.text-lg"); // 現在値の数字
-            const progressBar = container.querySelector(".bg-blue-600");       // 青いバー
-            const percentLabel = container.querySelector("div.flex.justify-between span:last-child"); // %表示
-
+        if (valEl) valEl.textContent = newCurrent;
+        if (barEl || pctEl) {
             const target = goal.target || 1;
             const newPercent = Math.min(100, Math.round((newCurrent / target) * 100));
-
-            // 数字を更新
-            if (currentLabel) {
-                currentLabel.textContent = newCurrent;
-                // 登録した感出すために一瞬色を変える
-                currentLabel.classList.add("text-blue-600");
-                setTimeout(() => currentLabel.classList.remove("text-blue-600"), 1000);
-            }
-
-            // バーを伸ばす
-            if (progressBar) {
-                progressBar.style.width = `${newPercent}%`;
-            }
-
-            // パーセント数字を更新
-            if (percentLabel) {
-                percentLabel.textContent = `${newPercent}%`;
-            }
+            if (barEl) barEl.style.width = `${newPercent}%`;
+            if (pctEl) pctEl.textContent = `${newPercent}%`;
         }
 
-        // 入力欄をクリア
+        // メモリ上のデータも同期
+        allTaskObjects[taskIndex].goals[goalIndex].current = newCurrent;
         inputElement.value = "";
-        console.log("UIの即時更新が完了しました");
 
     } catch (error) {
-        console.error("更新エラー:", error);
-        alert("エラーが発生しました。");
+        console.error("Update error:", error);
     }
 }
 
@@ -110,13 +72,16 @@ export function renderSingleGoalDisplay(task, goalId) {
     container.innerHTML = `
         <div class="border-b pb-4 mb-4">
             <h3 class="text-sm font-bold text-gray-700 mb-1">${escapeHtml(goal.title)}</h3>
+            
             <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
-                <span>現在: <strong>${current}</strong> / 目標: ${target}</span>
-                <span>${percentage}%</span>
+                <span>現在: <span id="ui-current-val" class="font-bold text-lg">${current}</span> / 目標: ${target}</span>
+                <span id="ui-current-percent">${percentage}%</span>
             </div>
+
             <div class="w-full bg-gray-200 rounded-full h-2.5 mb-3">
-                <div class="bg-blue-600 h-2.5 rounded-full" style="width: ${percentage}%"></div>
+                <div id="ui-current-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-500" style="width: ${percentage}%"></div>
             </div>
+
             <div class="flex gap-2 items-center">
                 <input type="number" id="goal-contribution-input" 
                     class="flex-grow p-2 border border-gray-300 rounded text-sm" 
@@ -131,22 +96,13 @@ export function renderSingleGoalDisplay(task, goalId) {
 
     container.classList.remove("hidden");
 
-    // ★ 修正: イベント登録のタイミングとIDの確定を確実にする
+    // イベントリスナー設定
     const updateBtn = document.getElementById("update-goal-btn");
     const inputVal = document.getElementById("goal-contribution-input");
     const tid = goal.id || goal.title;
 
-    if (updateBtn && inputVal) {
-        updateBtn.onclick = (e) => {
-            e.preventDefault(); // フォーム送信を防ぐ
-            handleUpdateGoalProgress(task.name, tid, inputVal);
-        };
-        
-        inputVal.onkeypress = (e) => {
-            if (e.key === "Enter") {
-                e.preventDefault();
-                handleUpdateGoalProgress(task.name, tid, inputVal);
-            }
-        };
-    }
+    updateBtn.onclick = () => handleUpdateGoalProgress(task.name, tid, inputVal);
+    inputVal.onkeypress = (e) => {
+        if (e.key === "Enter") handleUpdateGoalProgress(task.name, tid, inputVal);
+    };
 }
