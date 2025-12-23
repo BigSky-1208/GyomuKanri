@@ -27,11 +27,8 @@ import {
 } from "../components/modal/index.js";
 import { formatHoursMinutes, escapeHtml } from "../utils.js";
 
-// ★修正点1: ここでDOM要素を固定してしまうのをやめます（変数の宣言だけにするか、使う場所で取得します）
-// モーダル要素など、画面遷移で消えないものはここでも良いですが、
-// メインのリストなどは描画のたびに取得するのが確実です。
-
-// モーダル要素（IDが変わらない前提ならここでOK）
+// DOM要素
+// ※描画のたびに取得するため、ここでは固定的なものだけ定義します
 const goalModal = document.getElementById("goal-modal");
 const goalModalTaskNameInput = document.getElementById("goal-modal-task-name");
 const goalModalGoalIdInput = document.getElementById("goal-modal-goal-id");
@@ -45,6 +42,7 @@ const goalModalCancelBtn = document.getElementById("goal-modal-cancel-btn");
 
 let currentUserRole = "general";
 
+// --- 初期化 ---
 export async function initializeTaskSettingsView() {
     console.log("Initializing Task Settings View...");
     if (userId) {
@@ -57,13 +55,12 @@ export async function initializeTaskSettingsView() {
     }
     renderTaskEditor();
     
-    // input要素も毎回取得する
     const input = document.getElementById("new-task-input");
     if(input) input.value = '';
 }
 
+// --- イベントリスナー ---
 export function setupTaskSettingsEventListeners() {
-    // ボタンなどもイベント設定時に再取得する
     const viewProgressButton = document.getElementById("view-progress-from-settings-btn");
     viewProgressButton?.addEventListener('click', () => {
         window.isProgressViewReadOnly = false;
@@ -91,18 +88,13 @@ export function setupTaskSettingsEventListeners() {
     goalModalCancelBtn?.addEventListener("click", closeGoalModal);
 }
 
-/**
- * 業務リストの描画
- */
+// --- 描画処理 ---
 export function renderTaskEditor(tasksToRender = null) {
-    // ★修正点2: 描画のたびに、必ず「今の画面にある要素」を取得し直す
+    // 常に最新のDOM要素を取得
     const taskListEditor = document.getElementById("task-list-editor");
     const addTaskForm = document.getElementById("add-task-form");
 
-    if (!taskListEditor || !addTaskForm) {
-        console.error("【Error】DOM要素が見つかりません。画面遷移等でIDが変わった可能性があります。");
-        return;
-    }
+    if (!taskListEditor || !addTaskForm) return;
 
     const currentTasks = tasksToRender || getAllTaskObjects();
 
@@ -125,8 +117,10 @@ export function renderTaskEditor(tasksToRender = null) {
 
     sortedTasks.forEach((task) => {
         const div = document.createElement("div");
-        div.className = "p-4 bg-gray-100 rounded-lg shadow-sm mb-4 task-item";
+        div.className = "p-4 bg-gray-100 rounded-lg shadow-sm mb-4 task-item transition-colors duration-500"; // アニメーション用クラス追加
         div.dataset.taskName = task.name;
+        // IDを付与して後で検索しやすくする
+        div.id = `task-row-${task.name}`;
 
         const deleteButtonHtml = (isHost && task.name !== "休憩")
             ? `<button class="delete-task-btn bg-red-500 text-white text-xs font-bold py-1 px-2 rounded-full hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-400" data-task-name="${escapeHtml(task.name)}">削除</button>`
@@ -152,7 +146,7 @@ export function renderTaskEditor(tasksToRender = null) {
             goalsListHtml = `<div class="mt-3 space-y-2">`;
             task.goals.forEach((goal) => {
                 goalsListHtml += `
-                    <div class="flex justify-between items-center bg-white border border-gray-200 p-2 rounded text-sm">
+                    <div class="flex justify-between items-center bg-white border border-gray-200 p-2 rounded text-sm" id="goal-row-${goal.id || goal.title}">
                         <span class="font-medium text-gray-700 truncate mr-2">
                             ${escapeHtml(goal.title)} 
                             <span class="text-xs text-gray-500">(${goal.target}件)</span>
@@ -182,15 +176,51 @@ export function renderTaskEditor(tasksToRender = null) {
             <div class="text-right mt-2">
                 ${task.name !== "休憩" ? `<button class="save-task-btn bg-blue-500 text-white text-xs font-bold py-1 px-2 rounded hover:bg-blue-600" data-task-name="${escapeHtml(task.name)}">メモを保存</button>` : ''}
             </div>
-            
             ${goalsListHtml}
-
             ${addGoalButtonHtml}
             ${membersToggleHtml}
         `;
         taskListEditor.appendChild(div);
     });
 }
+
+// --- ヘルパー: DBからの完全リロード ---
+async function fetchLatestTasksFromDB() {
+    try {
+        const docRef = doc(db, "settings", "tasks");
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+            return snap.data().list || [];
+        }
+    } catch (e) {
+        console.error("DBリロード失敗", e);
+    }
+    return [];
+}
+
+// --- ヘルパー: 選択状態（位置）の復元 ---
+function restoreSelectionState(taskName) {
+    if (!taskName) return;
+    
+    // 少し待ってから実行（描画完了待ち）
+    setTimeout(() => {
+        const element = document.getElementById(`task-row-${taskName}`);
+        if (element) {
+            // スクロール
+            element.scrollIntoView({ behavior: "smooth", block: "center" });
+            
+            // ハイライト演出
+            element.classList.remove("bg-gray-100");
+            element.classList.add("bg-yellow-100", "ring-2", "ring-yellow-400");
+            setTimeout(() => {
+                element.classList.remove("bg-yellow-100", "ring-2", "ring-yellow-400");
+                element.classList.add("bg-gray-100");
+            }, 1500);
+        }
+    }, 100);
+}
+
+// --- アクションハンドラ ---
 
 async function handleTaskEditorClick(event) {
     const target = event.target;
@@ -211,7 +241,9 @@ async function handleTaskEditorClick(event) {
 }
 
 async function handleSaveGoal() {
-    const taskName = goalModalTaskNameInput.value;
+    // 1. 選択状態（編集中の業務名）を取得
+    const currentTaskName = goalModalTaskNameInput.value;
+    
     const goalId = goalModalGoalIdInput.value;
     const title = goalModalTitleInput.value.trim();
     const target = parseInt(goalModalTargetInput.value, 10);
@@ -221,15 +253,15 @@ async function handleSaveGoal() {
         return;
     }
 
+    // まず現在のデータで更新用データを作る
     const currentTasks = getAllTaskObjects();
-    const taskIndex = currentTasks.findIndex((t) => t.name === taskName);
+    const taskIndex = currentTasks.findIndex((t) => t.name === currentTaskName);
     if (taskIndex === -1) return;
 
     const updatedTasks = JSON.parse(JSON.stringify(currentTasks));
     const task = updatedTasks[taskIndex];
 
     if (goalId) {
-        // 編集
         const goalIndex = task.goals.findIndex((g) => g.id === goalId || g.title === goalId);
         if (goalIndex !== -1) {
             task.goals[goalIndex] = {
@@ -241,7 +273,6 @@ async function handleSaveGoal() {
             };
         }
     } else {
-        // 新規
         const newGoal = {
             id: "goal_" + Date.now(),
             title, target,
@@ -255,11 +286,23 @@ async function handleSaveGoal() {
     }
 
     try {
+        // 保存実行
         await saveAllTasksToFirestore(updatedTasks);
-        updateGlobalTaskObjects(updatedTasks);
+        
+        // 2. リロード（DBから最新を取得）
+        const freshTasks = await fetchLatestTasksFromDB();
+        
+        // グローバル変数更新
+        updateGlobalTaskObjects(freshTasks);
         
         closeGoalModal();
-        renderTaskEditor(updatedTasks); // 最新データを渡して描画
+        
+        // 最新データで描画
+        renderTaskEditor(freshTasks);
+        
+        // 3. 選択状態を戻す（スクロール＆ハイライト）
+        restoreSelectionState(currentTaskName);
+        
         alert("工数を保存しました。");
     } catch (error) {
         console.error("Error saving goal:", error);
@@ -268,7 +311,7 @@ async function handleSaveGoal() {
 }
 
 async function handleAddTask() {
-    const newTaskIn = document.getElementById("new-task-input"); // ここも再取得
+    const newTaskIn = document.getElementById("new-task-input");
     if (!newTaskIn) return;
     const newTaskName = newTaskIn.value.trim();
     
@@ -286,10 +329,17 @@ async function handleAddTask() {
     const updatedTasks = [...currentTasks, { name: newTaskName, memo: "", goals: [] }];
     try {
         await saveAllTasksToFirestore(updatedTasks);
-        updateGlobalTaskObjects(updatedTasks);
+        
+        // リロード
+        const freshTasks = await fetchLatestTasksFromDB();
+        updateGlobalTaskObjects(freshTasks);
         
         newTaskIn.value = "";
-        renderTaskEditor(updatedTasks);
+        renderTaskEditor(freshTasks);
+        
+        // 新しい業務へ移動
+        restoreSelectionState(newTaskName);
+        
         alert(`業務「${newTaskName}」を追加しました。`);
     } catch (error) { console.error(error); }
 }
@@ -309,7 +359,13 @@ async function handleSaveTaskMemo(taskName, taskItemElement) {
 
     try {
         await saveAllTasksToFirestore(updatedTasks);
-        updateGlobalTaskObjects(updatedTasks);
+        
+        // メモ保存も念のためリロードして整合性を保つ
+        const freshTasks = await fetchLatestTasksFromDB();
+        updateGlobalTaskObjects(freshTasks);
+        
+        // メモの場合はフォーカスが外れると不便なので、アラートだけにするか、
+        // 必要なら restoreSelectionState(taskName) を呼んでも良い
         alert("メモを保存しました。");
     } catch(error) { console.error(error); }
 }
@@ -327,8 +383,12 @@ function handleDeleteTask(taskNameToDelete) {
 
             try {
                 await saveAllTasksToFirestore(updatedTasks);
-                updateGlobalTaskObjects(updatedTasks);
-                renderTaskEditor(updatedTasks);
+                
+                // リロード
+                const freshTasks = await fetchLatestTasksFromDB();
+                updateGlobalTaskObjects(freshTasks);
+                
+                renderTaskEditor(freshTasks);
                 alert(`業務「${escapeHtml(taskNameToDelete)}」を削除しました。`);
             } catch(error) { 
                 console.error(error);
@@ -339,6 +399,7 @@ function handleDeleteTask(taskNameToDelete) {
     );
 }
 
+// 担当者集計などは変更なし
 async function toggleMembersList(button, taskName) {
     const container = button.nextElementSibling;
     if (!container) return;
