@@ -15,16 +15,6 @@ export function closeModal(modalElement) {
     if (modalElement) modalElement.classList.add("hidden");
 }
 
-/**
- * 3. 確認モーダル (★最重要)
- * cloneNode を使用することで、以前のイベントリスナーが残って
- * 「1回押しただけなのに2回削除される」といったバグを完全に防いでいます。
- */
-export function showConfirmationModal(message, onConfirm, onCancel = hideConfirmationModal) {
-    if (!confirmationModal || !modalMessage || !modalConfirmBtn || !modalCancelBtn) {
-        if (confirm(message)) onConfirm?.(); else onCancel?.();
-        return;
-    }
 
     modalMessage.textContent = message;
 
