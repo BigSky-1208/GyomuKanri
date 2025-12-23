@@ -164,28 +164,7 @@ export function renderTaskEditor() {
              </div>
         `;
 
-        let goalsListHtml = "";
-        if (task.goals && task.goals.length > 0) {
-            goalsListHtml = `<div class="mt-3 space-y-2">`;
-            task.goals.forEach((goal) => {
-                goalsListHtml += `
-                    <div class="flex justify-between items-center bg-white border border-gray-200 p-2 rounded text-sm" id="goal-row-${goal.id || goal.title}">
-                        <span class="font-medium text-gray-700 truncate mr-2">
-                            ${escapeHtml(goal.title)} 
-                            <span class="text-xs text-gray-500">(${goal.target}件)</span>
-                        </span>
-                        ${isManager ? `
-                        <button class="add-goal-btn text-blue-600 hover:text-blue-800 text-xs font-bold px-2 py-1 border border-blue-200 rounded hover:bg-blue-50" 
-                                data-task-name="${escapeHtml(task.name)}" 
-                                data-goal-id="${goal.id || goal.title}">
-                            編集
-                        </button>
-                        ` : ''}
-                    </div>
-                `;
-            });
-            goalsListHtml += `</div>`;
-        }
+        // ★修正: ここにあった goalsListHtml の生成処理を削除しました
 
         div.innerHTML = `
             <div class="flex justify-between items-center">
@@ -199,7 +178,7 @@ export function renderTaskEditor() {
             <div class="text-right mt-2">
                 ${task.name !== "休憩" ? `<button class="save-task-btn bg-blue-500 text-white text-xs font-bold py-1 px-2 rounded hover:bg-blue-600" data-task-name="${escapeHtml(task.name)}">メモを保存</button>` : ''}
             </div>
-            ${goalsListHtml}
+            
             ${addGoalButtonHtml}
             ${membersToggleHtml}
         `;
