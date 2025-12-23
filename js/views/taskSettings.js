@@ -110,7 +110,9 @@ export function setupTaskSettingsEventListeners() {
 }
 
 /**
- * 業務リスト（エディタ）の描画
+ * 業務リストの描画
+ * ★修正: 引数でデータを受け取れるように変更
+ * （引数がなければ、従来の allTaskObjects を使う）
  */
 export function renderTaskEditor(tasksToRender = allTaskObjects) {
     if (!taskListEditor || !addTaskForm) return;
@@ -249,7 +251,6 @@ async function handleSaveGoal() {
         updateGlobalTaskObjects(updatedTasks); // グローバル変数を更新
         closeGoalModal();       // モーダルを閉じる
         renderTaskEditor();     // 画面を再描画
-        onSuccessCallback();
     } catch (error) {
         console.error("Error saving goal:", error);
         alert("保存中にエラーが発生しました。");
