@@ -2,7 +2,7 @@
 
 import { db, userId } from "../../main.js";
 import { collection, query, where, getDocs, doc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { showConfirmationModal, hideConfirmationModal, fixCheckoutModal } from "../../components/modal.js";
+import { showConfirmationModal, hideConfirmationModal, fixCheckoutModal } from "../../components/modal/index.js";
 
 /**
  * 退勤忘れを修正するロジック
