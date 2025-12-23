@@ -3,7 +3,7 @@
 import { db, showView, VIEWS } from "../../main.js"; 
 // ★修正1: getDoc をインポートに追加
 import { doc, setDoc, onSnapshot, collection, query, where, getDocs, addDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { openMessageModal, showHelpModal } from "../../components/modal.js"; 
+import { openMessageModal, showHelpModal } from "../../components/modal/index.js"; 
 import { openExportExcelModal } from "../../excelExport.js"; 
 
 import { startListeningForStatusUpdates, stopListeningForStatusUpdates, forceStopUser } from "./statusDisplay.js";
