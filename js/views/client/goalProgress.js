@@ -7,61 +7,70 @@ import { getJSTDateString } from "../../utils.js";
 import { setHasContributed } from "./timer.js";
 
 // --- 進捗更新処理 ---
+// js/views/progress/goalProgress.js など
+
 export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
+    // 【修正点1】引数の goalId が空の場合、モーダルのデータから取得を試みる
+    const finalGoalId = goalId || document.getElementById("goal-modal")?.dataset.currentGoalId;
+
     const contribution = parseInt(inputElement.value, 10);
+
+    // 【修正点2】バリデーションを強化（goalIdが無いとFirebaseが死ぬため）
+    if (!finalGoalId) {
+        console.error("goalId is missing!");
+        alert("エラー：工数IDが取得できません。もう一度開き直してください。");
+        return;
+    }
 
     if (isNaN(contribution) || contribution <= 0) {
         alert("正の数値を入力してください。");
         return;
     }
 
+    // --- ここから先のロジックは維持 ---
     const taskIndex = allTaskObjects.findIndex((t) => t.name === taskName);
     if (taskIndex === -1) return;
 
     const goalIndex = allTaskObjects[taskIndex].goals.findIndex(
-        (g) => g.id === goalId
+        (g) => g.id === finalGoalId // finalGoalId を使用
     );
     if (goalIndex === -1) return;
 
-    // Update local state deeply
     const updatedTasks = JSON.parse(JSON.stringify(allTaskObjects));
     const task = updatedTasks[taskIndex];
     const goal = task.goals[goalIndex];
     const currentProgress = goal.current || 0;
     
-    // Update Goal Object
     goal.current = currentProgress + contribution;
 
     try {
-        // 1. Save updated tasks to Firestore
         const tasksRef = doc(db, "settings", "tasks");
         await setDoc(tasksRef, { list: updatedTasks }); 
 
-        // 2. Log contribution to work_logs
         await addDoc(collection(db, `work_logs`), {
             type: "goal",
             userId,
             userName,
             task: taskName,
-            goalId: goal.id,
+            goalId: finalGoalId, // undefined を回避
             goalTitle: goal.title,
             contribution: contribution,
             date: getJSTDateString(new Date()),
             startTime: Timestamp.fromDate(new Date()),
         });
 
-        // 工数入力フラグをTrueにする
-        setHasContributed(true);
-
+        // 成功時の処理
+        if (typeof setHasContributed === 'function') setHasContributed(true);
         inputElement.value = "";
-        // UI update is handled by the Firestore snapshot listener in main.js -> clientUI.js re-render
+        
+        // モーダルを閉じる場合はここに追加
+        // closeModal(document.getElementById("goal-modal"));
 
     } catch (error) {
         console.error("Error updating goal progress:", error);
         alert("進捗の更新中にエラーが発生しました。");
     }
 }
-
 // --- ★追加: 単一の工数進捗を表示する関数 ---
 export function renderSingleGoalDisplay(task, goalId) {
     const container = document.getElementById("goal-progress-container");
