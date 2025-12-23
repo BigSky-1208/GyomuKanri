@@ -4,11 +4,6 @@ import { doc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/fireba
 import { allTaskObjects, updateGlobalTaskObjects, escapeHtml } from "../../main.js";
 import { showModal, closeModal, showConfirmationModal } from "./core.js";
 
-// --- DOM要素の取得とエクスポート ---
-export const taskModal = document.getElementById("task-modal");
-export const goalModal = document.getElementById("goal-modal");
-export const goalDetailsModal = document.getElementById("goal-details-modal");
-
 /**
  * 1. 業務(Task)の追加・編集モーダルを開く
  * 元の openTaskModal の全入力を網羅
