@@ -10,15 +10,20 @@ import { setHasContributed } from "./timer.js";
 // js/views/progress/goalProgress.js など
 
 export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
-    // 【修正点1】引数の goalId が空の場合、モーダルのデータから取得を試みる
-    const finalGoalId = goalId || document.getElementById("goal-modal")?.dataset.currentGoalId;
+    // 【修正】引数があればそれを使い、なければモーダルを見る（進捗画面用）
+    // もし両方なければ、現在実行中のタスクから取得を試みる
+    let finalGoalId = goalId;
+
+    if (!finalGoalId) {
+        finalGoalId = document.getElementById("goal-modal")?.dataset.currentGoalId;
+    }
 
     const contribution = parseInt(inputElement.value, 10);
 
-    // 【修正点2】バリデーションを強化（goalIdが無いとFirebaseが死ぬため）
+    // バリデーション
     if (!finalGoalId) {
         console.error("goalId is missing!");
-        alert("エラー：工数IDが取得できません。もう一度開き直してください。");
+        alert("エラー：工数IDが取得できません。ページを更新してください。");
         return;
     }
 
@@ -26,6 +31,21 @@ export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
         alert("正の数値を入力してください。");
         return;
     }
+
+    // --- 以降のロジックは変更なし ---
+    const taskIndex = allTaskObjects.findIndex((t) => t.name === taskName);
+    if (taskIndex === -1) return;
+
+    // finalGoalId を使って検索
+    const goalIndex = allTaskObjects[taskIndex].goals.findIndex(
+        (g) => g.id === finalGoalId || g.title === finalGoalId
+    );
+    if (goalIndex === -1) {
+        console.error("Goal not found in task:", finalGoalId);
+        return;
+    }
+    
+    // ...以下、Firestore保存処理へ続く
 
     // --- ここから先のロジックは維持 ---
     const taskIndex = allTaskObjects.findIndex((t) => t.name === taskName);
@@ -76,7 +96,7 @@ export function renderSingleGoalDisplay(task, goalId) {
     const container = document.getElementById("goal-progress-container");
     if (!container) return;
 
-    // goalId で検索。見つからなければタイトルで検索（互換性のため）
+    // IDまたはタイトルで検索
     const goal = task.goals.find(g => g.id === goalId) || task.goals.find(g => g.title === goalId);
     
     if (!goal) {
@@ -84,7 +104,7 @@ export function renderSingleGoalDisplay(task, goalId) {
         container.classList.add("hidden");
         return;
     }
-
+    
     const current = goal.current || 0;
     const target = goal.target || 0;
     const percentage = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
@@ -123,6 +143,7 @@ export function renderSingleGoalDisplay(task, goalId) {
     // イベントリスナー設定
     const updateBtn = document.getElementById("update-goal-btn");
     const inputVal = document.getElementById("goal-contribution-input");
+    const targetId = goal.id || goal.title;
 
     updateBtn.addEventListener("click", () => {
         handleUpdateGoalProgress(task.name, goal.id, inputVal);
