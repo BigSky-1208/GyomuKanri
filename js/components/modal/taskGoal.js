@@ -4,78 +4,77 @@ import { doc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/fireba
 import { allTaskObjects, updateGlobalTaskObjects, escapeHtml } from "../../main.js";
 import { showModal, closeModal, showConfirmationModal } from "./core.js";
 
-// --- DOM要素の取得 ---
+// --- DOM要素の取得とエクスポート ---
 export const taskModal = document.getElementById("task-modal");
 export const goalModal = document.getElementById("goal-modal");
 export const goalDetailsModal = document.getElementById("goal-details-modal");
 
 /**
- * 業務（Task）追加・編集モーダルを開く
+ * 1. 業務(Task)の追加・編集モーダルを開く
+ * 元の openTaskModal の全入力を網羅
  */
 export function openTaskModal(task = null) {
     const title = document.getElementById("task-modal-title");
-    const nameInput = document.getElementById("task-name-input");
-    if (!taskModal || !nameInput) return;
+    const nameIn = document.getElementById("task-name-input");
+    const catSel = document.getElementById("task-category-select");
+    const memoIn = document.getElementById("task-memo-input");
+    if (!taskModal || !nameIn) return;
 
     if (task) {
         title.textContent = "業務を編集";
-        nameInput.value = task.name;
-        taskModal.dataset.editingName = task.name;
+        nameIn.value = task.name;
+        catSel.value = task.category || "A";
+        memoIn.value = task.memo || "";
+        taskModal.dataset.editingName = task.name; // 変更前の名前を保存
     } else {
         title.textContent = "新しい業務を追加";
-        nameInput.value = "";
+        nameIn.value = ""; catSel.value = "A"; memoIn.value = "";
         delete taskModal.dataset.editingName;
     }
     showModal(taskModal);
-    nameInput.focus();
+    nameIn.focus();
 }
 
 /**
- * 工数（Goal）追加・編集モーダルを開く
+ * 2. 工数(Goal)の追加・編集モーダルを開く
+ * 元のコードの全入力項目（目標値、期限、工数期限、メモ）を完備
  */
 export function openGoalModal(mode, taskName, goalId = null) {
-    // 関数内で要素を取得して ReferenceError を防ぐ
     const title = document.getElementById("goal-modal-title");
-    const taskInput = document.getElementById("goal-modal-task-name");
-    const goalIdInput = document.getElementById("goal-modal-goal-id");
-    const titleInput = document.getElementById("goal-modal-title-input");
-    const targetInput = document.getElementById("goal-modal-target-input");
-    const deadlineInput = document.getElementById("goal-modal-deadline-input");
-    const effortDeadlineInput = document.getElementById("goal-modal-effort-deadline-input");
-    const memoInput = document.getElementById("goal-modal-memo-input");
+    const taskIn = document.getElementById("goal-modal-task-name");
+    const idIn = document.getElementById("goal-modal-goal-id");
+    const titleIn = document.getElementById("goal-modal-title-input");
+    const targetIn = document.getElementById("goal-modal-target-input");
+    const deadlineIn = document.getElementById("goal-modal-deadline-input");
+    const effortIn = document.getElementById("goal-modal-effort-deadline-input");
+    const memoIn = document.getElementById("goal-modal-memo-input");
 
-    if (!goalModal) {
-        console.error("goalModal element not found");
-        return;
-    }
+    if (!goalModal) return;
 
-    taskInput.value = taskName;
-    goalIdInput.value = goalId || "";
+    taskIn.value = taskName;
+    idIn.value = goalId || "";
 
     if (mode === 'edit' && goalId) {
         title.textContent = "工数の編集";
-        const task = allTaskObjects.find((t) => t.name === taskName);
-        const goal = task?.goals?.find((g) => g.id === goalId);
+        const task = allTaskObjects.find(t => t.name === taskName);
+        const goal = task?.goals?.find(g => g.id === goalId);
         if (goal) {
-            titleInput.value = goal.title || "";
-            targetInput.value = goal.target || "";
-            deadlineInput.value = goal.deadline || "";
-            effortDeadlineInput.value = goal.effortDeadline || "";
-            memoInput.value = goal.memo || "";
+            titleIn.value = goal.title || "";
+            targetIn.value = goal.target || "";
+            deadlineIn.value = goal.deadline || "";
+            effortIn.value = goal.effortDeadline || "";
+            memoIn.value = goal.memo || "";
         }
     } else {
         title.textContent = `[${escapeHtml(taskName)}] に工数を追加`;
-        titleInput.value = "";
-        targetInput.value = "";
-        deadlineInput.value = "";
-        effortDeadlineInput.value = "";
-        memoInput.value = "";
+        [titleIn, targetIn, deadlineIn, effortIn, memoIn].forEach(i => i.value = "");
     }
     showModal(goalModal);
+    titleIn.focus();
 }
 
 /**
- * 工数を「完了」にするロジック
+ * 3. 工数の完了処理 (Firebase連携)
  */
 export async function handleCompleteGoal(taskName, goalId) {
     const task = allTaskObjects.find(t => t.name === taskName);
@@ -84,39 +83,28 @@ export async function handleCompleteGoal(taskName, goalId) {
 
     showConfirmationModal(`「${goal.title}」を完了にしますか？`, async () => {
         const updatedGoals = task.goals.map(g => 
-            g.id === goalId ? { ...g, isCompleted: true, completedAt: new Date() } : g
+            g.id === goalId ? { ...g, isCompleted: true, completedAt: new Date().toISOString() } : g
         );
-        const newTaskList = allTaskObjects.map(t => t.name === taskName ? { ...t, goals: updatedGoals } : t);
-        
-        await updateDoc(doc(db, "settings", "tasks"), { list: newTaskList });
-        updateGlobalTaskObjects(newTaskList);
-        
-        // 進捗画面なら再描画が必要（progress.js側の再描画関数を呼ぶかreload）
-        if (window.location.hash === "#progress") location.reload(); 
+        await updateFirestoreGoals(taskName, updatedGoals);
     });
 }
 
 /**
- * 工数を「削除」するロジック
+ * 4. 工数の削除処理 (Firebase連携)
  */
 export async function handleDeleteGoal(taskName, goalId) {
     const task = allTaskObjects.find(t => t.name === taskName);
     const goal = task?.goals?.find(g => g.id === goalId);
     if (!goal) return;
 
-    showConfirmationModal(`工数「${goal.title}」を削除してもよろしいですか？\nこの操作は取り消せません。`, async () => {
+    showConfirmationModal(`「${goal.title}」を削除しますか？\nこの操作は戻せません。`, async () => {
         const updatedGoals = task.goals.filter(g => g.id !== goalId);
-        const newTaskList = allTaskObjects.map(t => t.name === taskName ? { ...t, goals: updatedGoals } : t);
-
-        await updateDoc(doc(db, "settings", "tasks"), { list: newTaskList });
-        updateGlobalTaskObjects(newTaskList);
-        
-        location.reload(); 
+        await updateFirestoreGoals(taskName, updatedGoals);
     });
 }
 
 /**
- * 完了した工数を「未完了に戻す（復元）」
+ * 5. 工数の復元処理 (Firebase連携)
  */
 export async function handleRestoreGoalClick(taskName, goalId) {
     const task = allTaskObjects.find(t => t.name === taskName);
@@ -127,11 +115,21 @@ export async function handleRestoreGoalClick(taskName, goalId) {
         const updatedGoals = task.goals.map(g => 
             g.id === goalId ? { ...g, isCompleted: false, completedAt: null } : g
         );
+        await updateFirestoreGoals(taskName, updatedGoals);
+    });
+}
+
+/**
+ * Firestore更新の共通補助関数
+ */
+async function updateFirestoreGoals(taskName, updatedGoals) {
+    try {
         const newTaskList = allTaskObjects.map(t => t.name === taskName ? { ...t, goals: updatedGoals } : t);
-        
         await updateDoc(doc(db, "settings", "tasks"), { list: newTaskList });
         updateGlobalTaskObjects(newTaskList);
-        
-        location.reload();
-    });
+        location.reload(); // UIを確実に最新状態にするため
+    } catch (e) {
+        console.error("Firestore Update Error:", e);
+        alert("更新に失敗しました。");
+    }
 }
