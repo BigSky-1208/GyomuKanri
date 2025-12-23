@@ -2,7 +2,8 @@
 
 import { 
     db, 
-    allTaskObjects, 
+    // allTaskObjects, // ★直接変数をインポートするのをやめ、下のゲッター関数を使います
+    getAllTaskObjects, // ★ main.js に追加してもらった関数をインポート
     authLevel, 
     updateGlobalTaskObjects, 
     handleGoBack, 
@@ -95,13 +96,16 @@ export function setupTaskSettingsEventListeners() {
 export function renderTaskEditor() {
     if (!taskListEditor || !addTaskForm) return;
 
+    // ★重要: 必ず関数経由で最新データを取得する
+    const currentTasks = getAllTaskObjects();
+
     const isHost = authLevel === "admin" || currentUserRole === "host";
     const isManager = isHost || currentUserRole === "manager";
 
     addTaskForm.style.display = isHost ? "flex" : "none";
     taskListEditor.innerHTML = "";
 
-    const sortedTasks = [...allTaskObjects].sort((a, b) => {
+    const sortedTasks = [...currentTasks].sort((a, b) => {
         if (a.name === "休憩") return 1;
         if (b.name === "休憩") return -1;
         return (a.name || "").localeCompare(b.name || "", "ja");
@@ -175,14 +179,6 @@ async function handleTaskEditorClick(event) {
     }
 }
 
-// -----------------------------------------------------------
-// ★ handleDeleteGoal と同じ構造にするためのコールバック関数定義
-// -----------------------------------------------------------
-const onSuccessCallback = () => {
-    closeGoalModal();
-    renderTaskEditor();
-};
-
 /**
  * 工数の保存処理
  */
@@ -197,10 +193,12 @@ async function handleSaveGoal() {
         return;
     }
 
-    const taskIndex = allTaskObjects.findIndex((t) => t.name === taskName);
+    // ★関数経由で最新データを取得
+    const currentTasks = getAllTaskObjects();
+    const taskIndex = currentTasks.findIndex((t) => t.name === taskName);
     if (taskIndex === -1) return;
 
-    const updatedTasks = JSON.parse(JSON.stringify(allTaskObjects));
+    const updatedTasks = JSON.parse(JSON.stringify(currentTasks));
     const task = updatedTasks[taskIndex];
 
     if (goalId) {
@@ -229,14 +227,14 @@ async function handleSaveGoal() {
         task.goals.push(newGoal);
     }
 
-    // ★ handleDeleteGoal と全く同じ処理順序
     try {
-        console.log("更新前(allTaskObjects):", allTaskObjects[taskIndex].goals[0]?.title); // 仮
         await saveAllTasksToFirestore(updatedTasks);
-        console.log("更新後(allTaskObjects):", allTaskObjects[taskIndex].goals[0]?.title);
-        updateGlobalTaskObjects(updatedTasks);
-        onSuccessCallback(); // 定義したコールバックを実行
+        updateGlobalTaskObjects(updatedTasks); // main.jsの変数を更新
+        
+        closeGoalModal();       // 閉じる
+        renderTaskEditor();     // 再描画 (getAllTaskObjects経由で最新を取得するはず)
         alert("工数を保存しました。");
+
     } catch (error) {
         console.error("Error saving goal:", error);
         alert("保存中にエラーが発生しました。");
@@ -252,20 +250,24 @@ async function handleAddTask() {
         alert("有効な業務名を入力してください。");
         return;
     }
-    if (allTaskObjects.some((t) => t.name === newTaskName)) {
+
+    // ★関数経由で最新データを取得
+    const currentTasks = getAllTaskObjects();
+    
+    if (currentTasks.some((t) => t.name === newTaskName)) {
         alert("既に存在する業務名です。");
         return;
     }
 
-    const updatedTasks = [...allTaskObjects, { name: newTaskName, memo: "", goals: [] }];
-    
-    // ★ handleDeleteGoal と全く同じ処理順序
+    const updatedTasks = [...currentTasks, { name: newTaskName, memo: "", goals: [] }];
     try {
         await saveAllTasksToFirestore(updatedTasks);
         updateGlobalTaskObjects(updatedTasks);
-        onSuccessCallback();
+        
         newTaskInput.value = "";
+        renderTaskEditor();
         alert(`業務「${newTaskName}」を追加しました。`);
+
     } catch (error) { console.error(error); }
 }
 
@@ -275,37 +277,51 @@ async function handleAddTask() {
 async function handleSaveTaskMemo(taskName, taskItemElement) {
     const memoInput = taskItemElement?.querySelector(".task-memo-editor");
     const newMemo = memoInput.value.trim();
-    const taskIndex = allTaskObjects.findIndex((t) => t.name === taskName);
+    
+    // ★関数経由で最新データを取得
+    const currentTasks = getAllTaskObjects();
+    const taskIndex = currentTasks.findIndex((t) => t.name === taskName);
     if (taskIndex === -1) return;
 
-    if (allTaskObjects[taskIndex].memo === newMemo) return;
+    if (currentTasks[taskIndex].memo === newMemo) return;
 
-    const updatedTasks = JSON.parse(JSON.stringify(allTaskObjects));
+    const updatedTasks = JSON.parse(JSON.stringify(currentTasks));
     updatedTasks[taskIndex].memo = newMemo;
 
-    // ★ handleDeleteGoal と全く同じ処理順序
     try {
         await saveAllTasksToFirestore(updatedTasks);
         updateGlobalTaskObjects(updatedTasks);
-        onSuccessCallback();
         alert("メモを保存しました。");
     } catch(error) { console.error(error); }
 }
 
 /**
- * 業務削除処理 (これは元々動いていたのでそのまま)
+ * 業務削除処理
  */
 function handleDeleteTask(taskNameToDelete) {
-    showConfirmationModal(`業務「${escapeHtml(taskNameToDelete)}」を削除しますか？`, async () => {
-        hideConfirmationModal();
-        const updatedTasks = allTaskObjects.filter(t => t.name !== taskNameToDelete);
-        try {
-            await saveAllTasksToFirestore(updatedTasks);
-            updateGlobalTaskObjects(updatedTasks);
-            renderTaskEditor();
-            alert(`業務「${escapeHtml(taskNameToDelete)}」を削除しました。`);
-        } catch(error) { console.error(error); }
-    });
+    if (!taskNameToDelete || taskNameToDelete === "休憩") return;
+
+    showConfirmationModal(
+        `業務「${escapeHtml(taskNameToDelete)}」を削除しますか？\n\nこの業務に紐づく工数も全て削除されます。\n（関連する業務ログは削除されません）\n\nこの操作は元に戻せません。`,
+        async () => {
+            hideConfirmationModal();
+            
+            // ★関数経由で最新データを取得
+            const currentTasks = getAllTaskObjects();
+            const updatedTasks = currentTasks.filter(t => t.name !== taskNameToDelete);
+            
+            try {
+                await saveAllTasksToFirestore(updatedTasks);
+                updateGlobalTaskObjects(updatedTasks);
+                renderTaskEditor();
+                alert(`業務「${escapeHtml(taskNameToDelete)}」を削除しました。`);
+            } catch(error) { 
+                console.error(error);
+                alert("削除中にエラーが発生しました。");
+            }
+        },
+        () => { console.log("Deletion cancelled."); }
+    );
 }
 
 /**
@@ -347,9 +363,8 @@ async function toggleMembersList(button, taskName) {
     }
 }
 
-// --- ユーティリティ ---
-
 async function saveAllTasksToFirestore(tasksToSave) {
+    if (!tasksToSave) throw new Error("Invalid task list");
     const tasksRef = doc(db, "settings", "tasks");
     await setDoc(tasksRef, { list: tasksToSave });
 }
