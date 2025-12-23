@@ -2,10 +2,16 @@
 export const confirmationModal = document.getElementById("confirmation-modal");
 export const adminPasswordView = document.getElementById("admin-password-view");
 export const editLogModal = document.getElementById("edit-log-modal");
-export const fixCheckoutModal = document.getElementById("fix-checkout-modal");
+export const fixCheckoutModal = document.getElementById("fix-checkout-modal"); // ★ここだけに残す
 export const editMemoModal = document.getElementById("edit-memo-modal");
+export const helpModal = document.getElementById("help-modal");
+export const goalDetailsModal = document.getElementById("goal-details-modal");
+export const goalModal = document.getElementById("goal-modal");
 export const exportExcelModal = document.getElementById("export-excel-modal");
 export const editContributionModal = document.getElementById("edit-contribution-modal");
+export const breakReservationModal = document.getElementById("break-reservation-modal");
+export const addUserModal = document.getElementById("add-user-modal");
+export const taskModal = document.getElementById("task-modal");
 
 const modalMessage = document.getElementById("modal-message");
 let modalConfirmBtn = document.getElementById("modal-confirm-btn");
