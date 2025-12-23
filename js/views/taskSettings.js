@@ -1,8 +1,8 @@
 // js/views/taskSettings.js
 
-import { db, allTaskObjects, authLevel, updateGlobalTaskObjects, handleGoBack, showView, VIEWS, userId } from "../main.js";
-import { doc, setDoc, getDocs, collection, query, where, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { showConfirmationModal, hideConfirmationModal, showHelpModal } from "../components/modal/index.js";
+import { db, allTaskObjects, VIEWS, showView, updateGlobalTaskObjects } from "../main.js";
+import { doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { openGoalModal, closeGoalModal } from "../components/modal/index.js";
 import { formatHoursMinutes } from "../utils.js";
 
 const taskListEditor = document.getElementById("task-list-editor");
@@ -209,51 +209,88 @@ function closeGoalModal() {
     if (goalModal) goalModal.classList.add("hidden");
 }
 
+/**
+ * 工数の保存処理（追加・編集）
+ */
 async function handleSaveGoal() {
     const taskName = goalModalTaskNameInput.value;
-    const goalIndex = goalModalGoalIdInput.value;
-    
-    const title = goalTitleInput.value.trim();
-    const target = parseInt(goalTargetInput.value);
+    const goalId = goalModalGoalIdInput.value; // モーダルから受け取ったID（またはタイトル）
+    const title = goalModalTitleInput.value.trim();
+    const target = parseInt(goalModalTargetInput.value, 10);
+    const deadline = goalModalDeadlineInput.value;
+    const effortDeadline = goalModalEffortDeadlineInput.value;
+    const memo = goalModalMemoInput.value.trim();
 
-    if (!title || isNaN(target)) {
-        alert("タイトルと目標値は必須です。");
+    if (!title || isNaN(target) || target <= 0) {
+        alert("有効なタイトルと目標件数を入力してください。");
         return;
     }
 
-    const newGoal = {
-        title,
-        target,
-        deadline: goalDeadlineInput.value,
-        effortDeadline: goalEffortDeadlineInput ? goalEffortDeadlineInput.value : "",
-        memo: goalMemoInput.value,
-        completed: false
-    };
+    const taskIndex = allTaskObjects.findIndex((t) => t.name === taskName);
+    if (taskIndex === -1) return;
 
-    const updatedTasks = allTaskObjects.map(task => {
-        if (task.name === taskName) {
-            const newGoals = [...(task.goals || [])];
-            if (goalIndex !== "") {
-                // 編集（呼び出し元がないため実質未使用だがロジックは維持）
-                newGoals[parseInt(goalIndex)] = { ...newGoals[parseInt(goalIndex)], ...newGoal };
-            } else {
-                // 新規追加
-                newGoals.push(newGoal);
-            }
-            return { ...task, goals: newGoals };
+    // データのディープコピー
+    const updatedTasks = JSON.parse(JSON.stringify(allTaskObjects));
+    const task = updatedTasks[taskIndex];
+
+    if (goalId) {
+        // --- 編集モード ---
+        // ★修正: ID または タイトル で一致する工数を探す
+        const goalIndex = task.goals.findIndex((g) => g.id === goalId || g.title === goalId);
+        
+        if (goalIndex !== -1) {
+            task.goals[goalIndex] = {
+                ...task.goals[goalIndex],
+                title,
+                target,
+                deadline,
+                effortDeadline,
+                memo,
+            };
+        } else {
+            console.error("編集対象の工数が見つかりませんでした:", goalId);
+            alert("エラー：編集対象の工数が見つかりません。");
+            return;
         }
-        return task;
-    });
+    } else {
+        // --- 新規追加モード ---
+        const newGoal = {
+            id: "goal_" + Date.now(), // IDを新規発行
+            title,
+            target,
+            deadline,
+            effortDeadline,
+            memo,
+            current: 0,
+            isComplete: false,
+        };
+        if (!task.goals) task.goals = [];
+        task.goals.push(newGoal);
+    }
 
     try {
-        await saveAllTasksToFirestore(updatedTasks);
+        const tasksRef = doc(db, "settings", "tasks");
+        await setDoc(tasksRef, { list: updatedTasks });
+        
+        // ★重要: アプリ内のグローバル変数を最新状態に更新
         updateGlobalTaskObjects(updatedTasks);
-        renderTaskEditor();
+        
         closeGoalModal();
-        alert("工数を追加しました。");
+
+        // ★追加: 現在の表示をリフレッシュする
+        // 業務設定画面にいる場合
+        if (document.getElementById('task-settings-view').classList.contains('active')) {
+            renderTaskSettings();
+        } 
+        // 業務進捗画面から編集した場合
+        else if (document.getElementById('progress-view').classList.contains('active')) {
+            const { initializeProgressView } = await import('./progress/progress.js');
+            initializeProgressView();
+        }
+
     } catch (error) {
         console.error("Error saving goal:", error);
-        alert("保存中にエラーが発生しました。");
+        alert("工数の保存中にエラーが発生しました。");
     }
 }
 
