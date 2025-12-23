@@ -3,7 +3,7 @@
 import { db, showView, VIEWS } from "../../main.js";
 // ★修正: setDoc をインポートに追加
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, query, getDocs, writeBatch, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { showConfirmationModal, hideConfirmationModal, closeModal } from "../../components/modal.js";
+import { showConfirmationModal, hideConfirmationModal, closeModal } from "../../components/modal/index.js";
 
 // --- Module State ---
 let userListUnsubscribe = null;
