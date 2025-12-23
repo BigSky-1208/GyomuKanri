@@ -2,7 +2,7 @@
 
 import { db, allTaskObjects } from "../../main.js";
 import { doc, updateDoc, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { showConfirmationModal, hideConfirmationModal } from "../../components/modal.js";
+import { showConfirmationModal, hideConfirmationModal } from "../../components/modal/index.js";
 import { escapeHtml } from "../../utils.js";
 
 export async function handleCompleteGoal(taskName, goalId, onSuccessCallback) {
