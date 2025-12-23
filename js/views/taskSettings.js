@@ -7,7 +7,10 @@ import {
     handleGoBack, 
     showView, 
     VIEWS, 
-    userId 
+    userId,
+    // ★追加: メインロジックから更新用関数をインポート
+    updateGlobalTaskObjects, 
+    refreshUIBasedOnTaskUpdate 
 } from "../main.js";
 import { 
     doc, 
@@ -60,18 +63,17 @@ export async function initializeTaskSettingsView() {
     const input = document.getElementById("new-task-input");
     if(input) input.value = '';
 
-    // ★リロード後の復元処理★
+    // リロード後の復元処理（手動リロード時のために残しておく）
     const highlightTaskName = sessionStorage.getItem("highlightTaskName");
     if (highlightTaskName) {
-        sessionStorage.removeItem("highlightTaskName"); // 使い終わったら消す
+        sessionStorage.removeItem("highlightTaskName");
         
         const actionMessage = sessionStorage.getItem("actionMessage");
         if (actionMessage) {
-            alert(actionMessage); // 先にメッセージを出す
+            alert(actionMessage);
             sessionStorage.removeItem("actionMessage");
         }
         
-        // ★ここがポイント: 要素が見つかるまで粘り強く待ってからスクロール
         restoreSelectionStateWithRetry(highlightTaskName);
     }
 }
@@ -206,7 +208,7 @@ export function renderTaskEditor() {
 }
 
 /**
- * ★重要: 要素が見つかるまで待機して選択状態を復元する（リトライ機能付き）
+ * 要素が見つかるまで待機して選択状態を復元する（リトライ機能付き）
  */
 function restoreSelectionStateWithRetry(taskName, retryCount = 0) {
     if (!taskName) return;
@@ -215,9 +217,6 @@ function restoreSelectionStateWithRetry(taskName, retryCount = 0) {
     const element = document.getElementById(`task-row-${taskName}`);
 
     if (element) {
-        // 見つかった場合：即実行
-        console.log(`復元成功: ${taskName} (試行回数: ${retryCount})`);
-        
         // スクロール
         element.scrollIntoView({ behavior: "smooth", block: "center" });
         
@@ -305,14 +304,15 @@ async function handleSaveGoal() {
 
     try {
         await saveAllTasksToFirestore(updatedTasks);
-        closeGoalModal();
-
-        // ★リロードの仕込み
-        sessionStorage.setItem("highlightTaskName", taskName);
-        sessionStorage.setItem("actionMessage", "工数を保存しました。");
         
-        // ★リロード
-        window.location.reload();
+        // ★修正: リロードせずにメモリと画面を更新
+        updateGlobalTaskObjects(updatedTasks);
+        closeGoalModal();
+        await refreshUIBasedOnTaskUpdate();
+        
+        // ハイライト復元と完了メッセージ
+        restoreSelectionStateWithRetry(taskName);
+        alert("工数を保存しました。");
 
     } catch (error) {
         console.error("Error saving goal:", error);
@@ -340,12 +340,13 @@ async function handleAddTask() {
     try {
         await saveAllTasksToFirestore(updatedTasks);
 
-        // ★リロードの仕込み
-        sessionStorage.setItem("highlightTaskName", newTaskName);
-        sessionStorage.setItem("actionMessage", `業務「${newTaskName}」を追加しました。`);
+        // ★修正: リロードせずに更新
+        updateGlobalTaskObjects(updatedTasks);
+        await refreshUIBasedOnTaskUpdate();
         
-        // ★リロード
-        window.location.reload();
+        newTaskIn.value = "";
+        restoreSelectionStateWithRetry(newTaskName);
+        alert(`業務「${newTaskName}」を追加しました。`);
 
     } catch (error) { console.error(error); }
 }
@@ -365,12 +366,12 @@ async function handleSaveTaskMemo(taskName, taskItemElement) {
     try {
         await saveAllTasksToFirestore(updatedTasks);
         
-        // ★リロードの仕込み
-        sessionStorage.setItem("highlightTaskName", taskName);
-        sessionStorage.setItem("actionMessage", "メモを保存しました。");
+        // ★修正: リロードせずに更新
+        updateGlobalTaskObjects(updatedTasks);
+        await refreshUIBasedOnTaskUpdate();
         
-        // ★リロード
-        window.location.reload();
+        restoreSelectionStateWithRetry(taskName);
+        alert("メモを保存しました。");
 
     } catch(error) { console.error(error); }
 }
@@ -388,11 +389,11 @@ function handleDeleteTask(taskNameToDelete) {
             try {
                 await saveAllTasksToFirestore(updatedTasks);
                 
-                // 削除時はハイライトなし、メッセージのみ
-                sessionStorage.setItem("actionMessage", `業務「${escapeHtml(taskNameToDelete)}」を削除しました。`);
+                // ★修正: リロードせずに更新
+                updateGlobalTaskObjects(updatedTasks);
+                await refreshUIBasedOnTaskUpdate();
                 
-                // ★リロード
-                window.location.reload();
+                alert(`業務「${escapeHtml(taskNameToDelete)}」を削除しました。`);
 
             } catch(error) { 
                 console.error(error);
