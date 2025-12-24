@@ -123,9 +123,62 @@ function listenForMyStatus() {
 
     // Firestoreの自分のドキュメントを監視
     myStatusUnsubscribe = onSnapshot(doc(db, "work_status", userId), (docSnap) => {
-        // データが変更されたら、timer.js の状態復元関数を呼んで画面を同期
-        // （自分が操作した時も発火しますが、restoreTimerStateは冪等なので問題ありません）
-        restoreTimerState();
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+
+            // --- ★ここから追加: DBの最新状態をローカルストレージに反映 ---
+            // サーバー側(Worker)で休憩や帰宅に変更されていた場合、ここでローカルも追従させます
+            
+            const dbIsWorking = data.isWorking === 1 || data.isWorking === true;
+
+            if (dbIsWorking) {
+                // DBが「稼働中（休憩含む）」の場合
+                localStorage.setItem("isWorking", "1");
+                
+                if (data.currentTask) {
+                    localStorage.setItem("currentTask", data.currentTask);
+                }
+                
+                if (data.startTime) {
+                    localStorage.setItem("startTime", data.startTime);
+                }
+
+                // 工数情報の同期
+                if (data.currentGoalId) {
+                    localStorage.setItem("currentGoalId", data.currentGoalId);
+                } else {
+                    localStorage.removeItem("currentGoalId");
+                }
+
+                // タイトルは currentGoal または currentGoalTitle に入っている想定
+                const goalTitle = data.currentGoalTitle || data.currentGoal;
+                if (goalTitle) {
+                    localStorage.setItem("currentGoal", goalTitle);
+                } else {
+                    localStorage.removeItem("currentGoal");
+                }
+
+                // 「休憩」の場合、戻り先の業務情報(preBreakTask)も同期
+                if (data.currentTask === "休憩" && data.preBreakTask) {
+                    // DBにはオブジェクトで入っているので文字列化して保存
+                    localStorage.setItem("preBreakTask", JSON.stringify(data.preBreakTask));
+                }
+
+            } else {
+                // DBが「停止中（帰宅済）」の場合、ローカルもクリア
+                localStorage.removeItem("isWorking");
+                localStorage.removeItem("currentTask");
+                localStorage.removeItem("startTime");
+                localStorage.removeItem("currentGoal");
+                localStorage.removeItem("currentGoalId");
+                localStorage.removeItem("preBreakTask");
+                localStorage.removeItem("gyomu_timer_current_status"); // 念のため内部ステートキャッシュも消す
+            }
+            // --- ★追加ここまで ---
+
+            // 最新のローカルストレージ情報に基づいて画面を再描画
+            restoreTimerState();
+        }
     }, (error) => {
         console.error("Error listening to my status:", error);
     });
