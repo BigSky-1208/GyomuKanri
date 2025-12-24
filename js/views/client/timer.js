@@ -357,26 +357,36 @@ export async function handleStartClick() {
         return;
     }
 
-    // --- ★追加: 業務変更時の未入力チェック ---
+    // 業務変更時の未入力チェック
     const isWorking = localStorage.getItem("isWorking") === "1";
     
     // 現在稼働中 且つ 目標が設定されている 且つ 進捗が未入力の場合
     if (isWorking && currentGoalId && !hasContributedToCurrentGoal) {
+        // ... (モーダル表示のコード、ここは変更なし) ...
         const { showConfirmationModal, hideConfirmationModal } = await import("../../components/modal/index.js");
         
         showConfirmationModal(
             `「${currentGoalTitle}」の進捗(件数)が入力されていません。\nこのまま業務を変更しますか？`,
             async () => {
-                // OKが押されたらモーダルを閉じて、業務変更を実行
                 hideConfirmationModal();
+
+                // ★追加1: モーダル経由の場合も、ここで前の業務を保存する
+                await stopCurrentTaskCore(false); 
+
                 await executeStartTask(selectedTask, selectedGoalId, selectedGoalTitle);
             },
-            hideConfirmationModal // キャンセルなら何もしない
+            hideConfirmationModal
         );
-        return; // 一旦処理を抜ける
+        return; 
     }
 
-    // まだ稼働していない、またはチェック不要な場合はそのまま実行
+    // ★追加2: 通常の変更時も、前の業務があればログを保存する
+    if (isWorking) {
+        // stopCurrentTaskCore(false) は「帰宅」ではなく「一時停止/切替」としてログを保存する関数
+        await stopCurrentTaskCore(false);
+    }
+
+    // 新しい業務を開始
     await executeStartTask(selectedTask, selectedGoalId, selectedGoalTitle);
 }
 
