@@ -54,6 +54,7 @@ export async function restoreClientState() {
     const savedGoal = localStorage.getItem("currentGoal");
     const savedStartTime = localStorage.getItem("startTime");
     await syncReservations(); // ★これを追加！
+    const savedGoalId = localStorage.getItem("currentGoalId");
 
     if (isWorking && savedTask && savedStartTime) {
         // メモリ変数に復元
@@ -420,6 +421,26 @@ async function executeStartTask(selectedTask, selectedGoalId, selectedGoalTitle)
 
             if (changeWarningMessage) changeWarningMessage.classList.add("hidden");
 
+            try {
+                // 必要な関数をインポート（すでにファイルの先頭でインポートされていれば不要ですが、念のため）
+                const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                const statusRef = doc(db, "work_status", userId);
+                
+                await setDoc(statusRef, {
+                    currentTask, 
+                    currentGoalId: currentGoalId || null, 
+                    currentGoalTitle: currentGoalTitle || null, 
+                    startTime: data.startTime,
+                    isWorking: true, 
+                    preBreakTask: preBreakTask || null,
+                    userId, userName, onlineStatus: true
+                }, { merge: true });
+                
+                console.log("Firestore status synced (started/resumed).");
+            } catch (err) {
+                console.error("Firestore status sync error:", err);
+            }
+
             const startBtn = document.getElementById("start-btn");
             if (startBtn) {
                 startBtn.classList.remove("animate-pulse", "animate-pulse-scale");
@@ -430,6 +451,7 @@ async function executeStartTask(selectedTask, selectedGoalId, selectedGoalTitle)
 
             updateUIForActiveTask();
             startTimerLoop();
+            setupMidnightTimer();
             import("./colleagues.js").then(m => m.listenForColleagues(currentTask));
         }
     } catch (error) {
