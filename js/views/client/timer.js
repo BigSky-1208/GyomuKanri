@@ -138,6 +138,12 @@ export function updateUIForActiveTask() {
 function resetClientState() {
     stopTimerLoop();
     localStorage.removeItem(LOCAL_STATUS_KEY);
+    localStorage.removeItem("isWorking");
+    localStorage.removeItem("currentTask");
+    localStorage.removeItem("currentGoal");
+    localStorage.removeItem("currentGoalId");
+    localStorage.removeItem("startTime");
+    localStorage.removeItem("preBreakTask");
 
     currentTask = null;
     currentGoalId = null;
