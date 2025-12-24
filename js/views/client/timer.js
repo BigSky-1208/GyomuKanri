@@ -421,26 +421,47 @@ async function executeStartTask(selectedTask, selectedGoalId, selectedGoalTitle)
 
             if (changeWarningMessage) changeWarningMessage.classList.add("hidden");
 
-            // --- ★修正: importを削除し、単純な書き込みのみにする ---
+            // --- Firestoreのステータス更新 ---
             try {
-                // 先頭で import { doc, setDoc } ... しているので、そのまま使えます
                 const statusRef = doc(db, "work_status", userId);
-                
                 await setDoc(statusRef, {
                     currentTask, 
                     currentGoalId: currentGoalId || null, 
                     currentGoalTitle: currentGoalTitle || null, 
-                    currentGoal: currentGoalTitle || null, // ★念のためLocalStorageのキー名と合わせる
+                    currentGoal: currentGoalTitle || null,
                     startTime: data.startTime,
                     isWorking: true, 
                     preBreakTask: preBreakTask || null,
                     userId, userName, onlineStatus: true
                 }, { merge: true });
-                
                 console.log(`Firestore status synced for ${userId}`);
             } catch (err) {
                 console.error("Firestore status sync error:", err);
             }
+            // ---------------------------------
+
+            // ★ここから下が抜けていました！★
+
+            // UI更新
+            const startBtn = document.getElementById("start-btn");
+            if (startBtn) {
+                startBtn.classList.remove("animate-pulse", "animate-pulse-scale");
+                startBtn.textContent = "業務を変更する";
+                startBtn.classList.remove("bg-indigo-600");
+                startBtn.classList.add("bg-green-600");
+            }
+
+            updateUIForActiveTask();
+            startTimerLoop();
+            
+            // 深夜自動停止タイマーをセット
+            setupMidnightTimer();
+
+            import("./colleagues.js").then(m => m.listenForColleagues(currentTask));
+        }
+    } catch (error) {
+        console.error("業務開始エラー:", error);
+    }
 }
 
 export async function handleStopClick(isAuto = false) {
