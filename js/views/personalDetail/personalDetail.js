@@ -2,7 +2,7 @@
 
 import { db, userName as currentUserName, authLevel, viewHistory, showView, VIEWS, allTaskObjects, updateGlobalTaskObjects, handleGoBack } from "../../main.js";
 import { renderUnifiedCalendar } from "../../components/calendar.js"; 
-import { editLogModal, editMemoModal, editContributionModal } from "../../components/modal/index.js"; 
+import { editLogModal, editMemoModal, editContributionModal } from "../../components/modal/index.js";
 
 import { startListeningForUserLogs, stopListeningForUserLogs } from "./logData.js";
 import { showDailyLogs, showMonthlyLogs, clearDetails } from "./logDisplay.js";
@@ -31,6 +31,9 @@ const backButton = document.getElementById("back-from-detail-btn");
 const editLogSaveBtn = document.getElementById("edit-log-save-btn");
 const editMemoSaveBtn = document.getElementById("edit-memo-save-btn");
 const editContributionSaveBtn = document.getElementById("edit-contribution-save-btn");
+const editLogCancelBtn = document.getElementById("edit-log-cancel-btn");
+const editMemoCancelBtn = document.getElementById("edit-memo-cancel-btn");
+const editContributionCancelBtn = document.getElementById("edit-contribution-cancel-btn");
 
 // ★追加: タイムライン追加申請ボタン
 function injectAddRequestButton() {
@@ -127,6 +130,19 @@ export function setupPersonalDetailEventListeners() {
     editMemoSaveBtn?.addEventListener("click", handleSaveMemo);
     editContributionSaveBtn?.addEventListener("click", handleSaveContribution);
 
+// ★追加: キャンセルボタンのイベント (ここを追加してください)
+    editLogCancelBtn?.addEventListener("click", () => {
+        if (editLogModal) editLogModal.classList.add("hidden");
+    });
+    
+    editMemoCancelBtn?.addEventListener("click", () => {
+        if (editMemoModal) editMemoModal.classList.add("hidden");
+    });
+    
+    editContributionCancelBtn?.addEventListener("click", () => {
+        if (editContributionModal) editContributionModal.classList.add("hidden");
+    });
+    
      detailsContentEl?.addEventListener('click', (event) => {
         handleTimelineClick(event.target, selectedUserLogs, currentUserForDetailView, {
              editLogModal,
