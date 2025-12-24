@@ -116,6 +116,7 @@ export async function handleBreakClick(isAuto = false) {
             goalTitle: State.getCurrentGoalTitle() 
         };
         localStorage.setItem("preBreakTask", JSON.stringify(preTaskData));
+        State.setPreBreakTask(preTaskData);
 
         await Logic.stopCurrentTaskCore(false);
         await Logic.executeStartTask("休憩", null, null);
