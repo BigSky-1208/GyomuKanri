@@ -223,10 +223,10 @@ export function setupClientEventListeners() {
     console.log("Setting up Client View event listeners...");
 
     // Timer control buttons
-    startBtn?.addEventListener("click", handleStartClick);
-    stopBtn?.addEventListener("click", () => handleStopClick(false));
-    breakBtn?.addEventListener("click", () => handleBreakClick(false));
-
+if (startBtn) startBtn.onclick = handleStartClick;
+if (stopBtn) stopBtn.onclick = () => handleStopClick(false);
+if (breakBtn) breakBtn.onclick = () => handleBreakClick(false);
+    
     // Task and Goal selection
     taskSelect?.addEventListener("change", handleTaskSelectionChange);
     goalSelect?.addEventListener("change", handleGoalSelectionChange);
