@@ -5,7 +5,8 @@ import { updateStatusesCache } from "./userManagement.js";
 // WorkerのURL
 const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev";
 
-let statusInterval = null;
+let statusInterval = null;     // サーバー同期用（30秒おき）
+let timerTickInterval = null;  // 経過時間表示用（1秒おき）
 
 export function startListeningForStatusUpdates() {
     stopListeningForStatusUpdates();
@@ -13,16 +14,26 @@ export function startListeningForStatusUpdates() {
     
     // 初回実行
     fetchAndRefreshStatus();
-    // 5秒おきに実行
+    
+    // サーバー同期: 30秒おき
     statusInterval = setInterval(fetchAndRefreshStatus, 30000);
+
+    // ★追加: 経過時間タイマー更新: 1秒おき
+    // (サーバー負荷をかけずに画面の数字だけ書き換えます)
+    timerTickInterval = setInterval(updateAllTimers, 1000);
 }
 
 export function stopListeningForStatusUpdates() {
     if (statusInterval) {
-        console.log("ステータス監視を停止しました");
         clearInterval(statusInterval);
         statusInterval = null;
     }
+    // ★追加: タイマー停止処理
+    if (timerTickInterval) {
+        clearInterval(timerTickInterval);
+        timerTickInterval = null;
+    }
+    console.log("ステータス監視を停止しました");
 }
 
 async function fetchAndRefreshStatus() {
@@ -139,11 +150,34 @@ function updateStatusUI(statusArray) {
                 const displayName = u.userName || `User (${u.userId.slice(0,4)}...)`;
                 const taskName = u.currentTask || '業務中';
 
-                // 【マージ】カード内に工数バッジを表示
+                // ★追加: 開始時刻の処理
+                // FirestoreのTimestamp形式やISO文字列などに対応して変換
+                let startTimeISO = "";
+                if (u.startTime) {
+                    if (typeof u.startTime === 'string') {
+                        // すでに文字列ならそのまま
+                        startTimeISO = u.startTime; 
+                    } else if (u.startTime.seconds) {
+                        // Firestore Timestampオブジェクトの場合
+                        startTimeISO = new Date(u.startTime.seconds * 1000).toISOString();
+                    } else if (typeof u.startTime.toDate === 'function') {
+                        // Firestore クライアントSDKオブジェクトの場合
+                        startTimeISO = u.startTime.toDate().toISOString();
+                    }
+                }
+
+                // タイマー表示用のHTML部品
+                // class="live-timer" と data-start-time を使ってJSで制御します
+                const timerHtml = startTimeISO 
+                    ? `<span class="live-timer font-mono text-xs font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded ml-1" data-start-time="${startTimeISO}">--:--:--</span>`
+                    : `<span class="text-xs text-gray-400 ml-1">--:--</span>`;
+
                 html += `
                 <div class="bg-white border border-gray-200 p-3 rounded-lg shadow-sm flex justify-between items-center mb-2 hover:bg-gray-50 transition">
                     <div class="min-w-0 flex-1">
-                        <div class="font-bold text-gray-800 text-sm truncate">${escapeHtml(displayName)}</div>
+                        <div class="font-bold text-gray-800 text-sm truncate flex items-center gap-2">
+                            ${escapeHtml(displayName)}
+                            ${timerHtml} </div>
                         <div class="text-xs mt-1 flex flex-wrap items-center gap-1">
                             <span class="text-indigo-600 font-medium flex items-center gap-1">
                                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
@@ -167,8 +201,47 @@ function updateStatusUI(statusArray) {
                 `;
             });
             statusListContainer.innerHTML = html;
+            
+            // 描画直後にも一度時間を更新しておく
+            updateAllTimers();
         }
     }
+}
+
+// -------------------------------------------------------
+// ★追加: 1秒ごとに画面内の全タイマーを一括更新する関数
+// -------------------------------------------------------
+function updateAllTimers() {
+    const timerElements = document.querySelectorAll('.live-timer');
+    const now = new Date();
+
+    timerElements.forEach(el => {
+        const startTimeStr = el.dataset.startTime;
+        if (!startTimeStr) return;
+
+        const startTime = new Date(startTimeStr);
+        const diff = now - startTime;
+
+        if (diff > 0) {
+            el.textContent = formatDuration(diff);
+        } else {
+            el.textContent = "00:00:00";
+        }
+    });
+}
+
+// 秒数を「HH:MM:SS」形式に変換するヘルパー
+function formatDuration(diffInMs) {
+    const totalSeconds = Math.floor(diffInMs / 1000);
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+
+    const hStr = h > 0 ? `${h}:` : ''; // 時間が0なら表示しない（お好みで `${h}:` を強制してもOK）
+    const mStr = m.toString().padStart(2, '0');
+    const sStr = s.toString().padStart(2, '0');
+
+    return `${hStr}${mStr}:${sStr}`;
 }
 
 // XSS対策用エスケープ関数
