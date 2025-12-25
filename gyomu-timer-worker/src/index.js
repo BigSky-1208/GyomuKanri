@@ -107,25 +107,65 @@ export default {
       const userStatusRef = firestore.collection('work_status').doc(userId);
       const userStatusSnap = await userStatusRef.get();
       
-      if (userStatusSnap.exists) {
+if (userStatusSnap.exists) {
         const currentStatus = userStatusSnap.data();
 
-        // 【修正1：未選択問題への対策】
-        // 休憩に入る前に、現在の業務内容を `preBreakTask` として退避させる
+        // 1. 直前の業務ログを保存 (クライアントがオフラインでも記録を残すため)
+        if (currentStatus.isWorking && currentStatus.currentTask && currentStatus.startTime) {
+            const prevStartTime = new Date(currentStatus.startTime);
+            const duration = Math.floor((now.getTime() - prevStartTime.getTime()) / 1000);
+            
+            if (duration > 0) {
+                // IDを工夫して、万が一クライアントと競合しても大丈夫なようにする（または完全に新規作成）
+                const prevLogRef = firestore.collection('work_logs').doc();
+                batch.set(prevLogRef, {
+                    userId: userId,
+                    userName: currentStatus.userName || 'Unknown',
+                    task: currentStatus.currentTask,
+                    goalId: currentStatus.currentGoalId || null,
+                    goalTitle: currentStatus.currentGoalTitle || null,
+                    date: prevStartTime.toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }).replaceAll('/', '-'),
+                    startTime: currentStatus.startTime,
+                    endTime: now.toISOString(),
+                    duration: duration,
+                    memo: "（予約休憩により自動中断）",
+                    source: "worker_reservation", // ★Workerが作ったことを明記
+                    type: "work"
+                });
+            }
+        }
+
         const preBreakTaskData = {
             task: currentStatus.currentTask || '',
             goalId: currentStatus.currentGoalId || null,
             goalTitle: currentStatus.currentGoalTitle || null
         };
 
-        // ステータスを「休憩」に更新
+        // 2. ステータスを「休憩」に更新
         batch.update(userStatusRef, {
             currentTask: '休憩',
             isWorking: true,
             startTime: now.toISOString(),
-            preBreakTask: preBreakTaskData, // ★これを保存することで「業務に戻る」が正しく動く
-            updatedAt: now.toISOString()
+            preBreakTask: preBreakTaskData,
+            updatedAt: now.toISOString(),
+            lastUpdatedBy: 'worker' // ★誰が更新したか判別可能にする
         });
+      }
+
+      // 3. 休憩の開始ログを作成 (Activeなログ)
+      // ここでのポイントは、IDを指定することです。
+      const logId = `log_${resDoc.id}`; 
+      const newLogRef = firestore.collection('work_logs').doc(logId);
+
+      batch.set(newLogRef, {
+        userId: userId,
+        task: '休憩',
+        startTime: now.toISOString(),
+        status: 'active',
+        source: 'worker_reservation',
+        originalReservationId: resDoc.id
+      });
+      
       }
 
       // 【修正2：ログ重複問題への対策】
