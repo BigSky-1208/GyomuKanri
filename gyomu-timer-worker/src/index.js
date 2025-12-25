@@ -152,6 +152,7 @@ if (userStatusSnap.exists) {
         });
       }
 
+      /*
       // 3. 休憩の開始ログを作成 (Activeなログ)
       // ここでのポイントは、IDを指定することです。
       const logId = `log_${resDoc.id}`; 
@@ -165,6 +166,7 @@ if (userStatusSnap.exists) {
         source: 'worker_reservation',
         originalReservationId: resDoc.id
       });
+      */
       
       }
 
