@@ -1,6 +1,6 @@
 // js/views/host/approval.js
 import { db, showView, VIEWS, allTaskObjects, updateGlobalTaskObjects } from "../../main.js";
-import { collection, query, where, orderBy, onSnapshot, doc, writeBatch, Timestamp, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, query, where, orderBy, onSnapshot, doc, writeBatch, Timestamp, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { escapeHtml } from "../../utils.js";
 
 const approvalListEl = document.getElementById("approval-list");
@@ -54,6 +54,7 @@ function renderApprovalList(docs) {
             ? `<div class="text-sm">目標: ${escapeHtml(req.data.goalTitle)} (${req.data.count}件)</div>` 
             : "";
 
+        // ★以下の innerHTML を書き換えて削除ボタンを追加
         card.innerHTML = `
             <div class="flex justify-between items-start">
                 <div>
@@ -69,13 +70,21 @@ function renderApprovalList(docs) {
                         <div class="text-sm text-gray-500 mt-1">メモ: ${escapeHtml(req.data.memo)}</div>
                     </div>
                 </div>
-                <button class="approve-btn bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 shadow" data-id="${docSnap.id}">
-                    承認
-                </button>
+                <div class="flex flex-col gap-2">
+                    <button class="approve-btn bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 shadow text-sm" data-id="${docSnap.id}">
+                        承認
+                    </button>
+                    <button class="delete-req-btn bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 shadow text-sm" data-id="${docSnap.id}">
+                        削除
+                    </button>
+                </div>
             </div>
         `;
         
+        // イベントリスナーを追加
         card.querySelector(".approve-btn").addEventListener("click", () => handleApprove(docSnap));
+        card.querySelector(".delete-req-btn").addEventListener("click", () => handleDeleteRequest(docSnap)); // ★ここを追加
+        
         listEl.appendChild(card);
     });
 }
@@ -181,4 +190,19 @@ async function updateGoalProgress(taskName, goalId, diff) {
         });
     
     updateGlobalTaskObjects(updatedTasks);
+}
+
+// js/views/host/approval.js の最後の方に追加
+
+async function handleDeleteRequest(reqDoc) {
+    if(!confirm("この申請を削除（却下）しますか？\nこの操作は元に戻せません。")) return;
+
+    try {
+        // work_log_requests コレクションからドキュメントを削除
+        await deleteDoc(doc(db, "work_log_requests", reqDoc.id));
+        alert("申請を削除しました。");
+    } catch (error) {
+        console.error("Delete error:", error);
+        alert("削除中にエラーが発生しました。");
+    }
 }
