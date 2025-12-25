@@ -114,6 +114,7 @@ export async function initializeClientView() {
  * ★追加: 自分自身のステータスをリアルタイム監視する関数
  * Workerが裏でステータスを変更した際に、画面を即座に同期させます。
  */
+// ★追加: 自分自身のステータスをリアルタイム監視する関数
 function listenForMyStatus() {
     if (!userId) return;
     
@@ -126,6 +127,11 @@ function listenForMyStatus() {
         if (docSnap.exists()) {
             const data = docSnap.data();
 
+            // --- [DEBUG] データ受信確認 ---
+            console.group("🔥 Firestore Update Detected");
+            console.log("Raw Data:", data);
+            // -----------------------------
+
             // ★追加判定：Workerによって更新されたばかりかどうか
             const isWorkerUpdate = data.lastUpdatedBy === 'worker';
             // 以前の状態（ローカル）と比較
@@ -137,10 +143,19 @@ function listenForMyStatus() {
                 dbStartTime = dbStartTime.toDate().toISOString();
             }
 
+            // --- [DEBUG] 条件判定の確認 ---
+            console.log("🔍 Condition Check:", {
+                isWorkerUpdate: isWorkerUpdate,
+                currentTaskIsBreak: data.currentTask === '休憩',
+                prevTaskIsNotBreak: prevTask !== '休憩',
+                localPrevTask: prevTask
+            });
+            // -----------------------------
+
             // ■■■ Worker対応追加ブロック ■■■
-            // もし「Workerが休憩に切り替えた」かつ「ローカルではまだ前の業務中だった」場合
-            // クライアント側ではログ保存処理を一切行わず、StateとLocalStorageだけ強制的に「休憩」に合わせる
-if (isWorkerUpdate && data.currentTask === '休憩' && prevTask !== '休憩') {
+            if (isWorkerUpdate && data.currentTask === '休憩' && prevTask !== '休憩') {
+                console.log("✅ Workerブロックに突入しました！"); // [DEBUG]
+
                 console.log("Workerによる休憩開始を検知。ローカル状態を強制同期します（ログ保存はスキップ）。");
                 
                 // 1. LocalStorageを強制上書き
@@ -148,25 +163,34 @@ if (isWorkerUpdate && data.currentTask === '休憩' && prevTask !== '休憩') {
                 localStorage.setItem("currentTask", "休憩");
                 if (dbStartTime) localStorage.setItem("startTime", dbStartTime);
                 
-                // 2. 休憩前のタスク情報があれば保存（★ここを修正）
+                // 2. 休憩前のタスク情報があれば保存
                 if (data.preBreakTask) {
+                    console.log("💾 preBreakTaskを保存します:", data.preBreakTask); // [DEBUG]
+
                     // LocalStorageへ保存
                     localStorage.setItem("preBreakTask", JSON.stringify(data.preBreakTask));
                     
                     // ステートへ保存（awaitを使って、完了を確実に待つ）
                     const State = await import("./timerState.js");
                     State.setPreBreakTask(data.preBreakTask);
+                } else {
+                    console.warn("⚠️ data.preBreakTask が存在しません！"); // [DEBUG]
                 }
 
                 // 3. UIと内部ステートだけ更新して終了
-                // (awaitしたので、確実にデータが入った状態で画面が更新されます)
-                restoreTimerState(); 
+                await restoreTimerState(); // ここも念の為 await しておくと安心
+                
+                console.log("🛑 Workerブロック処理完了。returnします。"); // [DEBUG]
+                console.groupEnd();
                 return; 
+            } else {
+                console.log("⏭️ Workerブロックをスキップしました（条件不一致）。"); // [DEBUG]
             }
             // ■■■ ここまで ■■■
 
 
             const dbIsWorking = data.isWorking === 1 || data.isWorking === true;
+            console.log("Standard Logic Check - dbIsWorking:", dbIsWorking); // [DEBUG]
 
             if (dbIsWorking) {
                 // DBが「稼働中（休憩含む）」の場合
@@ -195,6 +219,7 @@ if (isWorkerUpdate && data.currentTask === '休憩' && prevTask !== '休憩') {
                 }
 
             } else {
+                console.log("⬇️ 業務終了（停止中）ルートに入りました"); // [DEBUG]
                 // DBが「停止中（帰宅済）」の場合
                 localStorage.removeItem("isWorking");
                 localStorage.removeItem("currentTask");
@@ -205,15 +230,14 @@ if (isWorkerUpdate && data.currentTask === '休憩' && prevTask !== '休憩') {
                 localStorage.removeItem("gyomu_timer_current_status");
             }
 
-            // 念のため、休憩前タスクがあれば必ず保存しておく（盤石な処理）
+            // 念のため、休憩前タスクがあれば必ず保存しておく
             if (data.preBreakTask) {
                 localStorage.setItem("preBreakTask", JSON.stringify(data.preBreakTask));
-                // Stateにも反映
                 import("./timerState.js").then(State => State.setPreBreakTask(data.preBreakTask));
             }
 
-            // 最新情報に基づいて画面とタイマーを再起動
             restoreTimerState();
+            console.groupEnd();
 
         } 
     }, (error) => {
