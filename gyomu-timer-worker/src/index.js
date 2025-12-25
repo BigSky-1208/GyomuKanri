@@ -82,10 +82,79 @@ export default {
     console.log("Starting scheduled tasks...");
     const firestore = initFirebase(env);
 
-    // ここに実際の「休憩開始」や「退勤」のデータベース書き換え処理を書きます
-    // 例: 予約されていたタスクを実行済みにするなど
-    
-    // 処理が終わったら、次の予約時間をKVにセットし直すために自分自身を呼び出す
-    // (ここでは省略しますが、実際は再度KV更新ロジックを走らせます)
-  }
-};
+// ▼▼▼ ここから追加・差し替え ▼▼▼
+
+    // 1. 実行すべき予約を取得（現在時刻を過ぎている、かつ未実行のもの）
+    // ※コレクション名 'reservations' は実際の予約データがある場所に書き換えてください
+    const reservationsSnapshot = await firestore.collection('reservations') 
+      .where('status', '==', 'reserved')
+      .where('scheduledTime', '<=', now.toISOString())
+      .get();
+
+    if (reservationsSnapshot.empty) {
+      console.log("実行対象の予約は見つかりませんでした（タッチの差で実行された可能性があります）");
+      return;
+    }
+
+    // バッチ処理の準備（複数書き込みを一度に行う）
+    const batch = firestore.batch();
+
+    for (const resDoc of reservationsSnapshot.docs) {
+      const resData = resDoc.data();
+      const userId = resData.userId;
+      
+      // ユーザーの現在のステータスを取得（休憩前の業務を保存するため）
+      const userStatusRef = firestore.collection('work_status').doc(userId);
+      const userStatusSnap = await userStatusRef.get();
+      
+      if (userStatusSnap.exists) {
+        const currentStatus = userStatusSnap.data();
+
+        // 【修正1：未選択問題への対策】
+        // 休憩に入る前に、現在の業務内容を `preBreakTask` として退避させる
+        const preBreakTaskData = {
+            task: currentStatus.currentTask || '',
+            goalId: currentStatus.currentGoalId || null,
+            goalTitle: currentStatus.currentGoalTitle || null
+        };
+
+        // ステータスを「休憩」に更新
+        batch.update(userStatusRef, {
+            currentTask: '休憩',
+            isWorking: true,
+            startTime: now.toISOString(),
+            preBreakTask: preBreakTaskData, // ★これを保存することで「業務に戻る」が正しく動く
+            updatedAt: now.toISOString()
+        });
+      }
+
+      // 【修正2：ログ重複問題への対策】
+      // ログのドキュメントIDを「予約ID」を含んだものにして固定する
+      // これにより、クライアントとWorkerが同時に書き込んでもIDが同じなので重複しない
+      const logId = `log_${resDoc.id}`; 
+      const newLogRef = firestore.collection('work_logs').doc(logId);
+
+      batch.set(newLogRef, {
+        userId: userId,
+        task: '休憩', // または resData.taskName
+        startTime: now.toISOString(),
+        status: 'active', // 現在進行中のログとして保存
+        source: 'worker_reservation', // 調査用にWorker経由であることを記録
+        originalReservationId: resDoc.id
+      });
+
+      // 予約データを「実行済み」にする
+      batch.update(resDoc.ref, { 
+        status: 'executed',
+        executedAt: now.toISOString()
+      });
+    }
+
+    // DBへの変更を確定
+    await batch.commit();
+    console.log(`Processed ${reservationsSnapshot.size} reservations.`);
+
+    // KVの次回実行時間をクリア（または再計算）する処理がここに入るとベスト
+    await env.SCHEDULE.delete('NEXT_JOB_TIME');
+
+    // ▲▲▲ 追加・差し替えここまで ▲▲▲
