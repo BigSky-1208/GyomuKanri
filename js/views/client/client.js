@@ -122,15 +122,44 @@ function listenForMyStatus() {
     }
 
     // Firestoreの自分のドキュメントを監視
-    myStatusUnsubscribe = onSnapshot(doc(db, "work_status", userId), (docSnap) => {
+    myStatusUnsubscribe = onSnapshot(doc(db, "work_status", userId), async (docSnap) => { // asyncにする
         if (docSnap.exists()) {
             const data = docSnap.data();
 
+            // ★追加判定：Workerによって更新されたばかりかどうか
+            const isWorkerUpdate = data.lastUpdatedBy === 'worker';
+            // 以前の状態（ローカル）と比較
+            const prevTask = localStorage.getItem("currentTask");
+            
             // FirestoreのTimestamp型対策
             let dbStartTime = data.startTime;
             if (dbStartTime && typeof dbStartTime.toDate === 'function') {
                 dbStartTime = dbStartTime.toDate().toISOString();
             }
+
+            // ■■■ Worker対応追加ブロック ■■■
+            // もし「Workerが休憩に切り替えた」かつ「ローカルではまだ前の業務中だった」場合
+            // クライアント側ではログ保存処理を一切行わず、StateとLocalStorageだけ強制的に「休憩」に合わせる
+            if (isWorkerUpdate && data.currentTask === '休憩' && prevTask !== '休憩') {
+                console.log("Workerによる休憩開始を検知。ローカル状態を強制同期します（ログ保存はスキップ）。");
+                
+                // 1. LocalStorageを強制上書き
+                localStorage.setItem("isWorking", "1");
+                localStorage.setItem("currentTask", "休憩");
+                if (dbStartTime) localStorage.setItem("startTime", dbStartTime);
+                
+                // 休憩前のタスク情報があれば保存
+                if (data.preBreakTask) {
+                    localStorage.setItem("preBreakTask", JSON.stringify(data.preBreakTask));
+                    import("./timerState.js").then(State => State.setPreBreakTask(data.preBreakTask));
+                }
+
+                // 2. UIと内部ステートだけ更新して終了（returnする）
+                restoreTimerState(); 
+                return; 
+            }
+            // ■■■ ここまで ■■■
+
 
             const dbIsWorking = data.isWorking === 1 || data.isWorking === true;
 
@@ -160,11 +189,6 @@ function listenForMyStatus() {
                     localStorage.removeItem("currentGoal");
                 }
 
-                // ここでも保存していますが、下の念押しブロックがあればOK
-                if (data.currentTask === "休憩" && data.preBreakTask) {
-                    localStorage.setItem("preBreakTask", JSON.stringify(data.preBreakTask));
-                }
-
             } else {
                 // DBが「停止中（帰宅済）」の場合
                 localStorage.removeItem("isWorking");
@@ -176,7 +200,6 @@ function listenForMyStatus() {
                 localStorage.removeItem("gyomu_timer_current_status");
             }
 
-            // ★ここが修正ポイント： data はこのブロックの中でしか使えません
             // 念のため、休憩前タスクがあれば必ず保存しておく（盤石な処理）
             if (data.preBreakTask) {
                 localStorage.setItem("preBreakTask", JSON.stringify(data.preBreakTask));
@@ -187,7 +210,7 @@ function listenForMyStatus() {
             // 最新情報に基づいて画面とタイマーを再起動
             restoreTimerState();
 
-        } // ← if (docSnap.exists()) の閉じカッコはここに移動
+        } 
     }, (error) => {
         console.error("Error listening to my status:", error);
     });
