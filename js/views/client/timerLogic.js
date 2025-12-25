@@ -230,7 +230,8 @@ export function startTimerLoop() {
         let activeReservations = State.getActiveReservations();
         
         if (activeReservations && activeReservations.length > 0) {
-            const dueReservation = activeReservations.find(res => 
+            /*
+           const dueReservation = activeReservations.find(res => 
                 res.status === 'reserved' && res.scheduledTime <= nowIso
             );
 
@@ -306,6 +307,7 @@ export function startTimerLoop() {
                 
                 await syncReservations();
             }
+            */
         }
 
         // 通知ロジック
