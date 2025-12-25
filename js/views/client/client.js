@@ -236,8 +236,10 @@ function listenForMyStatus() {
                 import("./timerState.js").then(State => State.setPreBreakTask(data.preBreakTask));
             }
 
-            restoreTimerState();
+            await restoreTimerState();
             console.groupEnd();
+            console.log("🛑 Workerブロック処理完了。returnします。"); // [DEBUG]
+            return;
 
         } 
     }, (error) => {
