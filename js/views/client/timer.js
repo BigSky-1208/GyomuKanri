@@ -93,7 +93,9 @@ export async function handleBreakClick(isAuto = false) {
 
     if (nowTask === "休憩") {
         // --- 休憩から戻る ---
-        await Logic.stopCurrentTaskCore(false); 
+        
+        // 【修正】ここにあった stopCurrentTaskCore を削除します
+        // await Logic.stopCurrentTaskCore(false); 
         
         let taskToReturnTo = null;
         try {
@@ -104,6 +106,7 @@ export async function handleBreakClick(isAuto = false) {
         }
 
         if (taskToReturnTo && taskToReturnTo.task) {
+            // executeStartTask が「休憩の終了」と「業務の開始」を両方やってくれます
             await Logic.executeStartTask(taskToReturnTo.task, taskToReturnTo.goalId, taskToReturnTo.goalTitle);
         } else {
             await Logic.stopCurrentTask(true);
@@ -118,7 +121,9 @@ export async function handleBreakClick(isAuto = false) {
         localStorage.setItem("preBreakTask", JSON.stringify(preTaskData));
         State.setPreBreakTask(preTaskData);
 
-        await Logic.stopCurrentTaskCore(false);
+        // 【修正】ここも同様に重複する可能性が高いので削除推奨です
+        // await Logic.stopCurrentTaskCore(false); 
+
         await Logic.executeStartTask("休憩", null, null);
     }
 }
