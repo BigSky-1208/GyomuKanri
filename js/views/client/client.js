@@ -126,7 +126,7 @@ function listenForMyStatus() {
         if (docSnap.exists()) {
             const data = docSnap.data();
 
-            // FirestoreのTimestamp型対策: .toDate() が使える場合は ISO文字列に変換
+            // FirestoreのTimestamp型対策
             let dbStartTime = data.startTime;
             if (dbStartTime && typeof dbStartTime.toDate === 'function') {
                 dbStartTime = dbStartTime.toDate().toISOString();
@@ -142,7 +142,6 @@ function listenForMyStatus() {
                     localStorage.setItem("currentTask", data.currentTask);
                 }
                 
-                // ★修正: 変換済みの dbStartTime を使用
                 if (dbStartTime) {
                     localStorage.setItem("startTime", dbStartTime);
                 }
@@ -161,6 +160,7 @@ function listenForMyStatus() {
                     localStorage.removeItem("currentGoal");
                 }
 
+                // ここでも保存していますが、下の念押しブロックがあればOK
                 if (data.currentTask === "休憩" && data.preBreakTask) {
                     localStorage.setItem("preBreakTask", JSON.stringify(data.preBreakTask));
                 }
@@ -176,9 +176,18 @@ function listenForMyStatus() {
                 localStorage.removeItem("gyomu_timer_current_status");
             }
 
+            // ★ここが修正ポイント： data はこのブロックの中でしか使えません
+            // 念のため、休憩前タスクがあれば必ず保存しておく（盤石な処理）
+            if (data.preBreakTask) {
+                localStorage.setItem("preBreakTask", JSON.stringify(data.preBreakTask));
+                // Stateにも反映
+                import("./timerState.js").then(State => State.setPreBreakTask(data.preBreakTask));
+            }
+
             // 最新情報に基づいて画面とタイマーを再起動
             restoreTimerState();
-        }
+
+        } // ← if (docSnap.exists()) の閉じカッコはここに移動
     }, (error) => {
         console.error("Error listening to my status:", error);
     });
