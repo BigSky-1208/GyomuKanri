@@ -224,13 +224,13 @@ export function startTimerLoop() {
         const elapsed = Math.floor((now - startTime) / 1000);
         const timerDisplay = getEl("timer-display");
         if (timerDisplay) timerDisplay.textContent = formatDuration(elapsed);
-
+/*
         // 予約実行チェック
         const nowIso = now.toISOString();
         let activeReservations = State.getActiveReservations();
         
         if (activeReservations && activeReservations.length > 0) {
-            /*
+            
            const dueReservation = activeReservations.find(res => 
                 res.status === 'reserved' && res.scheduledTime <= nowIso
             );
