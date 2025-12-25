@@ -307,8 +307,9 @@ export function startTimerLoop() {
                 
                 await syncReservations();
             }
-            */
+            
         }
+        */
 
         // 通知ロジック
         const activeTaskName = localStorage.getItem("currentTask") || State.getCurrentTask() || "業務";
