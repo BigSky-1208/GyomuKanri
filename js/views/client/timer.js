@@ -94,21 +94,30 @@ export async function handleBreakClick(isAuto = false) {
     if (nowTask === "休憩") {
         // --- 休憩から戻る ---
         
-        // 【修正】ここにあった stopCurrentTaskCore を削除します
         // await Logic.stopCurrentTaskCore(false); 
         
         let taskToReturnTo = null;
         try {
             const savedPreTask = localStorage.getItem("preBreakTask");
-            taskToReturnTo = savedPreTask ? JSON.parse(savedPreTask) : null;
+            if (savedPreTask) {
+                taskToReturnTo = JSON.parse(savedPreTask);
+
+                // ★修正ポイント: 二重エンコード対策
+                // もしパースした結果がまだ「文字列」だったら、もう一回パースしてオブジェクトにする
+                if (typeof taskToReturnTo === 'string') {
+                    taskToReturnTo = JSON.parse(taskToReturnTo);
+                }
+            }
         } catch (e) {
             console.error("休憩前タスクの復元失敗:", e);
         }
 
+        // これで taskToReturnTo が正しくオブジェクトになっているはずです
         if (taskToReturnTo && taskToReturnTo.task) {
             // executeStartTask が「休憩の終了」と「業務の開始」を両方やってくれます
             await Logic.executeStartTask(taskToReturnTo.task, taskToReturnTo.goalId, taskToReturnTo.goalTitle);
         } else {
+            console.warn("休憩前のタスク情報が破損しているため、停止処理を行います。");
             await Logic.stopCurrentTask(true);
         }
     } else {
@@ -118,10 +127,11 @@ export async function handleBreakClick(isAuto = false) {
             goalId: State.getCurrentGoalId(), 
             goalTitle: State.getCurrentGoalTitle() 
         };
+        
+        // オブジェクトを文字列化して保存
         localStorage.setItem("preBreakTask", JSON.stringify(preTaskData));
         State.setPreBreakTask(preTaskData);
 
-        // 【修正】ここも同様に重複する可能性が高いので削除推奨です
         // await Logic.stopCurrentTaskCore(false); 
 
         await Logic.executeStartTask("休憩", null, null);
