@@ -140,7 +140,7 @@ function listenForMyStatus() {
             // ■■■ Worker対応追加ブロック ■■■
             // もし「Workerが休憩に切り替えた」かつ「ローカルではまだ前の業務中だった」場合
             // クライアント側ではログ保存処理を一切行わず、StateとLocalStorageだけ強制的に「休憩」に合わせる
-            if (isWorkerUpdate && data.currentTask === '休憩' && prevTask !== '休憩') {
+if (isWorkerUpdate && data.currentTask === '休憩' && prevTask !== '休憩') {
                 console.log("Workerによる休憩開始を検知。ローカル状態を強制同期します（ログ保存はスキップ）。");
                 
                 // 1. LocalStorageを強制上書き
@@ -148,13 +148,18 @@ function listenForMyStatus() {
                 localStorage.setItem("currentTask", "休憩");
                 if (dbStartTime) localStorage.setItem("startTime", dbStartTime);
                 
-                // 休憩前のタスク情報があれば保存
+                // 2. 休憩前のタスク情報があれば保存（★ここを修正）
                 if (data.preBreakTask) {
+                    // LocalStorageへ保存
                     localStorage.setItem("preBreakTask", JSON.stringify(data.preBreakTask));
-                    import("./timerState.js").then(State => State.setPreBreakTask(data.preBreakTask));
+                    
+                    // ステートへ保存（awaitを使って、完了を確実に待つ）
+                    const State = await import("./timerState.js");
+                    State.setPreBreakTask(data.preBreakTask);
                 }
 
-                // 2. UIと内部ステートだけ更新して終了（returnする）
+                // 3. UIと内部ステートだけ更新して終了
+                // (awaitしたので、確実にデータが入った状態で画面が更新されます)
                 restoreTimerState(); 
                 return; 
             }
