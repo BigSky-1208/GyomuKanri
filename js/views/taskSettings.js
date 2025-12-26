@@ -245,7 +245,7 @@ async function handleSaveGoal() {
     const title = goalModalTitleInput.value.trim();
     const target = parseInt(goalModalTargetInput.value, 10);
 
-    if (!title || isNaN(target) || target <= 0) {
+    if (!title || isNaN(target) || target < 0) {
         alert("有効なタイトルと目標件数を入力してください。");
         return;
     }
