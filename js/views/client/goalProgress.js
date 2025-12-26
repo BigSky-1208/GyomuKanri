@@ -69,17 +69,47 @@ export function renderSingleGoalDisplay(task, goalId) {
     const target = goal.target || 0;
     const percentage = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
     
-    // ★追加: メモがある場合のみ表示するHTMLを作成
-    // ※改行を反映させるため whitespace-pre-wrap を使用
+    // --- 1. メモ表示HTML（前回作成済み） ---
+    // ※枠の幅などは前回の調整（w-fitなど）を維持しています
     const memoHtml = goal.memo ? `
-        <div class="p-1 bg-gray-50 border-l-4 border-blue-600 p-3 mb-4 rounded text-sm text-gray-700 whitespace-pre-wrap leading-relaxed"> ${escapeHtml(goal.memo)} </div>
+        <div class="w-fit max-w-full pr-4 bg-gray-50 border-l-4 border-blue-600 p-2 mb-3 rounded text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(goal.memo)}</div>
     ` : '';
 
+    // --- 2. ★追加: 納期・工数納期の表示HTML ---
+    // データ(goal.deadline / goal.manHourDeadline)が存在する場合のみ表示
+    let deadlineHtml = '';
+    if (goal.deadline || goal.manHourDeadline) {
+        deadlineHtml = `<div class="flex flex-wrap gap-3 mb-4">`;
+        
+        // 納期がある場合
+        if (goal.deadline) {
+            deadlineHtml += `
+                <div class="flex items-center text-xs font-bold text-gray-600 bg-white border border-gray-300 px-2 py-1 rounded shadow-sm">
+                    <span class="mr-1">📅</span> 納期: ${escapeHtml(goal.deadline)}
+                </div>
+            `;
+        }
+        
+        // 工数納期がある場合
+        if (goal.manHourDeadline) {
+            deadlineHtml += `
+                <div class="flex items-center text-xs font-bold text-gray-600 bg-white border border-gray-300 px-2 py-1 rounded shadow-sm">
+                    <span class="mr-1">⏳</span> 工数納期: ${escapeHtml(goal.manHourDeadline)}
+                </div>
+            `;
+        }
+        
+        deadlineHtml += `</div>`;
+    }
+
+    // --- HTML生成 ---
     container.innerHTML = `
         <div class="border-b pb-4 mb-4">
             <h3 class="text-sm font-bold text-gray-700 mb-2">${escapeHtml(goal.title)}</h3>
             
             ${memoHtml}
+
+            ${deadlineHtml}
             
             <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
                 <span>現在: <span id="ui-current-val" class="font-bold text-lg">${current}</span> / 目標: ${target}</span>
