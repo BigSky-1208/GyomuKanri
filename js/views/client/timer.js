@@ -58,6 +58,12 @@ export async function handleStartClick() {
                 hideConfirmationModal();
                 await Logic.stopCurrentTaskCore(false); 
                 // IDをそのまま渡す
+
+                console.log("🚀【確認ダイアログ経由】D1送信直前ログ:", {
+                    task: selectedTask,
+                    goalId: selectedGoalId,    // ← ここに値が入っているか見てください
+                    title: selectedGoalTitle
+                        
                 await Logic.executeStartTask(selectedTask, selectedGoalId, selectedGoalTitle);
             },
             hideConfirmationModal
@@ -130,6 +136,12 @@ export async function handleBreakClick(isAuto = false) {
 
         // これで taskToReturnTo が正しくオブジェクトになっているはずです
         if (taskToReturnTo && taskToReturnTo.task) {
+
+            console.log("🚀【確認ダイアログ経由】D1送信直前ログ:", {
+                    task: selectedTask,
+                    goalId: selectedGoalId,    // ← ここに値が入っているか見てください
+                    title: selectedGoalTitle
+                        
             // executeStartTask が「休憩の終了」と「業務の開始」を両方やってくれます
             await Logic.executeStartTask(taskToReturnTo.task, taskToReturnTo.goalId, taskToReturnTo.goalTitle);
         } else {
