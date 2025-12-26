@@ -258,6 +258,26 @@ if (isWorkerUpdate) {
 
             // 念のため、休憩前タスクがあれば必ず保存しておく
             if (data.preBreakTask) {
+
+                // ▼▼▼ 追加: goalId チェックと補完ロジック ▼▼▼
+                    if (!data.preBreakTask.goalId && data.preBreakTask.goalTitle) {
+                        console.warn("⚠️ goalId が欠落しています。goalTitle から復旧を試みます:", data.preBreakTask.goalTitle);
+                        
+                        // 現在の画面にあるゴールプルダウンの選択肢から、同じタイトルの ID を探す
+                        // (※プルダウンの ID が "#goal-select" だと仮定した場合の例です。適宜IDを合わせてください)
+                        const goalSelect = document.getElementById("goal-select"); // ← ここのIDを確認してください
+                        if (goalSelect) {
+                            const matchingOption = Array.from(goalSelect.options).find(opt => opt.text.trim() === data.preBreakTask.goalTitle.trim());
+                            if (matchingOption) {
+                                data.preBreakTask.goalId = matchingOption.value;
+                                console.log("✅ goalId を復元しました:", data.preBreakTask.goalId);
+                            } else {
+                                console.error("❌ 一致するゴールが見つかりませんでした。");
+                            }
+                        }
+                    }
+                    // ▲▲▲ 追加ここまで ▲▲▲
+                
                 localStorage.setItem("preBreakTask", JSON.stringify(data.preBreakTask));
                 import("./timerState.js").then(State => State.setPreBreakTask(data.preBreakTask));
             }
