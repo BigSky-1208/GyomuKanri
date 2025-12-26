@@ -168,13 +168,25 @@ function listenForMyStatus() {
                 // 2. 休憩前のタスク情報があれば保存
                 if (data.preBreakTask) {
 
+                    // ▼▼▼ 【追加】データが「文字列」のままなら、オブジェクトに変換する ▼▼▼
+                    if (typeof data.preBreakTask === 'string') {
+                        try {
+                            data.preBreakTask = JSON.parse(data.preBreakTask);
+                            console.log("⚠️ 文字列のpreBreakTaskをオブジェクトに変換しました");
+                        } catch (e) {
+                            console.error("❌ preBreakTaskのパースに失敗:", e);
+                        }
+                    }
+                    // ▲▲▲ 追加ここまで ▲▲▲
+
                     const goalSelect = document.getElementById("goal-select");
                     const currentGoalId = goalSelect ? goalSelect.value : null;
                     
-                    if (currentGoalId) {
+                    // 修正: オブジェクトに対して goalId をセットするのでエラーになりません
+                    if (currentGoalId && (!data.preBreakTask.goalId || data.preBreakTask.goalId === "")) {
                         data.preBreakTask.goalId = currentGoalId;
-                    }
-                    
+                        console.log("🔄 画面の値を使って goalId を補完しました:", currentGoalId);
+                    }                    
                     console.log("💾 preBreakTaskを保存します:", data.preBreakTask); // [DEBUG]
 
                     // LocalStorageへ保存
