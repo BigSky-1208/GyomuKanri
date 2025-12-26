@@ -161,6 +161,9 @@ export async function syncReservations() {
 
 // UI更新系
 export function updateUIForActiveTask() {
+    import("./clientUI.js").then(({ updateTaskDisplaysForSelection, handleGoalSelectionChange }) => {
+        const taskSelect = getEl("task-select");
+        const goalSelect = getEl("goal-select");
     const startBtn = getEl("start-btn");
     const currentTaskDisplay = getEl("current-task-display");
     const breakBtn = getEl("break-btn");
