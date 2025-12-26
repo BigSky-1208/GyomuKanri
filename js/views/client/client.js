@@ -224,10 +224,28 @@ function listenForMyStatus() {
                 console.log("⬇️ 業務終了（停止中）ルートに入りました"); // [DEBUG]
 
                 // ★追加: Workerによる自動停止（帰宅）だった場合に通知を出す
-                if (isWorkerUpdate) {
-                     triggerReservationNotification("帰宅");
-                }
-                
+if (isWorkerUpdate) {
+                    // 更新時刻をチェックして、古すぎる通知（ログイン時など）を防ぐ
+                    let lastUpdate = null;
+                    if (data.updatedAt) {
+                        // FirestoreのTimestamp型か、文字列(ISO)かを判定してDate化
+                        if (typeof data.updatedAt.toDate === 'function') {
+                            lastUpdate = data.updatedAt.toDate();
+                        } else {
+                            lastUpdate = new Date(data.updatedAt);
+                        }
+                    }
+
+                    // 現在時刻との差分（秒）を計算
+                    const now = new Date();
+                    const diffSeconds = lastUpdate ? (now - lastUpdate) / 1000 : 999999;
+
+                    // 「10分以内（600秒）」に行われた変更の場合のみ通知する
+                    // ※PCの時計ズレも考慮して少し余裕を持たせています
+                    if (diffSeconds < 600) {
+                        triggerReservationNotification("帰宅");
+                    }
+                }                
                 // DBが「停止中（帰宅済）」の場合
                 localStorage.removeItem("isWorking");
                 localStorage.removeItem("currentTask");
