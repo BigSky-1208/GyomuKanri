@@ -53,27 +53,27 @@ export async function handleStartClick() {
         const currentTaskObj = allTaskObjects.find(t => t.name === State.getCurrentTask());
         const currentGoalObj = currentTaskObj?.goals?.find(g => g.id === State.getCurrentGoalId() || g.title === State.getCurrentGoalId());
 
-        if (currentGoalObj && currentGoalObj.target > 0) {
-        showConfirmationModal(
-            `「${State.getCurrentGoalTitle()}」の進捗(件数)が入力されていません。\nこのまま業務を変更しますか？`,
-            async () => {
-                hideConfirmationModal();
-                await Logic.stopCurrentTaskCore(false); 
-                
-                // ★修正: ここは「StartClick」なので selectedTask 系を使うのが正解
-                console.log("🚀【確認ダイアログ経由】D1送信直前ログ:", {
-                    task: selectedTask,
-                    goalId: selectedGoalId,
-                    title: selectedGoalTitle
-                });
-                        
-                await Logic.executeStartTask(selectedTask, selectedGoalId, selectedGoalTitle);
-            },
-            hideConfirmationModal
-        );
-        return; 
+if (currentGoalObj && currentGoalObj.target > 0) {
+            showConfirmationModal(
+                `「${State.getCurrentGoalTitle()}」の進捗(件数)が入力されていません。\nこのまま業務を変更しますか？`,
+                async () => {
+                    hideConfirmationModal();
+                    await Logic.stopCurrentTaskCore(false); 
+                    await Logic.executeStartTask(selectedTask, selectedGoalId, selectedGoalTitle);
+                },
+                hideConfirmationModal
+            );
+            return; 
+        }
+    } // <--- 進捗未入力チェックの if 文終了
+
+    // 業務変更（通常）
+    if (isWorking) {
+        await Logic.stopCurrentTaskCore(false);
     }
-        
+
+    await Logic.executeStartTask(selectedTask, selectedGoalId, selectedGoalTitle);
+} // <--- handleStartClick 関数の終了        
 
     // 業務変更（通常）
     if (isWorking) {
