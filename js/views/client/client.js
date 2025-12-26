@@ -14,6 +14,7 @@ import {
 } from "./timer.js";
 
 import { listenForUserReservations, handleSaveBreakReservation, handleSetStopReservation, handleCancelStopReservation, deleteReservation } from "./reservations.js";
+import { triggerReservationNotification } from "../../components/notification.js";
 
 import { 
     handleTaskSelectionChange, 
@@ -155,6 +156,7 @@ function listenForMyStatus() {
             // ■■■ Worker対応追加ブロック ■■■
             if (isWorkerUpdate && data.currentTask === '休憩' && prevTask !== '休憩') {
                 console.log("✅ Workerブロックに突入しました！"); // [DEBUG]
+                triggerReservationNotification("休憩開始");
 
                 console.log("Workerによる休憩開始を検知。ローカル状態を強制同期します（ログ保存はスキップ）。");
                 
@@ -220,6 +222,12 @@ function listenForMyStatus() {
 
             } else {
                 console.log("⬇️ 業務終了（停止中）ルートに入りました"); // [DEBUG]
+
+                // ★追加: Workerによる自動停止（帰宅）だった場合に通知を出す
+                if (isWorkerUpdate) {
+                     triggerReservationNotification("帰宅");
+                }
+                
                 // DBが「停止中（帰宅済）」の場合
                 localStorage.removeItem("isWorking");
                 localStorage.removeItem("currentTask");
