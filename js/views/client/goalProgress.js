@@ -69,14 +69,13 @@ export function renderSingleGoalDisplay(task, goalId) {
     const target = goal.target || 0;
     const percentage = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
     
-    // --- 1. メモ表示HTML（前回作成済み） ---
-    // ※枠の幅などは前回の調整（w-fitなど）を維持しています
+    // --- 1. メモ表示HTML ---
+    // ※ p-1 と p-3 が重複していたので p-2 に統一し、タグ内の不要なスペースを削除しました
     const memoHtml = goal.memo ? `
-        <div class="w-fit max-w-full pr-4 bg-gray-50 border-l-4 border-blue-600 p-2 mb-3 rounded text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(goal.memo)}</div>
+        <div class="w-fit max-w-full bg-gray-50 border-l-4 border-blue-600 p-2 mb-3 rounded text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(goal.memo)}</div>
     ` : '';
 
-    // --- 2. ★追加: 納期・工数納期の表示HTML ---
-    // データ(goal.deadline / goal.manHourDeadline)が存在する場合のみ表示
+    // --- 2. 納期・工数納期の表示HTML ---
     let deadlineHtml = '';
     if (goal.deadline || goal.manHourDeadline) {
         deadlineHtml = `<div class="flex flex-wrap gap-3 mb-4">`;
