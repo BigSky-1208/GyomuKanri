@@ -168,7 +168,9 @@ function listenForMyStatus() {
                 // 2. 休憩前のタスク情報があれば保存
                 if (data.preBreakTask) {
 
-                    const currentGoalId = $('#goal_id').val(); 
+                    const goalSelect = document.getElementById("goal-select");
+                    const currentGoalId = goalSelect ? goalSelect.value : null;
+                    
                     if (currentGoalId) {
                         data.preBreakTask.goalId = currentGoalId;
                     }
