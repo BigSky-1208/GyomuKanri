@@ -94,7 +94,7 @@ export async function handleBreakClick(isAuto = false) {
     if (nowTask === "休憩") {
         // --- 休憩から戻る ---
         
-        // await Logic.stopCurrentTaskCore(false); 
+         await Logic.stopCurrentTaskCore(false); 
         
         let taskToReturnTo = null;
         try {
@@ -132,7 +132,7 @@ export async function handleBreakClick(isAuto = false) {
         localStorage.setItem("preBreakTask", JSON.stringify(preTaskData));
         State.setPreBreakTask(preTaskData);
 
-        // await Logic.stopCurrentTaskCore(false); 
+        await Logic.stopCurrentTaskCore(false); 
 
         await Logic.executeStartTask("休憩", null, null);
     }
