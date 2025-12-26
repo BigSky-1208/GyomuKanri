@@ -32,7 +32,6 @@ export default {
     const firestore = initFirebase(env);
     const now = new Date();
 
-    // サーバー時計のズレやフライング起動を考慮し、60秒後までの予約を対象にする
     const searchLimit = new Date(now.getTime() + 60000);
 
     const reservationsSnapshot = await firestore.collection('reservations') 
@@ -45,7 +44,6 @@ export default {
       return;
     }
 
-    // 待機時間の計算
     let maxWaitTime = 0;
     const realTimeNow = new Date().getTime();
 
@@ -63,7 +61,6 @@ export default {
         await sleep(maxWaitTime);
     }
     
-    // トランザクション処理
     try {
         await firestore.runTransaction(async (transaction) => {
             const executionTime = new Date();
@@ -86,11 +83,15 @@ export default {
                 if (userStatusSnap.exists) {
                     const currentStatus = userStatusSnap.data();
 
-                    // ▼▼▼ 【ログ追加1】DBから読み取った生のデータを確認 ▼▼▼
-                    console.log(`[Worker Check] ID: ${userId}`);
-                    console.log(`[Worker Check] Read from DB -> Task: "${currentStatus.currentTask}", GoalID: "${currentStatus.currentGoalId}"`);
-                    
-                    // 業務ログ保存処理（省略なしで記述）
+                    // ■データの安全な取得（バックアップ付き）
+                    // タイトルは currentGoalTitle または currentGoal から取得
+                    const safeGoalTitle = currentStatus.currentGoalTitle || currentStatus.currentGoal || null;
+                    // IDは空文字ならnullにする
+                    const safeGoalId = (currentStatus.currentGoalId && currentStatus.currentGoalId !== "") ? currentStatus.currentGoalId : null;
+
+                    console.log(`[Worker Check] Saving Log -> Task: "${currentStatus.currentTask}", Goal: "${safeGoalTitle}"`);
+
+                    // ■直前の業務ログ保存
                     if (currentStatus.isWorking && currentStatus.currentTask && currentStatus.startTime) {
                         const prevStartTime = new Date(currentStatus.startTime);
                         const duration = Math.floor((executionTime.getTime() - prevStartTime.getTime()) / 1000);
@@ -103,44 +104,36 @@ export default {
                                 userId: userId,
                                 userName: currentStatus.userName || 'Unknown',
                                 task: currentStatus.currentTask,
-                                goalId: currentStatus.currentGoalId || null,
-                                goalTitle: currentStatus.currentGoalTitle || null,
+                                goalId: safeGoalId,    // 修正済みのIDを使用
+                                goalTitle: safeGoalTitle, // 修正済みのタイトルを使用
                                 date: prevStartTime.toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }).replaceAll('/', '-'),
                                 startTime: currentStatus.startTime,
                                 endTime: executionTime.toISOString(),
                                 duration: duration,
                                 memo: "（予約休憩により自動中断）",
-                                source: "worker_reservation",
-                                type: "work"
+                                source: "worker_reservation"
+                                // type: "work"  <-- ★削除: クライアントと挙動を合わせるため削除します
                             });
                         }
                     }
                     
-                    // ■データを整形（空文字対策も含む）
-                    const safeGoalId = (currentStatus.currentGoalId && currentStatus.currentGoalId !== "") ? currentStatus.currentGoalId : null;
-                    
-                    // 次に保存するオブジェクトを作成
+                    // ■ステータスを「休憩」に更新
                     const preBreakTaskData = {
                         task: currentStatus.currentTask || '',
                         goalId: safeGoalId,
-                        goalTitle: currentStatus.currentGoalTitle || null
+                        goalTitle: safeGoalTitle
                     };
 
-                    // ▼▼▼ 【ログ追加2】Updateに渡す直前のデータをオブジェクトとしてログ出力 ▼▼▼
-                    console.log(`[Worker Check] Preparing to Update -> preBreakTask:`, JSON.stringify(preBreakTaskData));
-
-                    // 更新実行
                     transaction.update(userStatusRef, {
                         currentTask: '休憩',
                         isWorking: true,
                         startTime: executionTime.toISOString(),
-                        preBreakTask: preBreakTaskData, // ここでオブジェクトを渡しています
+                        preBreakTask: preBreakTaskData,
                         updatedAt: executionTime.toISOString(),
                         lastUpdatedBy: 'worker',
                         currentGoalId: null,
                         currentGoalTitle: null,
                         currentGoal: null,
-                        // デバッグ用にWorkerが見ていた値を書き込む
                         debug_workerSeenGoalId: safeGoalId || "NULL_OR_EMPTY"
                     });
                 }
