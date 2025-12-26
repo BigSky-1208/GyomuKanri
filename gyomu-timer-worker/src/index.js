@@ -21,25 +21,20 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    // ... (fetch部分は既存のまま) ...
     if (url.pathname === '/update-schedule') {
         return new Response("OK");
     }
-    // スタート処理などもここにあるはずですが、今回は自動処理(scheduled)に注力します
     return new Response("OK");
   },
 
   async scheduled(event, env, ctx) {
     console.log("Starting scheduled tasks...");
     const firestore = initFirebase(env);
-    
-    // 現在時刻
     const now = new Date();
 
-    // ★修正: サーバー時計のズレやフライング起動を考慮し、60秒後までの予約を対象にする
+    // サーバー時計のズレやフライング起動を考慮し、60秒後までの予約を対象にする
     const searchLimit = new Date(now.getTime() + 60000);
 
-    // 1. 実行すべき予約を取得
     const reservationsSnapshot = await firestore.collection('reservations') 
       .where('status', '==', 'reserved')
       .where('scheduledTime', '<=', searchLimit.toISOString())
@@ -63,7 +58,6 @@ export default {
         }
     });
 
-    // 最大15秒まで待機
     if (maxWaitTime > 0 && maxWaitTime <= 15000) {
         console.log(`Waiting for ${maxWaitTime}ms to synchronize...`);
         await sleep(maxWaitTime);
@@ -73,7 +67,6 @@ export default {
     try {
         await firestore.runTransaction(async (transaction) => {
             const executionTime = new Date();
-
             const resRefs = reservationsSnapshot.docs.map(doc => doc.ref);
             const resDocs = await Promise.all(resRefs.map(ref => transaction.get(ref)));
 
@@ -82,9 +75,7 @@ export default {
                 const resData = resDoc.data();
                 if (resData.status !== 'reserved') continue;
 
-                // 未来の予約は除外
                 if (new Date(resData.scheduledTime) > executionTime) {
-                    console.log("Skipping future reservation:", resDoc.id);
                     continue;
                 }
 
@@ -95,12 +86,11 @@ export default {
                 if (userStatusSnap.exists) {
                     const currentStatus = userStatusSnap.data();
 
-                    // ▼▼▼ 【ログ追加】ここでDB上の実際の値を確認します ▼▼▼
-                    console.log(`[Worker Debug] UserID: ${userId}`);
-                    console.log(`[Worker Debug] BEFORE Update: Task="${currentStatus.currentTask}", GoalID="${currentStatus.currentGoalId}", GoalTitle="${currentStatus.currentGoalTitle}"`);
-                    // ▲▲▲ ログ追加ここまで ▲▲▲
-
-                    // ■直前の業務ログ保存
+                    // ▼▼▼ 【ログ追加1】DBから読み取った生のデータを確認 ▼▼▼
+                    console.log(`[Worker Check] ID: ${userId}`);
+                    console.log(`[Worker Check] Read from DB -> Task: "${currentStatus.currentTask}", GoalID: "${currentStatus.currentGoalId}"`);
+                    
+                    // 業務ログ保存処理（省略なしで記述）
                     if (currentStatus.isWorking && currentStatus.currentTask && currentStatus.startTime) {
                         const prevStartTime = new Date(currentStatus.startTime);
                         const duration = Math.floor((executionTime.getTime() - prevStartTime.getTime()) / 1000);
@@ -126,40 +116,35 @@ export default {
                         }
                     }
                     
-                    // ■ステータスを「休憩」に更新
-                    // ★ここを修正: 空文字対策を強化して作成
-                    const rawGoalId = currentStatus.currentGoalId;
-                    const cleanGoalId = (rawGoalId && rawGoalId !== "") ? rawGoalId : null;
-
+                    // ■データを整形（空文字対策も含む）
+                    const safeGoalId = (currentStatus.currentGoalId && currentStatus.currentGoalId !== "") ? currentStatus.currentGoalId : null;
+                    
+                    // 次に保存するオブジェクトを作成
                     const preBreakTaskData = {
                         task: currentStatus.currentTask || '',
-                        goalId: cleanGoalId,
+                        goalId: safeGoalId,
                         goalTitle: currentStatus.currentGoalTitle || null
                     };
 
-                    console.log(`[Worker Debug] Saving preBreakTask:`, JSON.stringify(preBreakTaskData));
+                    // ▼▼▼ 【ログ追加2】Updateに渡す直前のデータをオブジェクトとしてログ出力 ▼▼▼
+                    console.log(`[Worker Check] Preparing to Update -> preBreakTask:`, JSON.stringify(preBreakTaskData));
 
+                    // 更新実行
                     transaction.update(userStatusRef, {
                         currentTask: '休憩',
                         isWorking: true,
                         startTime: executionTime.toISOString(),
-                        preBreakTask: preBreakTaskData, // ここでオブジェクトとして保存
+                        preBreakTask: preBreakTaskData, // ここでオブジェクトを渡しています
                         updatedAt: executionTime.toISOString(),
                         lastUpdatedBy: 'worker',
                         currentGoalId: null,
                         currentGoalTitle: null,
-                        currentGoal: null
-
-                      // ▼▼▼ 追加: これでブラウザのコンソールに表示されます ▼▼▼
-                        debug_workerSeenGoalId: currentStatus.currentGoalId === undefined ? "UNDEFINED" : (currentStatus.currentGoalId === "" ? "EMPTY_STRING" : currentStatus.currentGoalId),
-                        debug_workerSeenGoalTitle: currentStatus.currentGoalTitle || "NO_TITLE",
-                        debug_timestamp: executionTime.toISOString()
-                        // ▲▲▲ 追加ここまで ▲▲▲
-                  
+                        currentGoal: null,
+                        // デバッグ用にWorkerが見ていた値を書き込む
+                        debug_workerSeenGoalId: safeGoalId || "NULL_OR_EMPTY"
                     });
                 }
 
-                // ■予約を「実行済み」に更新
                 transaction.update(resDoc.ref, { 
                     status: 'executed',
                     executedAt: executionTime.toISOString()
