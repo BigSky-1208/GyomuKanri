@@ -70,7 +70,7 @@ function injectApprovalButton() {
         
         btn.innerHTML = `
             <span>📩 業務時間申請を確認・承認する</span>
-            <span id="approval-badge" class="bg-white text-orange-600 text-xs font-bold px-3 py-1 rounded-full hidden border border-orange-600">0</span>
+            <span id="approval-badge" class="w-full bg-orange-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-orange-600 transition shadow-sm">0</span>
         `;
         btn.onclick = () => showView(VIEWS.APPROVAL);
 
@@ -291,7 +291,7 @@ function injectMessageFeature() {
         const msgBtnContainer = document.createElement("div");
         msgBtnContainer.className = "mb-4 mt-6 w-full"; 
         msgBtnContainer.innerHTML = `
-            <button id="open-message-modal-btn" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center gap-2 transition duration-150">
+            <button id="open-message-modal-btn" class="w-full bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-500 transition shadow-sm">
                 📢 メッセージを作成・送信する
             </button>
         `;
