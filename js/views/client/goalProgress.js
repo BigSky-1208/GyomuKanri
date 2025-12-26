@@ -48,6 +48,7 @@ export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
         // メモリ上のデータも同期
         allTaskObjects[taskIndex].goals[goalIndex].current = newCurrent;
         inputElement.value = "";
+        setHasContributed(true);
 
     } catch (error) {
         console.error("Update error:", error);
