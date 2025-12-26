@@ -48,6 +48,11 @@ export async function handleStartClick() {
     
     // 進捗未入力チェック
     if (isWorking && State.getCurrentGoalId() && !State.getHasContributed()) {
+
+        const currentTaskObj = allTaskObjects.find(t => t.name === State.getCurrentTask());
+        const currentGoalObj = currentTaskObj?.goals?.find(g => g.id === State.getCurrentGoalId() || g.title === State.getCurrentGoalId());
+
+        if (currentGoalObj && currentGoalObj.target > 0) {
         showConfirmationModal(
             `「${State.getCurrentGoalTitle()}」の進捗(件数)が入力されていません。\nこのまま業務を変更しますか？`,
             async () => {
@@ -67,6 +72,7 @@ export async function handleStartClick() {
         );
         return; 
     }
+        }
 
     // 業務変更（通常）
     if (isWorking) {
@@ -91,6 +97,13 @@ export async function handleStopClick(isAuto = false) {
     if (!State.getCurrentTask()) return;
 
     if (State.getCurrentGoalId() && !State.getHasContributed()) {
+
+        
+        // ★追加: こちらも同様に目標値0チェックを追加
+        const currentTaskObj = allTaskObjects.find(t => t.name === State.getCurrentTask());
+        const currentGoalObj = currentTaskObj?.goals?.find(g => g.id === State.getCurrentGoalId() || g.title === State.getCurrentGoalId());
+
+        if (currentGoalObj && currentGoalObj.target > 0) {
         showConfirmationModal(
             `「${State.getCurrentGoalTitle()}」の進捗(件数)が入力されていません。\nこのまま終了（帰宅）しますか？`,
             async () => {
@@ -100,6 +113,7 @@ export async function handleStopClick(isAuto = false) {
             hideConfirmationModal
         );
         return;
+    }
     }
 
     await Logic.stopCurrentTask(true);
