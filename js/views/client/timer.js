@@ -24,18 +24,16 @@ export async function handleStartClick() {
     // 1. タスク名の取得
     const selectedTask = taskSelect.value === "その他" ? otherTaskInput.value : taskSelect.value;
 
-    // 2. 目標IDとタイトルの取得（ここを単純化しました）
-    // セレクトボックスの value には ID が入っているはずなので、それをそのまま信用して使います
+    // 2. 目標IDとタイトルの取得
     let selectedGoalId = goalSelect ? goalSelect.value : null;
     let selectedGoalTitle = goalSelect ? goalSelect.options[goalSelect.selectedIndex]?.text : null;
 
-    // 「工数を選択」などのデフォルト値が選ばれている場合は null 扱いにする
     if (selectedGoalId === "" || selectedGoalTitle === "工数を選択 (任意)" || selectedGoalTitle === "なし") {
         selectedGoalId = null;
         selectedGoalTitle = null;
     }
 
-    // ★重要: もし「タイトルはあるのにIDが空」という異常な状態なら、D1にゴミを送らないようここで止める
+    // エラーチェック
     if (selectedGoalTitle && !selectedGoalId) {
         alert("エラー: 目標IDが取得できませんでした。");
         return; 
@@ -46,8 +44,6 @@ export async function handleStartClick() {
         return;
     }
 
-    // --- ここから下は送信フロー ---
-
     const isWorking = localStorage.getItem("isWorking") === "1";
     
     // 進捗未入力チェック
@@ -57,13 +53,14 @@ export async function handleStartClick() {
             async () => {
                 hideConfirmationModal();
                 await Logic.stopCurrentTaskCore(false); 
-                // IDをそのまま渡す
-
-console.log("🚀【休憩復帰】D1送信直前ログ:", {
-    task: taskToReturnTo.task,       // 正しくは taskToReturnTo の中身
-    goalId: taskToReturnTo.goalId,
-    title: taskToReturnTo.goalTitle
-});                        
+                
+                // ★修正: ここは「StartClick」なので selectedTask 系を使うのが正解
+                console.log("🚀【確認ダイアログ経由】D1送信直前ログ:", {
+                    task: selectedTask,
+                    goalId: selectedGoalId,
+                    title: selectedGoalTitle
+                });
+                        
                 await Logic.executeStartTask(selectedTask, selectedGoalId, selectedGoalTitle);
             },
             hideConfirmationModal
@@ -76,7 +73,13 @@ console.log("🚀【休憩復帰】D1送信直前ログ:", {
         await Logic.stopCurrentTaskCore(false);
     }
 
-    // IDをそのまま渡す（これがD1への送信命令です）
+    // ★修正: ここも selectedTask 系を使うのが正解
+    console.log("🚀【通常開始】D1送信直前ログ:", {
+        task: selectedTask,
+        goalId: selectedGoalId,
+        title: selectedGoalTitle
+    });
+
     await Logic.executeStartTask(selectedTask, selectedGoalId, selectedGoalTitle);
 }
 
@@ -123,9 +126,6 @@ export async function handleBreakClick(isAuto = false) {
             const savedPreTask = localStorage.getItem("preBreakTask");
             if (savedPreTask) {
                 taskToReturnTo = JSON.parse(savedPreTask);
-
-                // ★修正ポイント: 二重エンコード対策
-                // もしパースした結果がまだ「文字列」だったら、もう一回パースしてオブジェクトにする
                 if (typeof taskToReturnTo === 'string') {
                     taskToReturnTo = JSON.parse(taskToReturnTo);
                 }
@@ -134,26 +134,24 @@ export async function handleBreakClick(isAuto = false) {
             console.error("休憩前タスクの復元失敗:", e);
         }
 
-        // これで taskToReturnTo が正しくオブジェクトになっているはずです
         if (taskToReturnTo && taskToReturnTo.task) {
 
-            console.log("🚀【確認ダイアログ経由】D1送信直前ログ:", {
-                    task: selectedTask,
-                    goalId: selectedGoalId,    // ← ここに値が入っているか見てください
-                    title: selectedGoalTitle
+            // ★修正: ここは「BreakClick」なので taskToReturnTo 系を使うのが正解
+            // さっきはここに selectedTask と書いてしまったためエラーになりました
+            console.log("🚀【休憩復帰】D1送信直前ログ:", {
+                task: taskToReturnTo.task,
+                goalId: taskToReturnTo.goalId,
+                title: taskToReturnTo.goalTitle
             });
                         
-            // executeStartTask が「休憩の終了」と「業務の開始」を両方やってくれます
             await Logic.executeStartTask(taskToReturnTo.task, taskToReturnTo.goalId, taskToReturnTo.goalTitle);
         } else {
             console.warn("休憩前のタスク情報が破損しているため、停止処理を行います。");
             await Logic.stopCurrentTask(true);
         }
     } else {
-        
         // --- 休憩を開始する ---
 
-// ▼▼▼ 追加: StateにIDが入っていない場合、画面のプルダウンから強制的に取得する ▼▼▼
         let currentGoalId = State.getCurrentGoalId();
         if (!currentGoalId) {
             const goalSelect = document.getElementById("goal-select");
@@ -165,11 +163,10 @@ export async function handleBreakClick(isAuto = false) {
         
         const preTaskData = { 
             task: State.getCurrentTask(), 
-            goalId: currentGoalId, // ★修正: ここを currentGoalId に変更
+            goalId: currentGoalId,
             goalTitle: State.getCurrentGoalTitle() 
         };
         
-        // オブジェクトを文字列化して保存
         localStorage.setItem("preBreakTask", JSON.stringify(preTaskData));
         State.setPreBreakTask(preTaskData);
 
