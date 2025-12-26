@@ -124,7 +124,7 @@ export async function handleBreakClick(isAuto = false) {
         
         // --- 休憩を開始する ---
 
-        // ▼▼▼ 追加: StateにIDが入っていない場合、画面のプルダウンから強制的に取得する ▼▼▼
+// ▼▼▼ 追加: StateにIDが入っていない場合、画面のプルダウンから強制的に取得する ▼▼▼
         let currentGoalId = State.getCurrentGoalId();
         if (!currentGoalId) {
             const goalSelect = document.getElementById("goal-select");
@@ -136,7 +136,7 @@ export async function handleBreakClick(isAuto = false) {
         
         const preTaskData = { 
             task: State.getCurrentTask(), 
-            goalId: State.getCurrentGoalId(), 
+            goalId: currentGoalId, // ★修正: ここを currentGoalId に変更
             goalTitle: State.getCurrentGoalTitle() 
         };
         
