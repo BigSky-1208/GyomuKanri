@@ -102,6 +102,11 @@ export default {
                 if (userStatusSnap.exists) {
                     const currentStatus = userStatusSnap.data();
 
+                  // ▼▼▼ 追加: ここで現在のGoalIDの状態をログ出力します ▼▼▼
+                  console.log(`[Worker Debug] User: ${userId}`);
+                  console.log(`[Worker Debug] Task: "${currentStatus.currentTask}", GoalID: "${currentStatus.currentGoalId}", GoalTitle: "${currentStatus.currentGoalTitle}"`);
+                  // ▲▲▲ 追加ここまで ▲▲▲
+
                     // ■直前の業務ログ保存
                     if (currentStatus.isWorking && currentStatus.currentTask && currentStatus.startTime) {
                         const prevStartTime = new Date(currentStatus.startTime);
