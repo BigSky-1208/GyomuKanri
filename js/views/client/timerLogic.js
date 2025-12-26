@@ -164,7 +164,45 @@ export function updateUIForActiveTask() {
     const startBtn = getEl("start-btn");
     const currentTaskDisplay = getEl("current-task-display");
     const breakBtn = getEl("break-btn");
+    const currentTask = State.getCurrentTask();
 
+if (currentTask === '休憩') {
+        // ここで必要な要素を取得
+        const taskSelect = getEl("task-select");
+        const goalSelect = getEl("goal-select");
+        const currentGoalTitle = getEl("currentGoalTitle"); // IDがHTMLと合っているか確認してください
+
+        // 休憩中であることを表示
+        if (currentTaskDisplay) {
+            currentTaskDisplay.textContent = "休憩中";
+        }
+
+        if (taskSelect) taskSelect.value = '休憩';
+        
+        // 工数プルダウンをリセット
+        if (goalSelect) {
+            goalSelect.value = ""; 
+            goalSelect.disabled = true; 
+        }
+        
+        // 目標タイトル表示をクリア
+        if (currentGoalTitle) {
+            currentGoalTitle.innerText = ""; 
+            currentGoalTitle.style.display = "none";
+        }
+
+        // 休憩ボタンの表示切替（休憩中→業務に戻る）
+        if (breakBtn) {
+            breakBtn.disabled = false;
+            breakBtn.textContent = "休憩前の業務に戻る";
+            breakBtn.classList.remove("bg-yellow-500");
+            breakBtn.classList.add("bg-cyan-600");
+        }
+
+        // 休憩中はこれ以降の処理（工数IDのマッチングなど）を行わずに抜ける
+        return; 
+    }
+    // ■■■ 追加終了 ■■■
     if (startBtn) startBtn.textContent = "業務変更";
     
     if (currentTaskDisplay) {
