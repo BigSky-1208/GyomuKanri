@@ -121,7 +121,19 @@ export async function handleBreakClick(isAuto = false) {
             await Logic.stopCurrentTask(true);
         }
     } else {
+        
         // --- 休憩を開始する ---
+
+        // ▼▼▼ 追加: StateにIDが入っていない場合、画面のプルダウンから強制的に取得する ▼▼▼
+        let currentGoalId = State.getCurrentGoalId();
+        if (!currentGoalId) {
+            const goalSelect = document.getElementById("goal-select");
+            if (goalSelect) {
+                currentGoalId = goalSelect.value;
+                console.log("⚠️ StateからgoalIdが取れないため、画面から取得しました:", currentGoalId);
+            }
+        }
+        
         const preTaskData = { 
             task: State.getCurrentTask(), 
             goalId: State.getCurrentGoalId(), 
