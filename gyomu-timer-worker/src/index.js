@@ -142,6 +142,10 @@ export default {
                         preBreakTask: preBreakTaskData,
                         updatedAt: executionTime.toISOString(),
                         lastUpdatedBy: 'worker'
+
+                      currentGoalId: null,
+                        currentGoalTitle: null,
+                        currentGoal: null
                     });
                 }
 
