@@ -161,19 +161,10 @@ export async function syncReservations() {
 
 // UI更新系
 export function updateUIForActiveTask() {
-    import("./clientUI.js").then(({ updateTaskDisplaysForSelection, handleGoalSelectionChange }) => {
-        const taskSelect = getEl("task-select");
-        const goalSelect = getEl("goal-select");
     const startBtn = getEl("start-btn");
     const currentTaskDisplay = getEl("current-task-display");
     const breakBtn = getEl("break-btn");
     const currentTask = State.getCurrentTask();
-
-    // ■■■ 追加修正: 休憩以外なら、まずプルダウンのロックを解除する ■■■
-        if (goalSelect) {
-            goalSelect.disabled = false;
-        }
-        // ■■■ 追加終了 ■■■
 
 if (currentTask === '休憩') {
         // ここで必要な要素を取得
@@ -239,6 +230,12 @@ if (currentTask === '休憩') {
     import("./clientUI.js").then(({ updateTaskDisplaysForSelection, handleGoalSelectionChange }) => {
         const taskSelect = getEl("task-select");
         const goalSelect = getEl("goal-select");
+
+        // ■■■ 追加修正: 休憩以外なら、まずプルダウンのロックを解除する ■■■
+        if (goalSelect) {
+            goalSelect.disabled = false;
+        }
+        // ■■■ 追加終了 ■■■
         
         if (taskSelect && State.getCurrentTask()) {
             taskSelect.value = State.getCurrentTask();
