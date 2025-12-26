@@ -32,6 +32,7 @@ export default {
     const firestore = initFirebase(env);
     const now = new Date();
 
+    // サーバー時計のズレやフライング起動を考慮し、60秒後までの予約を対象にする
     const searchLimit = new Date(now.getTime() + 60000);
 
     const reservationsSnapshot = await firestore.collection('reservations') 
@@ -44,6 +45,7 @@ export default {
       return;
     }
 
+    // 待機時間の計算
     let maxWaitTime = 0;
     const realTimeNow = new Date().getTime();
 
@@ -61,6 +63,7 @@ export default {
         await sleep(maxWaitTime);
     }
     
+    // トランザクション処理
     try {
         await firestore.runTransaction(async (transaction) => {
             const executionTime = new Date();
@@ -110,9 +113,9 @@ export default {
                                 startTime: currentStatus.startTime,
                                 endTime: executionTime.toISOString(),
                                 duration: duration,
-                                memo: "（予約休憩により自動中断）",
+                                memo: "（予約休憩により自動中断）", // ※不要なら "" にしてください
                                 source: "worker_reservation"
-                                // type: "work"  <-- ★削除: クライアントと挙動を合わせるため削除します
+                                // type: "work"  <-- ★削除: クライアントと挙動を合わせるため削除しました
                             });
                         }
                     }
