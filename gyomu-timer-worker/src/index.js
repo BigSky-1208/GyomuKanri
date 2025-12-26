@@ -20,12 +20,12 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default {
   async fetch(request, env, ctx) {
-    // ... (fetch部分は変更なし、そのまま記述してください) ...
     const url = new URL(request.url);
+    // ... (fetch部分は既存のまま) ...
     if (url.pathname === '/update-schedule') {
-        // ... (既存のコード) ...
         return new Response("OK");
     }
+    // スタート処理などもここにあるはずですが、今回は自動処理(scheduled)に注力します
     return new Response("OK");
   },
 
@@ -36,14 +36,13 @@ export default {
     // 現在時刻
     const now = new Date();
 
-    // ★修正1: サーバー時計のズレやフライング起動を考慮し、
-    // 「現在時刻 + 15秒」までの予約を対象にする
-    const searchLimit = new Date(now.getTime() + 15000);
+    // ★修正: サーバー時計のズレやフライング起動を考慮し、60秒後までの予約を対象にする
+    const searchLimit = new Date(now.getTime() + 60000);
 
     // 1. 実行すべき予約を取得
     const reservationsSnapshot = await firestore.collection('reservations') 
       .where('status', '==', 'reserved')
-      .where('scheduledTime', '<=', searchLimit.toISOString()) // ★ここを変更
+      .where('scheduledTime', '<=', searchLimit.toISOString())
       .get();
 
     if (reservationsSnapshot.empty) {
@@ -51,33 +50,28 @@ export default {
       return;
     }
 
-    // ★修正2: 取得した予約の中で、まだ時間が来ていないものがあれば、その時間まで待機する
-    // (最も遅い予約時間に合わせて待機すれば、全て安全に実行できる)
+    // 待機時間の計算
     let maxWaitTime = 0;
     const realTimeNow = new Date().getTime();
 
     reservationsSnapshot.docs.forEach(doc => {
         const data = doc.data();
         const scheduled = new Date(data.scheduledTime).getTime();
-        // もし予約時間が現在より未来なら、待機時間を計算
         if (scheduled > realTimeNow) {
             const diff = scheduled - realTimeNow;
             if (diff > maxWaitTime) maxWaitTime = diff;
         }
     });
 
-    // 最大15秒まで待機（それ以上は異常なので待たない）
+    // 最大15秒まで待機
     if (maxWaitTime > 0 && maxWaitTime <= 15000) {
         console.log(`Waiting for ${maxWaitTime}ms to synchronize...`);
         await sleep(maxWaitTime);
     }
-
-    // --- ここから下は変更なし（トランザクション処理） ---
     
-    // トランザクションを使って安全に処理する
+    // トランザクション処理
     try {
         await firestore.runTransaction(async (transaction) => {
-            // 再度現在時刻を取得（待機した分、進んでいるため）
             const executionTime = new Date();
 
             const resRefs = reservationsSnapshot.docs.map(doc => doc.ref);
@@ -85,11 +79,10 @@ export default {
 
             for (const resDoc of resDocs) {
                 if (!resDoc.exists) continue;
-                
                 const resData = resDoc.data();
                 if (resData.status !== 'reserved') continue;
 
-                // 念のため最終チェック（待機した結果、時間は過ぎているはずだが）
+                // 未来の予約は除外
                 if (new Date(resData.scheduledTime) > executionTime) {
                     console.log("Skipping future reservation:", resDoc.id);
                     continue;
@@ -102,10 +95,10 @@ export default {
                 if (userStatusSnap.exists) {
                     const currentStatus = userStatusSnap.data();
 
-                  // ▼▼▼ 追加: ここで現在のGoalIDの状態をログ出力します ▼▼▼
-                  console.log(`[Worker Debug] User: ${userId}`);
-                  console.log(`[Worker Debug] Task: "${currentStatus.currentTask}", GoalID: "${currentStatus.currentGoalId}", GoalTitle: "${currentStatus.currentGoalTitle}"`);
-                  // ▲▲▲ 追加ここまで ▲▲▲
+                    // ▼▼▼ 【ログ追加】ここでDB上の実際の値を確認します ▼▼▼
+                    console.log(`[Worker Debug] UserID: ${userId}`);
+                    console.log(`[Worker Debug] BEFORE Update: Task="${currentStatus.currentTask}", GoalID="${currentStatus.currentGoalId}", GoalTitle="${currentStatus.currentGoalTitle}"`);
+                    // ▲▲▲ ログ追加ここまで ▲▲▲
 
                     // ■直前の業務ログ保存
                     if (currentStatus.isWorking && currentStatus.currentTask && currentStatus.startTime) {
@@ -124,7 +117,7 @@ export default {
                                 goalTitle: currentStatus.currentGoalTitle || null,
                                 date: prevStartTime.toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }).replaceAll('/', '-'),
                                 startTime: currentStatus.startTime,
-                                endTime: executionTime.toISOString(), // executionTimeを使用
+                                endTime: executionTime.toISOString(),
                                 duration: duration,
                                 memo: "（予約休憩により自動中断）",
                                 source: "worker_reservation",
@@ -134,22 +127,28 @@ export default {
                     }
                     
                     // ■ステータスを「休憩」に更新
+                    // ★ここを修正: 空文字対策を強化して作成
+                    const rawGoalId = currentStatus.currentGoalId;
+                    const cleanGoalId = (rawGoalId && rawGoalId !== "") ? rawGoalId : null;
+
                     const preBreakTaskData = {
                         task: currentStatus.currentTask || '',
-                        goalId: currentStatus.currentGoalId || null,
+                        goalId: cleanGoalId,
                         goalTitle: currentStatus.currentGoalTitle || null
                     };
+
+                    console.log(`[Worker Debug] Saving preBreakTask:`, JSON.stringify(preBreakTaskData));
 
                     transaction.update(userStatusRef, {
                         currentTask: '休憩',
                         isWorking: true,
-                        startTime: executionTime.toISOString(), // executionTimeを使用
-                        preBreakTask: preBreakTaskData,
+                        startTime: executionTime.toISOString(),
+                        preBreakTask: preBreakTaskData, // ここでオブジェクトとして保存
                         updatedAt: executionTime.toISOString(),
                         lastUpdatedBy: 'worker',
-                      currentGoalId: null,
-                      currentGoalTitle: null,
-                      currentGoal: null
+                        currentGoalId: null,
+                        currentGoalTitle: null,
+                        currentGoal: null
                     });
                 }
 
