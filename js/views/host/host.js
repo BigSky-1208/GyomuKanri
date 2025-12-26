@@ -66,7 +66,7 @@ function injectApprovalButton() {
 
         const btn = document.createElement("button");
         btn.id = "view-approval-btn";
-        btn.className = "w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center gap-3 transition duration-150 ease-in-out";
+        btn.className = "w-full py-3 rounded-lg text-white font-bold shadow-md transition hover:opacity-90 bg-orange-600 flex items-center justify-center gap-2";
         
         btn.innerHTML = `
             <span>📩 業務時間申請を確認・承認する</span>
