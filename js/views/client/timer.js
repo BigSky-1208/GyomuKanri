@@ -75,21 +75,6 @@ if (currentGoalObj && currentGoalObj.target > 0) {
     await Logic.executeStartTask(selectedTask, selectedGoalId, selectedGoalTitle);
 } // <--- handleStartClick 関数の終了        
 
-    // 業務変更（通常）
-    if (isWorking) {
-        await Logic.stopCurrentTaskCore(false);
-    }
-
-    // ★修正: ここも selectedTask 系を使うのが正解
-    console.log("🚀【通常開始】D1送信直前ログ:", {
-        task: selectedTask,
-        goalId: selectedGoalId,
-        title: selectedGoalTitle
-    });
-
-    await Logic.executeStartTask(selectedTask, selectedGoalId, selectedGoalTitle);
-}
-
 export async function handleStopClick(isAuto = false) {
     if (!isAuto) {
         const { cancelAllReservations } = await import("./reservations.js");
