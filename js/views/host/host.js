@@ -53,32 +53,35 @@ function injectTomuraLocationUI() {
     }
 }
 
-// --- 既存機能: 承認ボタン ---
+// --- 修正版: 承認ボタン ---
 function injectApprovalButton() {
-    if (document.getElementById("view-approval-container")) return;
+    // ボタンが既に存在していたら何もしない
+    if (document.getElementById("view-approval-btn")) return;
+    
     const referenceBtn = document.getElementById("view-report-btn");
     
     if (referenceBtn) {
-        const buttonGroup = referenceBtn.parentElement;
-        const container = document.createElement("div");
-        container.id = "view-approval-container";
-        container.className = "mb-6 mt-2 w-full"; 
+        // ボタンが入っている親リスト（space-y-3 の div）を取得
+        const buttonList = referenceBtn.parentElement;
 
+        // ボタン要素を作成（余計な div コンテナは作らない）
         const btn = document.createElement("button");
         btn.id = "view-approval-btn";
-        btn.className = "w-full py-3 rounded-lg text-white font-bold shadow-md transition hover:opacity-90 bg-orange-600 flex items-center justify-center gap-2";
+        
+        // 他のボタンと同じクラス構成にする
+        btn.className = "w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 px-4 rounded-lg transition shadow-sm flex items-center justify-center gap-2";
         
         btn.innerHTML = `
             <span>📩 業務時間申請を確認・承認する</span>
-            <span id="approval-badge" class="w-full bg-orange-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-orange-600 transition shadow-sm">0</span>
+            <span id="approval-badge" class="bg-white text-orange-600 text-xs font-bold px-2 py-1 rounded-full hidden shadow-sm">0</span>
         `;
+        
         btn.onclick = () => showView(VIEWS.APPROVAL);
 
-        container.appendChild(btn);
-        if (buttonGroup && buttonGroup.parentNode) {
-            buttonGroup.parentNode.insertBefore(container, buttonGroup.nextSibling);
-        }
+        // リストの最後に追加
+        buttonList.appendChild(btn);
 
+        // --- バッジの件数監視ロジック ---
         const q = query(collection(db, "work_log_requests"), where("status", "==", "pending"));
         onSnapshot(q, (snap) => {
             const badge = document.getElementById("approval-badge");
@@ -287,17 +290,31 @@ function injectMessageFeature() {
 
     // 送信ボタンの注入
     const approvalContainer = document.getElementById("view-approval-container");
-    if (approvalContainer && !document.getElementById("open-message-modal-btn")) {
-        const msgBtnContainer = document.createElement("div");
-        msgBtnContainer.className = "mb-4 mt-6 w-full"; 
-        msgBtnContainer.innerHTML = `
-            <button id="open-message-modal-btn" class="w-full bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-500 transition shadow-sm">
-                📢 メッセージを作成・送信する
-            </button>
-        `;
-        approvalContainer.parentNode.insertBefore(msgBtnContainer, approvalContainer);
+    const approvalBtn = document.getElementById("view-approval-btn");
+    const referenceBtn = document.getElementById("view-report-btn");
+    
+if (referenceBtn && !document.getElementById("open-message-modal-btn")) {
+        
+        // 親のリスト（space-y-3 が設定されている場所）を取得
+        const buttonList = referenceBtn.parentElement; 
 
-        document.getElementById("open-message-modal-btn").addEventListener("click", handleOpenMessageModal);
+        // ★修正点1: 枠を作らず、直接ボタン要素を作成
+        const msgBtn = document.createElement("button");
+        msgBtn.id = "open-message-modal-btn";
+
+        // ★修正点2: "mt-6" や "mb-4" を削除し、他のボタンと同じクラスにする
+        msgBtn.className = "w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg transition shadow-sm flex items-center justify-center gap-2";
+
+        msgBtn.innerHTML = `📢 メッセージを作成・送信する`;
+
+        // 承認ボタンがあればその「手前」に、なければ「最後」に追加
+        if (approvalBtn) {
+            buttonList.insertBefore(msgBtn, approvalBtn);
+        } else {
+            buttonList.appendChild(msgBtn);
+        }
+
+        msgBtn.addEventListener("click", handleOpenMessageModal);
     }
 }
 
