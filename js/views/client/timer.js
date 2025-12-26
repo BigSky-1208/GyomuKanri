@@ -1,6 +1,7 @@
 // js/views/client/timer.js
 
 import { showConfirmationModal, hideConfirmationModal } from "../../components/modal/index.js";
+import { allTaskObjects } from "../../main.js";
 import * as Logic from "./timerLogic.js";
 import * as State from "./timerState.js";
 
