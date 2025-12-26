@@ -21,6 +21,7 @@ export async function executeStartTask(selectedTask, selectedGoalId, selectedGoa
         isWorking: 1,
         currentTask: selectedTask,
         currentGoal: selectedGoalTitle,
+        currentGoalId: selectedGoalId,
         startTime: new Date().toISOString()
     };
 
