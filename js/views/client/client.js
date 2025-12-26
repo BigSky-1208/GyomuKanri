@@ -164,6 +164,11 @@ function listenForMyStatus() {
                 localStorage.setItem("isWorking", "1");
                 localStorage.setItem("currentTask", "休憩");
                 if (dbStartTime) localStorage.setItem("startTime", dbStartTime);
+
+                // ▼▼▼ 追加: 休憩に入ったので、ローカルに残っている工数情報を確実に消す！ ▼▼▼
+                localStorage.removeItem("currentGoalId");
+                localStorage.removeItem("currentGoal");
+                // ▲▲▲ 追加ここまで ▲▲▲
                 
                 // 2. 休憩前のタスク情報があれば保存
                 if (data.preBreakTask) {
