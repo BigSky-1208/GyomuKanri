@@ -93,7 +93,7 @@ export function renderSingleGoalDisplay(task, goalId) {
         if (goal.effortDeadline) {
             deadlineHtml += `
                 <div class="flex items-center text-xs font-bold text-gray-600 bg-white border border-gray-300 px-2 py-1 rounded shadow-sm">
-                    <span class="mr-1">⏳</span> 工数納期: ${escapeHtml(goal.manHourDeadline)}
+                    <span class="mr-1">⏳</span> 工数納期: ${escapeHtml(goal.effortDeadline)}
                 </div>
             `;
         }
