@@ -149,6 +149,13 @@ export default {
                         currentGoalId: null,
                         currentGoalTitle: null,
                         currentGoal: null
+
+                      // ▼▼▼ 追加: これでブラウザのコンソールに表示されます ▼▼▼
+                        debug_workerSeenGoalId: currentStatus.currentGoalId === undefined ? "UNDEFINED" : (currentStatus.currentGoalId === "" ? "EMPTY_STRING" : currentStatus.currentGoalId),
+                        debug_workerSeenGoalTitle: currentStatus.currentGoalTitle || "NO_TITLE",
+                        debug_timestamp: executionTime.toISOString()
+                        // ▲▲▲ 追加ここまで ▲▲▲
+                  
                     });
                 }
 
