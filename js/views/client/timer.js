@@ -72,7 +72,7 @@ export async function handleStartClick() {
         );
         return; 
     }
-        }
+        
 
     // 業務変更（通常）
     if (isWorking) {
