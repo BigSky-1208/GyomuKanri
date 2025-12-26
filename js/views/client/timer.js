@@ -63,6 +63,7 @@ export async function handleStartClick() {
                     task: selectedTask,
                     goalId: selectedGoalId,    // ← ここに値が入っているか見てください
                     title: selectedGoalTitle
+                }
                         
                 await Logic.executeStartTask(selectedTask, selectedGoalId, selectedGoalTitle);
             },
@@ -141,6 +142,7 @@ export async function handleBreakClick(isAuto = false) {
                     task: selectedTask,
                     goalId: selectedGoalId,    // ← ここに値が入っているか見てください
                     title: selectedGoalTitle
+            }
                         
             // executeStartTask が「休憩の終了」と「業務の開始」を両方やってくれます
             await Logic.executeStartTask(taskToReturnTo.task, taskToReturnTo.goalId, taskToReturnTo.goalTitle);
