@@ -22,8 +22,22 @@ export async function handleStartClick() {
     const otherTaskInput = document.getElementById("other-task-input");
 
     const selectedTask = taskSelect.value === "その他" ? otherTaskInput.value : taskSelect.value;
-    const selectedGoalId = goalSelect ? goalSelect.value : null;
+    let selectedGoalId = goalSelect ? goalSelect.value : null;
     let selectedGoalTitle = goalSelect ? goalSelect.options[goalSelect.selectedIndex]?.text : null;
+
+    if ((!selectedGoalId || selectedGoalId === "") && selectedGoalTitle && goalSelect) {
+         // タイトルが有効な場合のみ検索
+         if (selectedGoalTitle !== "工数を選択 (任意)" && selectedGoalTitle !== "なし") {
+             for (const option of goalSelect.options) {
+                 if (option.text === selectedGoalTitle) {
+                     selectedGoalId = option.value;
+                     console.log(`⚠️ ID未取得を補正しました: ${selectedGoalTitle} -> ID: ${selectedGoalId}`);
+                     break;
+                 }
+             }
+         }
+    }
+    // ▲▲▲ 追加終了 ▲▲▲
     
     if (selectedGoalTitle === "工数を選択 (任意)" || selectedGoalTitle === "なし" || !selectedGoalId) {
         selectedGoalTitle = null;
