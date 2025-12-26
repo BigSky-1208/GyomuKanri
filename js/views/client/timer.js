@@ -21,26 +21,24 @@ export async function handleStartClick() {
     const goalSelect = document.getElementById("goal-select");
     const otherTaskInput = document.getElementById("other-task-input");
 
+    // 1. タスク名の取得
     const selectedTask = taskSelect.value === "その他" ? otherTaskInput.value : taskSelect.value;
+
+    // 2. 目標IDとタイトルの取得（ここを単純化しました）
+    // セレクトボックスの value には ID が入っているはずなので、それをそのまま信用して使います
     let selectedGoalId = goalSelect ? goalSelect.value : null;
     let selectedGoalTitle = goalSelect ? goalSelect.options[goalSelect.selectedIndex]?.text : null;
 
-    if ((!selectedGoalId || selectedGoalId === "") && selectedGoalTitle && goalSelect) {
-         // タイトルが有効な場合のみ検索
-         if (selectedGoalTitle !== "工数を選択 (任意)" && selectedGoalTitle !== "なし") {
-             for (const option of goalSelect.options) {
-                 if (option.text === selectedGoalTitle) {
-                     selectedGoalId = option.value;
-                     console.log(`⚠️ ID未取得を補正しました: ${selectedGoalTitle} -> ID: ${selectedGoalId}`);
-                     break;
-                 }
-             }
-         }
-    }
-    // ▲▲▲ 追加終了 ▲▲▲
-    
-    if (selectedGoalTitle === "工数を選択 (任意)" || selectedGoalTitle === "なし" || !selectedGoalId) {
+    // 「工数を選択」などのデフォルト値が選ばれている場合は null 扱いにする
+    if (selectedGoalId === "" || selectedGoalTitle === "工数を選択 (任意)" || selectedGoalTitle === "なし") {
+        selectedGoalId = null;
         selectedGoalTitle = null;
+    }
+
+    // ★重要: もし「タイトルはあるのにIDが空」という異常な状態なら、D1にゴミを送らないようここで止める
+    if (selectedGoalTitle && !selectedGoalId) {
+        alert("エラー: 目標IDが取得できませんでした。");
+        return; 
     }
 
     if (!selectedTask) {
@@ -48,15 +46,18 @@ export async function handleStartClick() {
         return;
     }
 
+    // --- ここから下は送信フロー ---
+
     const isWorking = localStorage.getItem("isWorking") === "1";
     
+    // 進捗未入力チェック
     if (isWorking && State.getCurrentGoalId() && !State.getHasContributed()) {
         showConfirmationModal(
             `「${State.getCurrentGoalTitle()}」の進捗(件数)が入力されていません。\nこのまま業務を変更しますか？`,
             async () => {
                 hideConfirmationModal();
-                // 業務変更: 前の業務を終了(ログ保存)してから新しい業務を開始
                 await Logic.stopCurrentTaskCore(false); 
+                // IDをそのまま渡す
                 await Logic.executeStartTask(selectedTask, selectedGoalId, selectedGoalTitle);
             },
             hideConfirmationModal
@@ -64,11 +65,12 @@ export async function handleStartClick() {
         return; 
     }
 
-    // 業務変更（通常）: 前の業務を終了してから開始
+    // 業務変更（通常）
     if (isWorking) {
         await Logic.stopCurrentTaskCore(false);
     }
 
+    // IDをそのまま渡す（これがD1への送信命令です）
     await Logic.executeStartTask(selectedTask, selectedGoalId, selectedGoalTitle);
 }
 
