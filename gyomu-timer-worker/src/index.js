@@ -141,9 +141,9 @@ export default {
                         startTime: executionTime.toISOString(), // executionTimeを使用
                         preBreakTask: preBreakTaskData,
                         updatedAt: executionTime.toISOString(),
-                        lastUpdatedBy: 'worker'
+                        lastUpdatedBy: 'worker',
 
-                      currentGoalId: null,
+                      　currentGoalId: null,
                         currentGoalTitle: null,
                         currentGoal: null
                     });
