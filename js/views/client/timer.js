@@ -59,12 +59,11 @@ export async function handleStartClick() {
                 await Logic.stopCurrentTaskCore(false); 
                 // IDをそのまま渡す
 
-                console.log("🚀【確認ダイアログ経由】D1送信直前ログ:", {
-                    task: selectedTask,
-                    goalId: selectedGoalId,    // ← ここに値が入っているか見てください
-                    title: selectedGoalTitle
-                }});
-                        
+console.log("🚀【休憩復帰】D1送信直前ログ:", {
+    task: taskToReturnTo.task,       // 正しくは taskToReturnTo の中身
+    goalId: taskToReturnTo.goalId,
+    title: taskToReturnTo.goalTitle
+});                        
                 await Logic.executeStartTask(selectedTask, selectedGoalId, selectedGoalTitle);
             },
             hideConfirmationModal
