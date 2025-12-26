@@ -72,9 +72,7 @@ export function renderSingleGoalDisplay(task, goalId) {
     // ★追加: メモがある場合のみ表示するHTMLを作成
     // ※改行を反映させるため whitespace-pre-wrap を使用
     const memoHtml = goal.memo ? `
-        <div class="p-1 bg-gray-50 border-l-4 border-blue-600 p-3 mb-4 rounded text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
-            ${escapeHtml(goal.memo)}
-        </div>
+        <div class="p-1 bg-gray-50 border-l-4 border-blue-600 p-3 mb-4 rounded text-sm text-gray-700 whitespace-pre-wrap leading-relaxed"> ${escapeHtml(goal.memo)} </div>
     ` : '';
 
     container.innerHTML = `
