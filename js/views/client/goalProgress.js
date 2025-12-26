@@ -69,9 +69,19 @@ export function renderSingleGoalDisplay(task, goalId) {
     const target = goal.target || 0;
     const percentage = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
     
+    // ★追加: メモがある場合のみ表示するHTMLを作成
+    // ※改行を反映させるため whitespace-pre-wrap を使用
+    const memoHtml = goal.memo ? `
+        <div class="bg-gray-50 border-l-4 border-blue-600 p-3 mb-4 rounded text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">
+            ${escapeHtml(goal.memo)}
+        </div>
+    ` : '';
+
     container.innerHTML = `
         <div class="border-b pb-4 mb-4">
-            <h3 class="text-sm font-bold text-gray-700 mb-1">${escapeHtml(goal.title)}</h3>
+            <h3 class="text-sm font-bold text-gray-700 mb-2">${escapeHtml(goal.title)}</h3>
+            
+            ${memoHtml}
             
             <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
                 <span>現在: <span id="ui-current-val" class="font-bold text-lg">${current}</span> / 目標: ${target}</span>
