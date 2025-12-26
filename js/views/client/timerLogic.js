@@ -197,13 +197,22 @@ export function updateUIForActiveTask() {
             taskSelect.value = State.getCurrentTask();
             updateTaskDisplaysForSelection(); 
             
+            // ★修正: タイムアウト時間を 100ms -> 300ms に延ばし、確実にセットする
             setTimeout(() => {
                 const targetGoalId = State.getCurrentGoalId() || localStorage.getItem("currentGoalId");
+                
                 if (targetGoalId && goalSelect) {
                     goalSelect.value = targetGoalId;
-                    handleGoalSelectionChange();
+                    
+                    // 値が正しくセットされたか確認（選択肢に存在する場合のみイベント発火）
+                    if (goalSelect.value === targetGoalId) {
+                        handleGoalSelectionChange();
+                    } else {
+                        // 念のため、値が見つからなかった場合（ID不一致など）のログ
+                        console.warn("復元対象の工数IDがリストにありません:", targetGoalId);
+                    }
                 }
-            }, 100);
+            }, 300);
         }
     });
 }
