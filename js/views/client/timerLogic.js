@@ -42,6 +42,10 @@ export async function executeStartTask(selectedTask, selectedGoalId, selectedGoa
             State.setLastBreakNotificationTime(0);
             State.setHasContributed(false);
 
+            // ★ここでフラグをリセット（falseにする）
+            // これにより、新しい業務でも「登録」ボタンを押すまでチェックが行われるようになります
+            State.setHasContributed(false);
+
             // LocalStorage更新
             localStorage.setItem("isWorking", "1");
             localStorage.setItem("currentTask", State.getCurrentTask());
